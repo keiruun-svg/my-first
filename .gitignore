@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# 가상환경
+.venv/
+venv/
+env/
+
+# Excel 데이터 파일 (결과물 및 원본 데이터)
+*.xlsx
+*.xls
+
+# 환경설정
+.env
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
