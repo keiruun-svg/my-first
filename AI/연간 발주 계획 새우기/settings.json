@@ -1,0 +1,9 @@
+{
+  "lead_time_default": 60,
+  "colors": {
+    "main_header": "1F3864",
+    "year_23": "2F5597",
+    "year_24": "2E75B6",
+    "year_25": "155480"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /mnt/c/Users/AJWorld/AppData/Local/ 2>/dev/null | head -30)",
+      "Read(//mnt/c/Users/AJWorld/AppData/**)"
+    ]
+  }
+}
