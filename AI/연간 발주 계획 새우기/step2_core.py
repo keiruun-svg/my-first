@@ -11,6 +11,7 @@ from collections import defaultdict
 
 YEARS = ['23', '24', '25']
 MM_KINDS = {'om1', 'om1-pigtail', 'om3'}
+YR_PALETTE = ['2F5597', '2E75B6', '155480', '375623', '7030A0', '833C00', '1F3864', '595959']
 
 def _fill(h): return PatternFill('solid', start_color=h)
 def _font(bold=False, size=9, color='000000'): return Font(name='Arial', bold=bold, size=size, color=color)
@@ -59,12 +60,20 @@ def _gr(t, pai):
             'FC/PC': (p, 'FC/PC 적색'), 'FC/APC': (p, 'FC/APC 적색')}.get(t)
 
 
-def run(row_path: str, usage_path: str, ojc_ref_path: str = None,
-        cmp_path: str = None, settings: dict = None) -> tuple:
+def run(row_path: str, usage_path: str = None, ojc_ref_path: str = None,
+        cmp_path: str = None, settings: dict = None, ferrule_meta: dict = None,
+        progress_cb=None,
+        cable_meta_in: dict = None, housing_meta_in: dict = None,
+        inventory: dict = None,
+        sales_data: dict = None) -> tuple:
     """
     STEP2 실행: ROW + 사용내역 → 2026_연간발주계획 xlsx bytes 반환
     Returns: (xlsx_bytes: bytes, logs: list[str])
     """
+    def _prog(pct, msg=''):
+        if progress_cb:
+            progress_cb(pct, msg)
+
     logs = []
     settings = settings or {}
     colors = settings.get('colors', {})
@@ -80,34 +89,71 @@ def run(row_path: str, usage_path: str, ojc_ref_path: str = None,
         return int(m.group(1)) if m else lt_default
 
     # ── 메타데이터 로드 ──────────────────────────────────────
+    _prog(5, "메타데이터 로드 중...")
     logs.append("메타데이터 로드 중...")
-    usage_wb = openpyxl.load_workbook(usage_path, data_only=True)
     cable_meta = {}; housing_meta = defaultdict(list)
-    sn = usage_wb.sheetnames
 
-    if '케이블 사용내역' in sn:
-        for row in usage_wb['케이블 사용내역'].iter_rows(min_row=4, values_only=True):
-            pai, ct, bunho, pname = row[1], row[2], row[3], row[4]
-            if pai and ct and bunho:
-                k = (str(pai).strip(), str(ct).strip())
-                if k not in cable_meta:
-                    cable_meta[k] = {
+    if usage_path:
+        # 기존 방식: 사용내역 Excel에서 읽기 (하위 호환)
+        usage_wb = openpyxl.load_workbook(usage_path, data_only=True)
+        sn = usage_wb.sheetnames
+        if '케이블 사용내역' in sn:
+            for row in usage_wb['케이블 사용내역'].iter_rows(min_row=4, values_only=True):
+                pai, ct, bunho, pname = row[1], row[2], row[3], row[4]
+                if pai and ct and bunho:
+                    k = (str(pai).strip(), str(ct).strip())
+                    if k not in cable_meta:
+                        cable_meta[k] = {
+                            '품번': bunho, '품명': pname,
+                            '구매처': row[15] if len(row) > 15 else None,
+                            '리드타임': row[16] if len(row) > 16 else None,
+                            '현재고': row[11] or 0 if len(row) > 11 else 0,
+                        }
+        if '하우징 사용내역' in sn:
+            for row in usage_wb['하우징 사용내역'].iter_rows(min_row=4, values_only=True):
+                pai, htype, bunho, pname = row[1], row[2], row[3], row[4]
+                if pai and htype and bunho:
+                    k = (str(pai).strip(), str(htype).strip())
+                    housing_meta[k].append({
                         '품번': bunho, '품명': pname,
-                        '구매처': row[15] if len(row) > 15 else None,
-                        '리드타임': row[16] if len(row) > 16 else None,
-                        '현재고': row[11] or 0 if len(row) > 11 else 0,
-                    }
-    if '하우징 사용내역' in sn:
-        for row in usage_wb['하우징 사용내역'].iter_rows(min_row=4, values_only=True):
-            pai, htype, bunho, pname = row[1], row[2], row[3], row[4]
-            if pai and htype and bunho:
-                k = (str(pai).strip(), str(htype).strip())
-                housing_meta[k].append({
-                    '품번': bunho, '품명': pname,
-                    '구매처': row[16] if len(row) > 16 else None,
-                    '리드타임': row[17] if len(row) > 17 else None,
-                    '현재고': row[12] or 0 if len(row) > 12 else 0,
-                    '기발주': row[13] or 0 if len(row) > 13 else 0,
+                        '구매처': row[16] if len(row) > 16 else None,
+                        '리드타임': row[17] if len(row) > 17 else None,
+                        '현재고': row[12] or 0 if len(row) > 12 else 0,
+                        '기발주': row[13] or 0 if len(row) > 13 else 0,
+                    })
+        usage_wb.close()
+    else:
+        # 신규 방식: metadata.json + inventory.json에서 직접 구성
+        _cinv  = (inventory or {}).get('cable', {})
+        _hinv  = (inventory or {}).get('housing', {})
+        for key_str, meta in (cable_meta_in or {}).items():
+            parts = key_str.split('|', 1)
+            if len(parts) != 2: continue
+            pai, ct = parts
+            iv = _cinv.get(key_str, {})
+            cable_meta[(pai, ct)] = {
+                '품번': meta.get('품번') or '',
+                '품명': meta.get('품명') or '',
+                '구매처': meta.get('구매처') or '',
+                '리드타임': meta.get('리드타임'),
+                '현재고': int(iv.get('현재고') or 0),
+            }
+        for key_str, meta_list in (housing_meta_in or {}).items():
+            parts = key_str.split('|', 1)
+            if len(parts) != 2: continue
+            pai, htype = parts
+            items    = meta_list if isinstance(meta_list, list) else [meta_list]
+            inv_list = _hinv.get(key_str, [])
+            for i, meta in enumerate(items):
+                if not meta.get('품번'): continue
+                iv = inv_list[i] if i < len(inv_list) else {}
+                housing_meta[(pai, htype)].append({
+                    '품번': meta.get('품번') or '',
+                    '품명': meta.get('품명') or '',
+                    '구매처': meta.get('구매처') or '',
+                    '리드타임': meta.get('리드타임'),
+                    '현재고': int(iv.get('현재고') or 0),
+                    '기발주': int(iv.get('기발주') or 0),
                 })
 
     # 피그테일 (0.9mm) — OJC 참고파일에서
@@ -156,6 +202,7 @@ def run(row_path: str, usage_path: str, ojc_ref_path: str = None,
     logs.append("메타데이터 로드 완료")
 
     # ── ROW 데이터 집계 ──────────────────────────────────────
+    _prog(20, "ERP 파일 로드 중...")
     logs.append("ROW 데이터 집계 중...")
     import io as _io
     row_wb = openpyxl.load_workbook(row_path, read_only=True, data_only=True)
@@ -164,6 +211,7 @@ def run(row_path: str, usage_path: str, ojc_ref_path: str = None,
     if '구매조회' in row_sheets or '구매현황' in row_sheets:
         row_wb.close()
         logs.append("ERP 원본 파일 감지 (구매조회/구매현황) — 자동 변환 시작")
+        _prog(25, "ERP 원본 파일 변환 중...")
         import convert_core as _cc
         converted_wb = _cc.preprocess(row_path, logs)
         buf_tmp = _io.BytesIO()
@@ -180,6 +228,13 @@ def run(row_path: str, usage_path: str, ojc_ref_path: str = None,
         for s in row_sheets if _re.match(r'\d{2}년[_ ]케이블', s)
     ])
     if not active_years:
+        if '케이블 사용내역' in row_sheets or '하우징 사용내역' in row_sheets:
+            row_wb.close()
+            raise ValueError(
+                "잘못된 파일 형식입니다.\n"
+                "'생산자재_사용내역.xlsx' 대신 '가공파일(연도별 시트).xlsx'를 STEP 3에 업로드하세요.\n"
+                "또는 ERP 원본 파일(구매조회/구매현황)을 직접 업로드할 수 있습니다."
+            )
         active_years = YEARS
         logs.append("연도 감지 실패 — 기본값 23/24/25 사용")
     else:
@@ -193,7 +248,8 @@ def run(row_path: str, usage_path: str, ojc_ref_path: str = None,
             if name in set(wb.sheetnames): return name
         return None
 
-    for yr in active_years:
+    for _yi, yr in enumerate(active_years):
+        _prog(35 + int(15 * _yi / max(len(active_years), 1)), f"20{yr}년 데이터 집계 중...")
         cs = _find_row_sheet(row_wb, yr, '케이블')
         hs = _find_row_sheet(row_wb, yr, '하우징')
         if cs:
@@ -231,7 +287,6 @@ def run(row_path: str, usage_path: str, ojc_ref_path: str = None,
         return r
 
     row_wb.close()
-    usage_wb.close()
     cable_stats  = {**_fin(cable_agg), **pigtail_cable_stats}
     housing_stats = _fin(housing_agg)
     all_cable_meta = {**cable_meta, **pigtail_cable_meta}
@@ -263,6 +318,7 @@ def run(row_path: str, usage_path: str, ojc_ref_path: str = None,
         except Exception as e:
             logs.append(f"OJC 보완 건너뜀: {e}")
 
+    _prog(52, "통계 계산 완료 — Excel 빌드 시작...")
     logs.append(f"집계 완료 — 케이블 {len(cable_stats)}타입 / 하우징 {len(housing_stats)}타입")
 
     # ── Excel 빌드 ───────────────────────────────────────────
@@ -397,15 +453,235 @@ def run(row_path: str, usage_path: str, ojc_ref_path: str = None,
         ws.freeze_panes = 'A4'; ws.sheet_view.showGridLines = False
         return keys
 
+    def _write_bunho_sheet(ws):
+        """품번별 발주 집계 — 동일 품번이 여러 하우징 타입에 걸쳐 있을 때 자동 합산"""
+        # 품번별 집계
+        bunho_data = {}
+        for (pai, htype), comps in housing_meta.items():
+            if (pai, htype) not in housing_stats: continue
+            h_st = housing_stats[(pai, htype)]
+            items = comps if isinstance(comps, list) else [comps]
+            for item in items:
+                bn = (item.get('품번') or '').strip()
+                if not bn: continue
+                if bn not in bunho_data:
+                    bunho_data[bn] = {
+                        '품명': item.get('품명', ''),
+                        '구매처': item.get('구매처', ''),
+                        '리드타임': _lt_days(item.get('리드타임')),
+                        '현재고': 0, '기발주': 0,
+                        'stats': {yr: [0.0]*12 for yr in active_years},
+                    }
+                bunho_data[bn]['현재고'] += item.get('현재고', 0) or 0
+                bunho_data[bn]['기발주'] += item.get('기발주', 0) or 0
+                for yr in active_years:
+                    for i, v in enumerate(h_st.get(yr, {}).get('monthly', [0]*12)):
+                        bunho_data[bn]['stats'][yr][i] += v
+
+        n_yr = len(active_years)
+        # 컬럼 레이아웃: NO 품번 품명 구매처 리드타임 | 연도별연간×n | n개년평균 안전재고 현재고 기발주 2026목표 필요발주 비고
+        C_YRS  = 6                      # 첫 연도 연간 컬럼
+        C_AVG  = C_YRS + n_yr           # n개년 평균
+        C_SS   = C_AVG + 1              # 안전재고
+        C_CUR  = C_SS  + 1              # 현재고
+        C_ORD  = C_CUR + 1              # 기발주
+        C_TGT  = C_ORD + 1              # 2026목표 (입력)
+        C_REQ  = C_TGT + 1              # 필요발주
+        C_NOTE = C_REQ + 1              # 비고
+        total_cols = C_NOTE
+
+        ws.sheet_view.showGridLines = False
+        ws.row_dimensions[1].height = 26
+        ws.merge_cells(f'A1:{get_column_letter(total_cols)}1')
+        c = ws['A1']; c.value = '2026 연간 발주 계획 — 품번별 집계 (하우징 공용 부품 합산)'
+        c.font = Font(name='Arial', bold=True, size=13, color='FFFFFF')
+        c.fill = _fill(C_MAIN); c.alignment = CTR
+
+        ws.row_dimensions[2].height = 18
+        bands = [('A2', 'E2', '기본 정보', '374151', 'FFFFFF')]
+        for i, yr in enumerate(active_years):
+            cl = get_column_letter(C_YRS + i)
+            bands.append((f'{cl}2', f'{cl}2', f'20{yr}년 연간', YR_PALETTE[i % len(YR_PALETTE)], 'FFFFFF'))
+        bands += [
+            (get_column_letter(C_AVG)+'2',  get_column_letter(C_AVG)+'2',  f'{n_yr}개년 평균', '375623', 'FFFFFF'),
+            (get_column_letter(C_SS)+'2',   get_column_letter(C_SS)+'2',   '안전재고',         'C00000', 'FFFFFF'),
+            (get_column_letter(C_CUR)+'2',  get_column_letter(C_ORD)+'2',  '재고 현황',        '7030A0', 'FFFFFF'),
+            (get_column_letter(C_TGT)+'2',  get_column_letter(C_REQ)+'2',  '✏ 2026 발주 계획', 'C55A11', 'FFFFFF'),
+            (get_column_letter(C_NOTE)+'2', get_column_letter(C_NOTE)+'2', '비고',             '595959', 'FFFFFF'),
+        ]
+        for s, e, lbl, bg, fg in bands:
+            if s != e: ws.merge_cells(f'{s}:{e}')
+            c = ws[s]; c.value = lbl
+            c.font = Font(name='Arial', bold=True, size=9, color=fg)
+            c.fill = _fill(bg); c.alignment = CTR; c.border = BORDER
+
+        ws.row_dimensions[3].height = 42
+        hdrs = ['NO', '품번', '품명', '구매처', f'리드타임\n(일)']
+        for yr in active_years: hdrs.append(f'20{yr}년\n연간(EA)')
+        hdrs += [f'{n_yr}개년\n평균(EA)', f'안전재고\n(EA)', f'현재고\n(EA)', f'기발주\n(참고)',
+                 f'2026목표\n(EA)', f'필요발주\n(EA)', '비고']
+        col_widths = [5, 16, 38, 14, 10] + [12]*n_yr + [12, 12, 10, 10, 12, 12, 20]
+        for ci, (h, w) in enumerate(zip(hdrs, col_widths), 1):
+            c = ws.cell(3, ci, h)
+            c.font = Font(name='Arial', bold=True, size=9, color='FFFFFF')
+            c.fill = _fill('BDD7EE'); c.alignment = CTR_W; c.border = BORDER
+            ws.column_dimensions[get_column_letter(ci)].width = w
+
+        ri = 4; no = 1
+        for bn, d in sorted(bunho_data.items()):
+            rf = _fill('F5F5F5') if ri % 2 == 0 else None
+            lt = d['리드타임']
+            ann_list = [round(sum(d['stats'].get(yr, {yr: [0]*12} if False else [0]*12)
+                                  if isinstance(d['stats'].get(yr), list) else d['stats'].get(yr, [0]*12)))
+                        for yr in active_years]
+            # 연도별 연간합계 계산
+            ann_vals = [round(sum(d['stats'].get(yr, [0]*12))) for yr in active_years]
+
+            for ci, v in enumerate([no, bn, d['품명'], d['구매처'], lt], 1):
+                c = ws.cell(ri, ci, v)
+                c.font = _font(size=9, bold=(ci==2))
+                c.border = BORDER
+                c.alignment = CTR if ci in [1,5] else LEFT
+                c.number_format = NUM_FMT if ci == 5 else 'General'
+                if rf: c.fill = rf
+
+            for i, (yr, av) in enumerate(zip(active_years, ann_vals)):
+                col = C_YRS + i
+                c = ws.cell(ri, col, av if av else None)
+                c.font = _font(size=9); c.border = BORDER
+                c.number_format = NUM_FMT; c.alignment = RIGHT
+                if rf: c.fill = rf
+
+            yr_cols = ','.join(f'{get_column_letter(C_YRS+i)}{ri}' for i in range(n_yr))
+            c = ws.cell(ri, C_AVG, f'=ROUND(AVERAGE({yr_cols}),0)')
+            c.font = _font(size=9); c.border = BORDER
+            c.number_format = NUM_FMT; c.alignment = RIGHT
+            if rf: c.fill = rf
+
+            c = ws.cell(ri, C_SS, f'=ROUND({get_column_letter(C_AVG)}{ri}*E{ri}/30,0)')
+            c.font = _font(bold=True, size=9); c.border = BORDER
+            c.number_format = NUM_FMT; c.alignment = RIGHT; c.fill = _fill('FFF2CC')
+
+            for col, val in [(C_CUR, d['현재고']), (C_ORD, d['기발주'])]:
+                c = ws.cell(ri, col, val if val else None)
+                c.font = _font(size=9); c.border = BORDER
+                c.number_format = NUM_FMT; c.alignment = RIGHT
+                if rf: c.fill = rf
+
+            c = ws.cell(ri, C_TGT, None)
+            c.font = _font(bold=True, size=9, color='0000FF'); c.fill = _fill('FFFFC0')
+            c.border = Border(
+                left=Side(style='medium', color='C55A11'), right=Side(style='medium', color='C55A11'),
+                top=Side(style='medium', color='C55A11'), bottom=Side(style='medium', color='C55A11'),
+            )
+            c.number_format = NUM_FMT; c.alignment = RIGHT
+
+            tgt = get_column_letter(C_TGT); cur = get_column_letter(C_CUR)
+            ord_ = get_column_letter(C_ORD); ss = get_column_letter(C_SS)
+            c = ws.cell(ri, C_REQ,
+                f'=IFERROR(MAX({tgt}{ri}-{cur}{ri}-{ord_}{ri}+{ss}{ri},0),"")')
+            c.font = _font(bold=True, size=9, color='C00000'); c.border = BORDER
+            c.number_format = NUM_FMT; c.alignment = RIGHT
+            if rf: c.fill = rf
+
+            ws.cell(ri, C_NOTE, '').border = BORDER
+            if rf: ws.cell(ri, C_NOTE).fill = rf
+            ws.row_dimensions[ri].height = 17; ri += 1; no += 1
+
+        # ── 페롤 섹션 ────────────────────────────────────────
+        if ferrule_meta:
+            # 커넥터 타입별 수량 집계 (파이 무관 합산)
+            conn_stats = {}
+            for (pai, htype), h_st in housing_stats.items():
+                m = re.match(r'^(LC/PC|LC/APC|SC/PC|SC/APC|FC/PC|FC/APC)', str(htype))
+                if not m: continue
+                ct = m.group(1)
+                if ct not in conn_stats:
+                    conn_stats[ct] = {yr: [0.0]*12 for yr in active_years}
+                for yr in active_years:
+                    for i, v in enumerate(h_st.get(yr, {}).get('monthly', [0]*12)):
+                        conn_stats[ct][yr][i] += v
+
+            # 구분선 행
+            ri += 1
+            ws.merge_cells(f'A{ri}:{get_column_letter(total_cols)}{ri}')
+            c = ws.cell(ri, 1, '▼ 페롤 (커넥터 타입별 공용 — 파이 무관 합산)')
+            c.font = Font(name='Arial', bold=True, size=9, color='FFFFFF')
+            c.fill = _fill('375623'); c.alignment = CTR; c.border = BORDER
+            ws.row_dimensions[ri].height = 16; ri += 1
+
+            for ct, fv in ferrule_meta.items():
+                if ct not in conn_stats: continue
+                rf = _fill('F0FFF4') if ri % 2 == 0 else None
+                lt = _lt_days(fv.get('리드타임'))
+                ann_vals = [round(sum(conn_stats[ct].get(yr, [0]*12))) for yr in active_years]
+
+                for ci, v in enumerate([no, fv.get('품번',''), fv.get('품명',''), fv.get('구매처',''), lt], 1):
+                    c = ws.cell(ri, ci, v)
+                    c.font = _font(size=9, bold=(ci==2))
+                    c.border = BORDER
+                    c.alignment = CTR if ci in [1,5] else LEFT
+                    c.number_format = NUM_FMT if ci == 5 else 'General'
+                    if rf: c.fill = rf
+
+                for i, av in enumerate(ann_vals):
+                    col = C_YRS + i
+                    c = ws.cell(ri, col, av if av else None)
+                    c.font = _font(size=9); c.border = BORDER
+                    c.number_format = NUM_FMT; c.alignment = RIGHT
+                    if rf: c.fill = rf
+
+                yr_cols = ','.join(f'{get_column_letter(C_YRS+i)}{ri}' for i in range(n_yr))
+                c = ws.cell(ri, C_AVG, f'=ROUND(AVERAGE({yr_cols}),0)')
+                c.font = _font(size=9); c.border = BORDER
+                c.number_format = NUM_FMT; c.alignment = RIGHT
+                if rf: c.fill = rf
+
+                c = ws.cell(ri, C_SS, f'=ROUND({get_column_letter(C_AVG)}{ri}*E{ri}/30,0)')
+                c.font = _font(bold=True, size=9); c.border = BORDER
+                c.number_format = NUM_FMT; c.alignment = RIGHT; c.fill = _fill('FFF2CC')
+
+                for col in [C_CUR, C_ORD]:
+                    ws.cell(ri, col, None).border = BORDER
+
+                c = ws.cell(ri, C_TGT, None)
+                c.font = _font(bold=True, size=9, color='0000FF'); c.fill = _fill('FFFFC0')
+                c.border = Border(
+                    left=Side(style='medium', color='C55A11'), right=Side(style='medium', color='C55A11'),
+                    top=Side(style='medium', color='C55A11'), bottom=Side(style='medium', color='C55A11'),
+                )
+                c.number_format = NUM_FMT; c.alignment = RIGHT
+
+                tgt = get_column_letter(C_TGT); ss = get_column_letter(C_SS)
+                c = ws.cell(ri, C_REQ, f'=IFERROR(MAX({tgt}{ri}+{ss}{ri},0),"")')
+                c.font = _font(bold=True, size=9, color='C00000'); c.border = BORDER
+                c.number_format = NUM_FMT; c.alignment = RIGHT
+                if rf: c.fill = rf
+
+                # 커넥터 타입 비고 표시
+                c = ws.cell(ri, C_NOTE, ct)
+                c.font = _font(size=8, color='375623'); c.border = BORDER; c.alignment = LEFT
+                if rf: c.fill = rf
+
+                ws.row_dimensions[ri].height = 17; ri += 1; no += 1
+
+        ws.freeze_panes = 'A4'
+
     wb = openpyxl.Workbook(); wb.remove(wb.active)
+    _prog(60, "케이블 사용내역 시트 작성 중...")
     ws_c = wb.create_sheet('케이블 사용내역')
     cable_keys = _write_sheet(ws_c, '2026 연간 발주 계획 — 케이블 사용내역  (단위 : m)',
                               cable_stats, all_cable_meta, 'm', '케이블 종류')
+    _prog(72, "하우징 사용내역 시트 작성 중...")
     ws_h = wb.create_sheet('하우징 사용내역')
     housing_keys = _write_sheet(ws_h, '2026 연간 발주 계획 — 하우징 사용내역  (단위 : EA)',
                                 housing_stats, housing_meta, 'EA', '하우징 타입')
+    _prog(82, "품번별 발주 집계 시트 작성 중...")
+    ws_b = wb.create_sheet('📦 품번별 발주 집계')
+    _write_bunho_sheet(ws_b)
 
     # ── 월별 발주계획 시트 ───────────────────────────────────
+    _prog(90, "월별 발주계획 시트 작성 중...")
     ws_m = wb.create_sheet('2026 월별 발주계획'); ws_m.sheet_view.showGridLines = False
     ws_m.row_dimensions[1].height = 26; ws_m.merge_cells('A1:T1')
     c = ws_m['A1']; c.value = '2026 월별 발주 계획 (과거 계절 패턴 기반 자동 분배)'
@@ -494,22 +770,36 @@ def run(row_path: str, usage_path: str, ojc_ref_path: str = None,
         ws_a.row_dimensions[ri2].height = 36
     ws_a.freeze_panes = 'A4'
 
-    # ── 수요 기반 분석 (생산_판매_비교.xlsx 있을 때) ─────────
+    # ── 수요 기반 분석 (sales_data dict 또는 생산_판매_비교.xlsx) ─────────
+    _prog(96, "파일 저장 중...")
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
 
-    if cmp_path:
+    if sales_data or cmp_path:
         logs.append("수요 기반 분석 추가 중...")
         try:
-            cmp_wb2 = openpyxl.load_workbook(cmp_path, read_only=True, data_only=True)
-            prod_data2 = {}
-            for row in list(cmp_wb2['연간_요약'].iter_rows(values_only=True))[3:]:
-                if not row[1]: continue
-                code = str(row[1]).strip()
-                prod_data2[code] = {
-                    '23': {'sales': row[4] or 0, 'ratio': row[7] or 0},
-                    '24': {'sales': row[8] or 0, 'ratio': row[11] or 0},
-                    '25': {'sales': row[12] or 0, 'ratio': row[15] or 0},
-                }
+            if sales_data:
+                # 웹앱 판매 분석 탭에서 저장된 dict 직접 사용
+                prod_data2 = {}
+                for code, data in sales_data.items():
+                    prod_data2[str(code).strip()] = {
+                        yr: {
+                            'sales': data.get(yr, {}).get('sales', 0),
+                            'ratio': data.get(yr, {}).get('ratio', 0),
+                        }
+                        for yr in ('23', '24', '25')
+                    }
+                cmp_wb2 = None
+            else:
+                cmp_wb2 = openpyxl.load_workbook(cmp_path, read_only=True, data_only=True)
+                prod_data2 = {}
+                for row in list(cmp_wb2['연간_요약'].iter_rows(values_only=True))[3:]:
+                    if not row[1]: continue
+                    code = str(row[1]).strip()
+                    prod_data2[code] = {
+                        '23': {'sales': row[4] or 0, 'ratio': row[7] or 0},
+                        '24': {'sales': row[8] or 0, 'ratio': row[11] or 0},
+                        '25': {'sales': row[12] or 0, 'ratio': row[15] or 0},
+                    }
             row_wb2 = openpyxl.load_workbook(row_path, read_only=True, data_only=True)
             cable_use2 = {}; housing_use2 = {}
             for yr2, cs2, hs2 in [('25','25년_케이블','25년 하우징'),('24','24년_케이블','24년 하우징'),('23','23년_케이블','23년 하우징')]:
@@ -608,12 +898,14 @@ def run(row_path: str, usage_path: str, ojc_ref_path: str = None,
                     if rf4: c.fill = rf4
 
             _adc(pwb2['케이블 사용내역'], cf2); _adc(pwb2['하우징 사용내역'], hf2)
-            cmp_wb2.close(); row_wb2.close()
+            if cmp_wb2: cmp_wb2.close()
+            row_wb2.close()
             buf2 = io.BytesIO(); pwb2.save(buf2); pwb2.close(); buf2.seek(0)
             logs.append("수요 기반 분석 완료 (제안량·생산비중·트렌드·위험도 포함)")
             return buf2.read(), logs
         except Exception as e:
             logs.append(f"수요 기반 분석 건너뜀: {e}")
 
+    _prog(100, "완료")
     logs.append(f"Excel 생성 완료 — 케이블 {len(cable_keys)}타입 / 하우징 {len(housing_keys)}타입")
     return buf.read(), logs

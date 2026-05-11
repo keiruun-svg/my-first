@@ -79,6 +79,7 @@ def run(row_path: str, cable_meta: dict = None, housing_meta_in: dict = None,
     settings = settings or {}
     colors  = settings.get('colors', {})
     C_MAIN  = colors.get('main_header', '1F3864')
+    converted_bytes = None  # ERP 변환 시 가공파일 바이트 저장
 
     # ── ERP 원본 파일 자동 감지 및 변환 ──────────────────────
     _prog(5, "파일 로드 중...")
@@ -95,6 +96,7 @@ def run(row_path: str, cable_meta: dict = None, housing_meta_in: dict = None,
         buf_tmp = io.BytesIO()
         converted_wb.save(buf_tmp)
         converted_wb.close()
+        converted_bytes = buf_tmp.getvalue()   # 가공파일 보존
         buf_tmp.seek(0)
         row_wb = openpyxl.load_workbook(buf_tmp, read_only=True, data_only=True)
         sheets = set(row_wb.sheetnames)
@@ -125,7 +127,7 @@ def run(row_path: str, cable_meta: dict = None, housing_meta_in: dict = None,
     if not YEARS:
         logs.append(f"⚠ 케이블 시트를 찾지 못했습니다. 위 시트 목록을 확인해주세요.")
         row_wb.close()
-        return b'', logs, [], [], []
+        return b'', logs, [], [], [], None
     logs.append(f"감지된 연도: {', '.join('20'+y for y in YEARS)}년")
     _prog(40, f"데이터 집계 중 ({', '.join('20'+y for y in YEARS)})...")
 
@@ -535,4 +537,4 @@ def run(row_path: str, cable_meta: dict = None, housing_meta_in: dict = None,
         logs.append(f"⚠ 품번 미입력 {len(unmatched)}개: {', '.join(str(k) for k in unmatched)}")
     _prog(100, "완료")
 
-    return buf.read(), logs, list(cs.keys()), list(hs.keys()), YEARS
+    return buf.read(), logs, list(cs.keys()), list(hs.keys()), YEARS, converted_bytes

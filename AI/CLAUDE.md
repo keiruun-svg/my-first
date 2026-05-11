@@ -140,3 +140,68 @@ DOJC=2, SOJC=1
 ## TODO
 - [ ] `build_exe.bat` 실행하여 .exe 빌드 (Windows에서 직접 실행)
 - [ ] `converter_app.py` GUI 테스트
+
+---
+
+## OJC 판매내역 필터링
+
+### 스크립트 위치
+`AI/연간 발주 계획 새우기/ojc_filter.py`
+
+### 용도
+전체 판매량 Excel에서 OJC 완제품만 추출 → 정리된 Excel 생성
+
+### 실행
+```bash
+python ojc_filter.py <입력파일.xlsx> [출력파일.xlsx]
+# 출력 생략 시 → OJC_판매량_정리.xlsx
+```
+
+### 입력 파일 컬럼 규격
+| 컬럼명 | 내용 |
+|--------|------|
+| 년/월/일 | 날짜 |
+| 품목코드 | 제품 코드 |
+| 품목명 | 제품명 (prefix로 OJC 여부 판별) |
+| 규격명 | 규격 |
+| 수량 | 판매 수량 (음수=취소, 자동 제거) |
+| 거래처 | 고객사 |
+| 창고 | 출고 창고 |
+
+### OJC 분류 기준 (prefix 매칭)
+```python
+OJC_PREFIXES = {
+    'KT OJC'            : ('OJC-A1-', 'OJC-C2-'),
+    'LG OJC'            : ('SOJC-', 'DOJC-', 'MOJC-'),
+    'DROP'              : ('DROP-CABLE',),
+    'PIGTAIL'           : ('PIGTAIL-',),
+    'Optical Cable Parts': ('Optical Cable Parts',),
+    'DX-MM'             : ('DX-MM',),
+}
+# Distribution 케이블 (별도 탭): ('Distribution-CABLE', 'DISTRIBUTION CABLE')
+```
+
+### 출력 구조
+- **OJC 판매량** 시트: 년/월/일, OJC종류, 품목코드, 품목명, 규격명, 수량, 거래처, 창고
+  - OJC종류별 배경색 구분 (KT=파랑, LG=녹색, DROP=노랑, PIGTAIL=주황)
+- **Distribution 케이블** 시트: 동일 구조, 별도 관리
+
+### 처리 로직
+1. 전체 DataFrame 로드
+2. 품목명 prefix 매칭으로 OJC종류 분류
+3. 음수/0 수량(취소건) 자동 제거
+4. 품명 형식 검증 (KT: 7개 이상 `-` 구분, LG: 4개 이상)
+5. Excel 저장 + 스타일 적용
+
+### 현재 데이터 파일
+| 파일 | 내용 |
+|------|------|
+| `판매량_정리.xlsx` | 23~26년 OJC 완제품 정리본 (15개 시트) |
+| `B1ILLHXVWW3VU1C.xlsx` | 2025.01~2026.05 구매조회 원본 (1,755행) |
+| `가공파일_통합_v양식.xlsx` | 2023~2025 케이블/하우징 가공파일 (6시트) |
+
+### ojc_filter.py를 호출하는 방법 (Python 내부)
+```python
+from ojc_filter import run
+ojc_df, dist_df = run('전체판매내역.xlsx', 'OJC만_정리.xlsx')
+```
