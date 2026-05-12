@@ -25,15 +25,70 @@ DEFAULT_SETTINGS = {
 }
 
 # ── Supabase 클라이언트 (secrets 있을 때만 활성화) ─────────────
+def _read_secrets() -> dict:
+    """st.secrets 우선, 실패 시 secrets.toml 직접 파싱."""
+    try:
+        return {"SUPABASE_URL": st.secrets["SUPABASE_URL"],
+                "SUPABASE_KEY": st.secrets["SUPABASE_KEY"]}
+    except Exception:
+        pass
+    # 직접 파싱 — 앱 폴더 → 레포 루트 순으로 탐색
+    import sys as _sys
+    candidates = [
+        Path(__file__).parent / ".streamlit" / "secrets.toml",
+        Path(__file__).parent.parent.parent / ".streamlit" / "secrets.toml",
+    ]
+    if _sys.platform == "win32":
+        candidates.append(Path.home() / ".streamlit" / "secrets.toml")
+    for p in candidates:
+        if p.exists():
+            try:
+                if _sys.version_info >= (3, 11):
+                    import tomllib
+                    data = tomllib.loads(p.read_text(encoding="utf-8"))
+                else:
+                    import re
+                    data = {}
+                    for line in p.read_text(encoding="utf-8").splitlines():
+                        m = re.match(r'^(\w+)\s*=\s*"([^"]*)"', line.strip())
+                        if m:
+                            data[m.group(1)] = m.group(2)
+                if "SUPABASE_URL" in data and "SUPABASE_KEY" in data:
+                    return data
+            except Exception:
+                pass
+    return {}
+
 @st.cache_resource
 def _get_sb():
     try:
         from supabase import create_client
-        url = st.secrets["SUPABASE_URL"]
-        key = st.secrets["SUPABASE_KEY"]
-        return create_client(url, key)
+        sec = _read_secrets()
+        if not sec:
+            return None
+        return create_client(sec["SUPABASE_URL"], sec["SUPABASE_KEY"])
     except Exception:
         return None
+
+def _sb_debug() -> str:
+    """연결 실패 원인 진단 문자열 반환."""
+    try:
+        from supabase import create_client  # noqa: F401
+    except ImportError:
+        return "supabase 패키지가 설치되지 않았습니다. (pip install supabase==2.7.4)"
+    sec = _read_secrets()
+    if not sec:
+        return "secrets.toml을 찾지 못했습니다. 아래 경로 중 하나에 파일이 있는지 확인하세요:\n" + \
+               "\n".join(str(p) for p in [
+                   Path(__file__).parent / ".streamlit" / "secrets.toml",
+                   Path(__file__).parent.parent.parent / ".streamlit" / "secrets.toml",
+               ])
+    try:
+        from supabase import create_client
+        create_client(sec["SUPABASE_URL"], sec["SUPABASE_KEY"])
+        return ""
+    except Exception as e:
+        return f"create_client 실패: {e}"
 
 def _sb_load(row_id: str):
     sb = _get_sb()
@@ -1561,8 +1616,9 @@ with tab6:
     st.markdown("**☁️ Supabase 동기화**")
     st.caption("로컬 JSON 데이터를 Supabase 클라우드에 수동 업로드합니다. Streamlit Cloud 버전과 데이터를 공유할 때 사용하세요.")
     if st.button("☁️ Supabase에 동기화", type="secondary"):
+        _get_sb.clear()  # 캐시 초기화 후 재시도
         if _get_sb() is None:
-            st.error("❌ Supabase 연결 실패 — secrets.toml에 SUPABASE_URL / SUPABASE_KEY 설정을 확인하세요.")
+            st.error(f"❌ Supabase 연결 실패 — {_sb_debug()}")
         else:
             results = {
                 "설정":     _sb_save("settings",  load_settings()),
