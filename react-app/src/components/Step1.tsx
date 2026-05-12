@@ -9,11 +9,16 @@ interface Props {
   settings?: AppSettings
 }
 
-export default function Step1({ metadata, setMetadata }: Props) {
+export default function Step1({ metadata, setMetadata, settings }: Props) {
   const [logs, setLogs] = useState<string[]>([])
   const [running, setRunning] = useState(false)
   const [done, setDone] = useState(false)
+  const [fileName, setFileName] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const nCable = Object.keys(metadata.cable).length
+  const nHousing = Object.keys(metadata.housing).length
+  const ltDefault = settings?.lead_time_default ?? 60
 
   const run = async () => {
     const file = fileRef.current?.files?.[0]
@@ -29,15 +34,13 @@ export default function Step1({ metadata, setMetadata }: Props) {
           cable: { ...metadata.cable },
           housing: { ...metadata.housing },
         }
-        for (const k of result.newCableKeys) {
+        for (const k of result.newCableKeys)
           newMeta.cable[k] = { 품번: '', 품명: '', 구매처: '', 리드타임: null }
-        }
-        for (const k of result.newHousingKeys) {
+        for (const k of result.newHousingKeys)
           newMeta.housing[k] = { 품번: '', 품명: '', 구매처: '', 리드타임: null }
-        }
         saveMetadata(newMeta)
         setMetadata(newMeta)
-        setLogs(l => [...l, `✅ 신규 타입 ${result.newCableKeys.length + result.newHousingKeys.length}건 품번관리에 추가됨`])
+        setLogs(l => [...l, `ℹ️ 신규 타입 ${result.newCableKeys.length + result.newHousingKeys.length}건 품번 관리에 추가됨 — 품번을 입력해주세요.`])
       }
       setDone(true)
     } catch (e) {
@@ -49,40 +52,72 @@ export default function Step1({ metadata, setMetadata }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-blue-50 border border-blue-200 rounded p-4">
-        <h3 className="font-bold text-blue-800 mb-2">STEP 1 — ERP 파일 파싱 & 품번 등록</h3>
-        <p className="text-sm text-blue-700">구매조회/구매현황 Excel을 업로드하면 케이블·하우징 타입을 자동 감지하여 품번관리 탭에 등록합니다.</p>
+      {/* Step-box */}
+      <div className="bg-[#f0f4fa] border-l-4 border-[#2E75B6] px-4 py-3 rounded">
+        <b>STEP 1 — ERP 파일 가공</b>: 맥산 ERP에서 추출한 <b>구매조회</b> 또는 <b>구매현황</b> 파일을 업로드하면
+        케이블·하우징 타입을 자동 감지합니다.
+        품번·품명·구매처·리드타임은 <b>📋 품번 관리</b> 탭 정보로 자동 채워집니다.
       </div>
 
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-        <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" id="step1-file" />
-        <label htmlFor="step1-file" className="cursor-pointer">
-          <div className="text-4xl mb-2">📂</div>
-          <div className="text-gray-600">ERP 파일 선택 (.xlsx)</div>
-          <div className="text-sm text-gray-400 mt-1">구매조회 또는 구매현황 파일</div>
-        </label>
-        {fileRef.current?.files?.[0] && (
-          <div className="mt-2 text-sm text-green-600">✓ {fileRef.current.files[0].name}</div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* 파일 업로더 */}
+        <div className="md:col-span-2 space-y-2">
+          <label className="block text-sm font-semibold text-gray-700">
+            구매조회 / 구매현황 파일 (ERP 원본)
+          </label>
+          <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg px-4 py-8 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition">
+            <span className="text-3xl mb-2">📂</span>
+            <span className="text-sm text-gray-600">파일을 클릭하거나 드래그하여 업로드</span>
+            <span className="text-xs text-gray-400 mt-1">.xlsx 형식 지원</span>
+            {fileName && <span className="mt-2 text-sm text-green-600 font-medium">✓ {fileName}</span>}
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={e => setFileName(e.target.files?.[0]?.name ?? '')}
+            />
+          </label>
+        </div>
+
+        {/* 상태 정보 */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm space-y-2">
+          <div className="font-semibold text-blue-800 mb-1">저장된 품번</div>
+          <div>케이블 <span className="font-bold">{nCable}</span> 타입</div>
+          <div>하우징 <span className="font-bold">{nHousing}</span> 타입</div>
+          <div className="border-t border-blue-200 pt-2 mt-2">
+            리드타임 기본값: <span className="font-bold">{ltDefault}일</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          onClick={run}
+          disabled={running || !fileName}
+          className="flex-1 bg-[#2E75B6] hover:bg-[#1F5597] disabled:bg-gray-400 text-white font-bold py-2.5 rounded transition"
+        >
+          {running ? '⏳ 처리 중...' : '▶ STEP 1 실행 — ERP 파일 가공 & 사용내역 생성'}
+        </button>
+        {done && (
+          <button
+            onClick={() => { setDone(false); setLogs([]); setFileName(''); if (fileRef.current) fileRef.current.value = '' }}
+            className="px-4 py-2 text-sm border rounded text-gray-600 hover:bg-gray-100 transition"
+          >
+            🗑 초기화
+          </button>
         )}
       </div>
 
-      <button
-        onClick={run}
-        disabled={running}
-        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition"
-      >
-        {running ? '⏳ 처리 중...' : '▶ STEP 1 실행'}
-      </button>
-
-      {logs.length > 0 && (
-        <div className="bg-gray-900 text-green-300 rounded p-4 font-mono text-sm space-y-1 max-h-60 overflow-y-auto">
-          {logs.map((l, i) => <div key={i}>{l}</div>)}
+      {done && (
+        <div className="bg-[#e8f5e9] border-l-4 border-[#1a7a3c] px-4 py-2 rounded text-sm font-semibold text-[#1a7a3c]">
+          ✅ 처리 완료! 품번 관리 탭에서 신규 타입의 품번·품명·구매처·리드타임을 입력해주세요.
         </div>
       )}
 
-      {done && (
-        <div className="bg-green-50 border border-green-300 rounded p-4 text-green-800">
-          ✅ 완료! 품번관리 탭에서 신규 타입의 품번·품명·구매처·리드타임을 입력해주세요.
+      {logs.length > 0 && (
+        <div className="bg-[#1e1e1e] text-[#d4d4d4] rounded p-3 font-mono text-xs space-y-0.5 max-h-48 overflow-y-auto whitespace-pre-wrap">
+          {logs.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}
     </div>

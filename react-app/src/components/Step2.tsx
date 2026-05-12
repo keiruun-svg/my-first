@@ -12,13 +12,20 @@ interface Props {
 export default function Step2({ sales, setSales }: Props) {
   const [logs, setLogs] = useState<string[]>([])
   const [running, setRunning] = useState(false)
+  const [done, setDone] = useState(false)
   const salesRef = useRef<HTMLInputElement>(null)
   const purchaseRef = useRef<HTMLInputElement>(null)
+  const [salesName, setSalesName] = useState('')
+  const [purchaseName, setPurchaseName] = useState('')
+
+  const nSales = Object.values(sales).filter(v =>
+    ['23','24','25'].some(yr => (v[yr as '23'|'24'|'25']?.sales ?? 0) > 0)
+  ).length
 
   const run = async () => {
     const salesFile = salesRef.current?.files?.[0]
     if (!salesFile) return alert('판매량 파일을 선택해주세요.')
-    setRunning(true); setLogs([])
+    setRunning(true); setDone(false); setLogs([])
     try {
       const newLogs: string[] = []
       const salesBuf = await salesFile.arrayBuffer()
@@ -27,7 +34,6 @@ export default function Step2({ sales, setSales }: Props) {
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
       newLogs.push(`판매량 파일 로드 — ${rows.length.toLocaleString()}행`)
 
-      // Collect OJC rows
       const salesBy: Record<string, { 품목명: string; [yr: string]: number | string }> = {}
       for (const row of rows) {
         const name = String(row['품목명'] ?? '')
@@ -48,8 +54,8 @@ export default function Step2({ sales, setSales }: Props) {
         if (!salesBy[code]) salesBy[code] = { 품목명: name }
         salesBy[code][yr] = (Number(salesBy[code][yr] ?? 0)) + qty
       }
+      newLogs.push(`OJC 분류 완료 — ${Object.keys(salesBy).length.toLocaleString()}개 품목`)
 
-      // Build production data from purchase file if available
       const purchaseFile = purchaseRef.current?.files?.[0]
       const prodBy: Record<string, { [yr: string]: number }> = {}
       if (purchaseFile) {
@@ -71,7 +77,7 @@ export default function Step2({ sales, setSales }: Props) {
           if (!prodBy[code]) prodBy[code] = {}
           prodBy[code][yr] = (prodBy[code][yr] ?? 0) + qty
         }
-        newLogs.push('구매관리 파일 로드 완료')
+        newLogs.push(`구매관리(맥산) 파일 로드 완료`)
       }
 
       const analysis: SalesAnalysis = {}
@@ -89,6 +95,7 @@ export default function Step2({ sales, setSales }: Props) {
       setSales(analysis)
       newLogs.push(`✅ 판매 분석 완료 — ${Object.keys(analysis).length.toLocaleString()}개 품목`)
       setLogs(newLogs)
+      setDone(true)
     } catch (e) {
       setLogs([`❌ 오류: ${e}`])
     } finally {
@@ -96,60 +103,78 @@ export default function Step2({ sales, setSales }: Props) {
     }
   }
 
-  const hasSales = Object.keys(sales).length > 0
-
   return (
     <div className="space-y-4">
-      <div className="bg-green-50 border border-green-200 rounded p-4">
-        <h3 className="font-bold text-green-800 mb-2">STEP 2 — 판매 분석</h3>
-        <p className="text-sm text-green-700">전체 판매량 파일과 구매관리(맥산) 파일을 분석하여 품목별 판매/생산 비중을 계산합니다.</p>
+      <div className="bg-[#f0f4fa] border-l-4 border-[#375623] px-4 py-3 rounded">
+        <b>STEP 2 — 판매 분석</b>: 전체 판매량 파일과 구매관리(맥산) 파일을 분석하여
+        품목별 판매/생산 비중을 계산합니다. STEP 3 수요 기반 분석에 자동 반영됩니다.
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1">판매량 파일 (필수)</label>
-          <input ref={salesRef} type="file" accept=".xlsx,.xls"
-            className="block w-full text-sm border rounded p-2 bg-white" />
+        <div className="space-y-1">
+          <label className="block text-sm font-semibold text-gray-700">판매량 파일 <span className="text-red-500">*필수</span></label>
+          <label className="flex items-center gap-3 border-2 border-dashed border-gray-300 rounded-lg px-4 py-4 cursor-pointer hover:border-green-400 hover:bg-green-50 transition">
+            <span className="text-2xl">📊</span>
+            <div>
+              <div className="text-sm text-gray-700">{salesName || '전체 판매량 Excel 파일'}</div>
+              <div className="text-xs text-gray-400">.xlsx 형식</div>
+            </div>
+            <input ref={salesRef} type="file" accept=".xlsx,.xls" className="hidden"
+              onChange={e => setSalesName(e.target.files?.[0]?.name ?? '')} />
+          </label>
         </div>
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1">구매관리(맥산) 파일 (선택)</label>
-          <input ref={purchaseRef} type="file" accept=".xlsx,.xls"
-            className="block w-full text-sm border rounded p-2 bg-white" />
+        <div className="space-y-1">
+          <label className="block text-sm font-semibold text-gray-700">구매관리(맥산) 파일 <span className="text-gray-400 font-normal">선택</span></label>
+          <label className="flex items-center gap-3 border-2 border-dashed border-gray-300 rounded-lg px-4 py-4 cursor-pointer hover:border-green-400 hover:bg-green-50 transition">
+            <span className="text-2xl">🏭</span>
+            <div>
+              <div className="text-sm text-gray-700">{purchaseName || '생산비중 계산용 (없으면 생략)'}</div>
+              <div className="text-xs text-gray-400">.xlsx 형식</div>
+            </div>
+            <input ref={purchaseRef} type="file" accept=".xlsx,.xls" className="hidden"
+              onChange={e => setPurchaseName(e.target.files?.[0]?.name ?? '')} />
+          </label>
         </div>
       </div>
 
       <button
         onClick={run}
-        disabled={running}
-        className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition"
+        disabled={running || !salesName}
+        className="w-full bg-[#375623] hover:bg-[#2a4019] disabled:bg-gray-400 text-white font-bold py-2.5 rounded transition"
       >
         {running ? '⏳ 분석 중...' : '▶ STEP 2 실행'}
       </button>
 
+      {done && nSales > 0 && (
+        <div className="bg-[#e8f5e9] border-l-4 border-[#1a7a3c] px-4 py-2 rounded text-sm font-semibold text-[#1a7a3c]">
+          ✅ 판매 분석 완료 — <b>{nSales.toLocaleString()}</b>개 품목 저장됨. STEP 3에서 수요 기반 분석이 자동 포함됩니다.
+        </div>
+      )}
+
       {logs.length > 0 && (
-        <div className="bg-gray-900 text-green-300 rounded p-4 font-mono text-sm space-y-1 max-h-60 overflow-y-auto">
+        <div className="bg-[#1e1e1e] text-[#d4d4d4] rounded p-3 font-mono text-xs space-y-0.5 max-h-48 overflow-y-auto">
           {logs.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}
 
-      {hasSales && (
-        <div className="bg-white border rounded-lg overflow-hidden">
-          <div className="bg-green-700 text-white px-4 py-2 font-bold text-sm">
-            저장된 판매 분석 — {Object.keys(sales).length.toLocaleString()}개 품목
+      {nSales > 0 && !done && (
+        <div className="bg-green-50 border border-green-300 rounded-lg overflow-hidden">
+          <div className="bg-[#375623] text-white px-4 py-2 font-bold text-sm">
+            📈 STEP 2 판매 분석 데이터 <b>{nSales.toLocaleString()}</b>개 품목 — 수요 기반 분석 자동 포함
           </div>
-          <div className="overflow-x-auto max-h-80">
+          <div className="overflow-x-auto max-h-72">
             <table className="text-xs w-full">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
                   {['품목코드','품목명','23년 판매','24년 판매','25년 판매','25년 생산비중'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left border-b">{h}</th>
+                    <th key={h} className="px-3 py-2 text-left border-b font-semibold text-gray-600">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {Object.entries(sales).slice(0, 100).map(([code, item]) => (
                   <tr key={code} className="hover:bg-gray-50 border-b">
-                    <td className="px-3 py-1 font-mono">{code}</td>
+                    <td className="px-3 py-1 font-mono text-gray-500">{code}</td>
                     <td className="px-3 py-1 max-w-xs truncate">{item.품목명}</td>
                     <td className="px-3 py-1 text-right">{item['23'].sales.toLocaleString()}</td>
                     <td className="px-3 py-1 text-right">{item['24'].sales.toLocaleString()}</td>

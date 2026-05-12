@@ -15,12 +15,23 @@ const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','
 export default function Step3({ metadata, inventory, sales, settings }: Props) {
   const [logs, setLogs] = useState<string[]>([])
   const [running, setRunning] = useState(false)
+  const [done, setDone] = useState(false)
+  const [fileName, setFileName] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const nCableInv = Object.values(inventory.cable).filter(v => (v?.현재고 ?? 0) > 0).length
+  const nHousingInv = Object.values(inventory.housing).filter(v => {
+    const items = Array.isArray(v) ? v : [v]
+    return items.some(i => (i?.현재고 ?? 0) > 0 || (i?.기발주 ?? 0) > 0)
+  }).length
+  const nSales = Object.values(sales).filter(v =>
+    ['23','24','25'].some(yr => (v[yr as '23'|'24'|'25']?.sales ?? 0) > 0)
+  ).length
 
   const run = async () => {
     const file = fileRef.current?.files?.[0]
     if (!file) return alert('ERP 파일을 선택해주세요.')
-    setRunning(true); setLogs([])
+    setRunning(true); setDone(false); setLogs([])
     try {
       const buf = await file.arrayBuffer()
       const stats = aggregateStats(buf)
@@ -30,14 +41,13 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       const wb = new ExcelJS.Workbook()
       wb.creator = 'AJW 발주계획 시스템'
 
-      // ── 케이블 사용내역 시트 ──
-      const wsc = wb.addWorksheet('케이블 사용내역')
       const mainColor = settings.colors.main_header
       const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF' + mainColor } }
       const border: Partial<ExcelJS.Border> = { style: 'thin' as const, color: { argb: 'FF000000' } }
       const allBorders = { top: border, bottom: border, left: border, right: border }
 
-      // Title row
+      // ── 케이블 사용내역 시트 ──
+      const wsc = wb.addWorksheet('케이블 사용내역')
       wsc.mergeCells('A1:W1')
       const title = wsc.getCell('A1')
       title.value = '2026 연간 발주 계획 — 케이블 사용내역'
@@ -46,7 +56,6 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       title.alignment = { horizontal: 'center', vertical: 'middle' }
       wsc.getRow(1).height = 26
 
-      // Sub-header row
       wsc.getRow(2).height = 18
       const subHeaders = [
         ['A2:G2','기본 정보','374151'],
@@ -69,7 +78,6 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
         cell.border = allBorders
       }
 
-      // Header row 3
       wsc.getRow(3).height = 42
       const hdrs = ['NO','파이','케이블종류','품번','품명','구매처','리드타임\n(일)',
         '연간(m)','피크(m)','연간(m)','피크(m)','연간(m)','피크(m)',
@@ -86,7 +94,6 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
         wsc.getColumn(i + 1).width = colWidths[i]
       })
 
-      // Data rows
       let ri = 4; let no = 1
       const cableRows = rows.filter(r => r.type === 'cable')
       for (const row of cableRows) {
@@ -105,11 +112,8 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
         ]
         vals.forEach((v, ci) => {
           const cell = wsc.getCell(ri, ci + 1)
-          if (typeof v === 'object' && v !== null && 'formula' in v) {
-            cell.value = v as ExcelJS.CellFormulaValue
-          } else {
-            cell.value = v as ExcelJS.CellValue
-          }
+          if (typeof v === 'object' && v !== null && 'formula' in v) cell.value = v as ExcelJS.CellFormulaValue
+          else cell.value = v as ExcelJS.CellValue
           cell.border = allBorders
           if (rf) cell.fill = rf
           cell.font = { name:'Arial', size:9 }
@@ -117,15 +121,12 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
           else if (ci === 15 || ci === 16) { cell.numFmt = '0.0%;[Red]-0.0%'; cell.alignment = { horizontal:'center', vertical:'middle' } }
           else { cell.alignment = { horizontal: ci === 0 ? 'center' : 'left', vertical:'middle' } }
         })
-        // 안전재고 highlight
         wsc.getCell(ri, 18).fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFFF2CC' } }
         wsc.getCell(ri, 18).font = { name:'Arial', bold:true, size:9 }
-        // 2026목표 input cell
         const targetCell = wsc.getCell(ri, 21)
         targetCell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFFFFC0' } }
         targetCell.font = { name:'Arial', bold:true, size:9, color:{ argb:'FF0000FF' } }
         targetCell.border = { top:{style:'medium',color:{argb:'FFC55A11'}}, bottom:{style:'medium',color:{argb:'FFC55A11'}}, left:{style:'medium',color:{argb:'FFC55A11'}}, right:{style:'medium',color:{argb:'FFC55A11'}} }
-        // 필요발주 red font
         wsc.getCell(ri, 22).font = { name:'Arial', bold:true, size:9, color:{ argb:'FFC00000' } }
         wsc.getRow(ri).height = 17
         ri++; no++
@@ -298,14 +299,14 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       })
       wsa.views = [{ state: 'frozen', xSplit: 0, ySplit: 3 }]
 
-      // Generate file
       const arrayBuf = await wb.xlsx.writeBuffer()
       const blob = new Blob([arrayBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a'); a.href = url
-      a.download = `2026_연간발주계획_${new Date().toISOString().slice(0,10)}.xlsx`
+      a.download = `연간발주계획_${new Date().toISOString().slice(0,10)}.xlsx`
       a.click(); URL.revokeObjectURL(url)
-      setLogs(l => [...l, `✅ Excel 생성 완료 — 케이블 ${cableRows.length}행 / 하우징 ${housingRows.length}행`])
+      setLogs(l => [...l, `✅ STEP 3 완료 — 케이블 ${cableRows.length}행 / 하우징 ${housingRows.length}행`])
+      setDone(true)
     } catch (e) {
       setLogs(l => [...l, `❌ 오류: ${e}`])
     } finally {
@@ -315,29 +316,71 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-purple-50 border border-purple-200 rounded p-4">
-        <h3 className="font-bold text-purple-800 mb-2">STEP 3 — 발주계획 Excel 생성</h3>
-        <p className="text-sm text-purple-700">ERP 파일을 업로드하면 케이블·하우징·월별 발주계획 Excel을 생성합니다. 노란 셀에 2026 목표량을 입력하세요.</p>
+      <div className="bg-[#f0f4fa] border-l-4 border-[#7030A0] px-4 py-3 rounded">
+        <b>STEP 3 — 발주계획 생성</b>: STEP 1에서 생성한 <b>가공파일</b>을 업로드하면
+        연간발주계획.xlsx를 생성합니다.
+        현재고·기발주는 <b>📦 재고 현황</b> 탭, 수요 기반 분석은 <b>📈 STEP 2</b> 탭에서 사전 실행하세요.
       </div>
 
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-        <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" id="step3-file" />
-        <label htmlFor="step3-file" className="cursor-pointer">
-          <div className="text-4xl mb-2">📂</div>
-          <div className="text-gray-600">ERP 파일 선택 (.xlsx)</div>
-        </label>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="md:col-span-2 space-y-2">
+          <label className="block text-sm font-semibold text-gray-700">가공파일.xlsx (STEP 1 결과) <span className="text-red-500">*필수</span></label>
+          <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg px-4 py-8 cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition">
+            <span className="text-3xl mb-2">📂</span>
+            <span className="text-sm text-gray-600">STEP 1에서 다운로드한 가공파일 업로드</span>
+            <span className="text-xs text-gray-400 mt-1">연도별 시트(YY년_케이블, YY년 하우징) 포함 파일</span>
+            {fileName && <span className="mt-2 text-sm text-green-600 font-medium">✓ {fileName}</span>}
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+              onChange={e => setFileName(e.target.files?.[0]?.name ?? '')} />
+          </label>
+        </div>
+
+        <div className="space-y-2 text-sm">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="font-semibold text-blue-800 mb-1">재고 현황 탭 입력값</div>
+            <div>케이블 <span className="font-bold">{nCableInv}</span>항목 입력됨</div>
+            <div>하우징 <span className="font-bold">{nHousingInv}</span>항목 입력됨</div>
+            <div className="text-xs text-blue-600 mt-1">수정: 📦 재고 현황 탭</div>
+          </div>
+          {nSales > 0 ? (
+            <div className="bg-green-50 border border-green-300 rounded-lg p-3 text-green-800">
+              ✅ 판매 분석 <span className="font-bold">{nSales}</span>개 품목 — 수요 기반 분석 자동 포함
+            </div>
+          ) : (
+            <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 text-yellow-800">
+              ⚠ 판매 분석 없음<br />
+              <span className="text-xs">📈 STEP 2 탭에서 먼저 실행하세요.</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      <button
-        onClick={run}
-        disabled={running}
-        className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition"
-      >
-        {running ? '⏳ 생성 중...' : '▶ STEP 3 실행 & Excel 다운로드'}
-      </button>
+      <div className="flex gap-3">
+        <button
+          onClick={run}
+          disabled={running || !fileName}
+          className="flex-1 bg-[#7030A0] hover:bg-[#5a2580] disabled:bg-gray-400 text-white font-bold py-2.5 rounded transition"
+        >
+          {running ? '⏳ 생성 중...' : '▶ STEP 3 실행 — 발주계획 생성'}
+        </button>
+        {done && (
+          <button
+            onClick={() => { setDone(false); setLogs([]); setFileName(''); if (fileRef.current) fileRef.current.value = '' }}
+            className="px-4 py-2 text-sm border rounded text-gray-600 hover:bg-gray-100 transition"
+          >
+            🗑 초기화
+          </button>
+        )}
+      </div>
+
+      {done && (
+        <div className="bg-[#e8f5e9] border-l-4 border-[#1a7a3c] px-4 py-2 rounded text-sm font-semibold text-[#1a7a3c]">
+          ✅ STEP 3 완료 — 발주계획 생성! 💡 노란색 셀(2026 목표 발주량)에 목표량을 입력하면 필요 발주량이 자동 계산됩니다.
+        </div>
+      )}
 
       {logs.length > 0 && (
-        <div className="bg-gray-900 text-green-300 rounded p-4 font-mono text-sm space-y-1 max-h-60 overflow-y-auto">
+        <div className="bg-[#1e1e1e] text-[#d4d4d4] rounded p-3 font-mono text-xs space-y-0.5 max-h-48 overflow-y-auto">
           {logs.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}
