@@ -24,7 +24,42 @@ DEFAULT_SETTINGS = {
     }
 }
 
+# ── Supabase 클라이언트 (secrets 있을 때만 활성화) ─────────────
+@st.cache_resource
+def _get_sb():
+    try:
+        from supabase import create_client
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        return create_client(url, key)
+    except Exception:
+        return None
+
+def _sb_load(row_id: str):
+    sb = _get_sb()
+    if not sb:
+        return None
+    try:
+        r = sb.table("app_data").select("data").eq("id", row_id).execute()
+        return r.data[0]["data"] if r.data else None
+    except Exception:
+        return None
+
+def _sb_save(row_id: str, data: dict):
+    sb = _get_sb()
+    if not sb:
+        return False
+    try:
+        sb.table("app_data").upsert({"id": row_id, "data": data}).execute()
+        return True
+    except Exception:
+        return False
+
+# ── 설정 ────────────────────────────────────────────────────────
 def load_settings() -> dict:
+    d = _sb_load("settings")
+    if d is not None:
+        return d
     if SETTINGS_FILE.exists():
         try:
             return json.loads(SETTINGS_FILE.read_text(encoding='utf-8'))
@@ -35,7 +70,11 @@ def load_settings() -> dict:
 def save_settings(s: dict):
     SETTINGS_FILE.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding='utf-8')
 
+# ── 메타데이터 ───────────────────────────────────────────────────
 def load_metadata() -> dict:
+    d = _sb_load("metadata")
+    if d is not None:
+        return d
     if METADATA_FILE.exists():
         try:
             return json.loads(METADATA_FILE.read_text(encoding='utf-8'))
@@ -46,7 +85,11 @@ def load_metadata() -> dict:
 def save_metadata(m: dict):
     METADATA_FILE.write_text(json.dumps(m, ensure_ascii=False, indent=2), encoding='utf-8')
 
+# ── 재고 ────────────────────────────────────────────────────────
 def load_inventory() -> dict:
+    d = _sb_load("inventory")
+    if d is not None:
+        return d
     if INVENTORY_FILE.exists():
         try:
             return json.loads(INVENTORY_FILE.read_text(encoding='utf-8'))
@@ -57,7 +100,11 @@ def load_inventory() -> dict:
 def save_inventory(inv: dict):
     INVENTORY_FILE.write_text(json.dumps(inv, ensure_ascii=False, indent=2), encoding='utf-8')
 
+# ── 판매 분석 ────────────────────────────────────────────────────
 def load_sales_analysis() -> dict:
+    d = _sb_load("sales")
+    if d is not None:
+        return d
     if SALES_FILE.exists():
         try:
             return json.loads(SALES_FILE.read_text(encoding='utf-8'))
@@ -1509,3 +1556,22 @@ with tab6:
     ⑥ 노란색 셀에 2026 목표 발주량 입력
     ```
     """)
+
+    st.divider()
+    st.markdown("**☁️ Supabase 동기화**")
+    st.caption("로컬 JSON 데이터를 Supabase 클라우드에 수동 업로드합니다. Streamlit Cloud 버전과 데이터를 공유할 때 사용하세요.")
+    if st.button("☁️ Supabase에 동기화", type="secondary"):
+        if _get_sb() is None:
+            st.error("❌ Supabase 연결 실패 — secrets.toml에 SUPABASE_URL / SUPABASE_KEY 설정을 확인하세요.")
+        else:
+            results = {
+                "설정":     _sb_save("settings",  load_settings()),
+                "품번 메타": _sb_save("metadata",  load_metadata()),
+                "재고":     _sb_save("inventory", load_inventory()),
+                "판매 분석": _sb_save("sales",     load_sales_analysis()),
+            }
+            failed = [k for k, v in results.items() if not v]
+            if not failed:
+                st.success("✅ Supabase 동기화 완료! (설정 / 품번 메타 / 재고 / 판매 분석)")
+            else:
+                st.error(f"❌ 동기화 실패 항목: {', '.join(failed)}")
