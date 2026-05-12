@@ -30,3 +30,4 @@ Thumbs.db
 
 # Streamlit secrets (API 키 포함 — 절대 커밋 금지)
 .streamlit/secrets.toml
+**/.streamlit/secrets.toml
