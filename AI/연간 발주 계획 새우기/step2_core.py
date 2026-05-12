@@ -12,6 +12,7 @@ from collections import defaultdict
 YEARS = ['23', '24', '25']
 MM_KINDS = {'om1', 'om1-pigtail', 'om3'}
 YR_PALETTE = ['2F5597', '2E75B6', '155480', '375623', '7030A0', '833C00', '1F3864', '595959']
+PIGTAIL_COLORS = ['청', '등', '녹', '적', '황', '자', '갈', '흑', '백', '회', '연청', '연등']
 
 def _fill(h): return PatternFill('solid', start_color=h)
 def _font(bold=False, size=9, color='000000'): return Font(name='Arial', bold=bold, size=size, color=color)
@@ -257,7 +258,13 @@ def run(row_path: str, usage_path: str = None, ojc_ref_path: str = None,
                 kind, pai, core, length = row[3], row[4], row[5], row[6]
                 if not kind or not pai or not length: continue
                 ct = _mc2(kind, core); p = _np(pai)
-                if ct == 'PIGTAIL' and p == '0.9mm': continue
+                if ct == 'PIGTAIL' and p == '0.9mm':
+                    try: nc = int(core) if core else 1
+                    except: nc = 1
+                    for color in PIGTAIL_COLORS[:nc]:
+                        for i, q in enumerate(row[9:21]):
+                            if q: cable_agg[(p, f'pigtail-{color}')][yr][i] += float(q) * float(length)
+                    continue
                 for i, q in enumerate(row[9:21]):
                     if q: cable_agg[(p, ct)][yr][i] += float(q) * float(length)
         if hs:
@@ -801,7 +808,7 @@ def run(row_path: str, usage_path: str = None, ojc_ref_path: str = None,
                         '25': {'sales': row[12] or 0, 'ratio': row[15] or 0},
                     }
             row_wb2 = openpyxl.load_workbook(row_path, read_only=True, data_only=True)
-            cable_use2 = {}; housing_use2 = {}
+            cable_use2 = {}; housing_use2 = {}; pigtail_use2 = {}
             for yr2, cs2, hs2 in [('25','25년_케이블','25년 하우징'),('24','24년_케이블','24년 하우징'),('23','23년_케이블','23년 하우징')]:
                 for row in list(row_wb2[cs2].iter_rows(values_only=True))[1:]:
                     code = str(row[0]) if row[0] else ''
@@ -809,7 +816,11 @@ def run(row_path: str, usage_path: str = None, ojc_ref_path: str = None,
                     kind, pai, core, length = row[3], row[4], row[5], row[6]
                     if not kind or not pai or not length: continue
                     ct = _mc2(kind, core); p = _np(pai)
-                    if ct == 'PIGTAIL' and p == '0.9mm': continue
+                    if ct == 'PIGTAIL' and p == '0.9mm':
+                        try: nc = int(core) if core else 1
+                        except: nc = 1
+                        pigtail_use2[code] = (p, PIGTAIL_COLORS[:nc], float(length))
+                        continue
                     cable_use2[code] = (p, ct, float(length))
                 for row in list(row_wb2[hs2].iter_rows(values_only=True))[1:]:
                     code = str(row[0]) if row[0] else ''
@@ -841,6 +852,14 @@ def run(row_path: str, usage_path: str = None, ojc_ref_path: str = None,
                 if s25 == 0: continue
                 key = (pai, ct); p2 = cp2[key]
                 p2[0] += s25*(1+trend)*ratio*length; p2[1] += s25*ratio; p2[2] += s25; p2[3] += s25*trend; p2[4] += s25
+            for code, (pai, colors, length) in pigtail_use2.items():
+                if code not in prod_data2: continue
+                d = prod_data2[code]; trend = min(max(_calc_trend2(d), -0.5), 1.0)
+                ratio = min(d['25']['ratio'], 1.5); s25 = d['25']['sales']
+                if s25 == 0: continue
+                for color in colors:
+                    key = (pai, f'pigtail-{color}'); p2 = cp2[key]
+                    p2[0] += s25*(1+trend)*ratio*length; p2[1] += s25*ratio; p2[2] += s25; p2[3] += s25*trend; p2[4] += s25
             for code, h_map in housing_use2.items():
                 if code not in prod_data2: continue
                 d = prod_data2[code]; trend = min(max(_calc_trend2(d), -0.5), 1.0)

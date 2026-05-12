@@ -943,6 +943,14 @@ with tab4:
                     if errs:
                         for e in errs: st.warning(e)
                     cur = load_metadata()
+                    # 파싱 결과가 빈 dict이면 기존 데이터를 지우지 않고 경고
+                    blocked = []
+                    for section in ('cable', 'housing', 'ferrule'):
+                        if section in parsed and len(parsed[section]) == 0 and len(cur.get(section, {})) > 0:
+                            blocked.append(section)
+                            parsed.pop(section)
+                    if blocked:
+                        st.warning(f"⚠️ {'/'.join(blocked)} 시트에서 데이터를 읽지 못했습니다. 기존 데이터를 유지합니다. 앱에서 다운로드한 양식을 사용하고 있는지 확인하세요.")
                     cur.update(parsed)
                     save_metadata(cur)
                     st.toast("✅ 양식 업로드 완료! 품번 데이터가 업데이트됐습니다.", icon="📋")
@@ -994,7 +1002,7 @@ with tab4:
         df_cable,
         key='cable_editor',
         column_config={
-            '파이':      st.column_config.SelectboxColumn('파이', options=['2.0mm','3.0mm','0.9mm'], width='small', required=True),
+            '파이':      st.column_config.SelectboxColumn('매칭 하우징 크기', options=['2.0mm','3.0mm','0.9mm'], width='small', required=True),
             '케이블종류': st.column_config.TextColumn('케이블종류', width='medium'),
             '품번':      st.column_config.TextColumn('품번', width='medium'),
             '품명':      st.column_config.TextColumn('품명', width='large'),
@@ -1018,7 +1026,7 @@ with tab4:
             {'파이': '2.0mm', '하우징타입': 'SC/APC 녹색','품번': 'N90-29-1323',  '품명': 'FERRULE (W/ FLANGE,SC/APC TYPE)',          '구매처': 'CCTC',     '리드타임': 40},
             {'파이': '2.0mm', '하우징타입': 'LC/PC 청색', '품번': 'P15-RM-4021',  '품명': 'DUST CAP(PC)',                             '구매처': 'FIBERCAN', '리드타임': 60},
         ]), hide_index=True, use_container_width=True)
-        st.caption("같은 하우징 타입에 부품이 여러 개면 파이·하우징타입을 동일하게 입력하고 행을 추가합니다.")
+        st.caption("같은 하우징 타입에 부품이 여러 개면 매칭 하우징 크기·하우징타입을 동일하게 입력하고 행을 추가합니다.")
     housing_rows = []
     for k, v in sorted(metadata.get('housing', {}).items()):
         pai, htype = k.split('|', 1) if '|' in k else (k, '')
@@ -1056,7 +1064,7 @@ with tab4:
 
     # ── 페롤 ────────────────────────────────────────────────
     st.markdown("#### 페롤 (커넥터 타입별 공용)")
-    st.caption("파이에 관계없이 커넥터 타입이 같으면 동일 페롤을 사용합니다. STEP 2 발주 집계 시 자동 합산됩니다.")
+    st.caption("매칭 하우징 크기에 관계없이 커넥터 타입이 같으면 동일 페롤을 사용합니다. STEP 2 발주 집계 시 자동 합산됩니다.")
     ferrule_meta_cur = get_ferrule_meta(metadata)
     ferrule_rows = [
         {
@@ -1127,7 +1135,9 @@ with tab4:
             new_meta['ferrule'] = ferrule_dict
 
         save_metadata(new_meta)
-        st.toast("✅ 저장 완료! 다음 STEP 1 실행 시 자동 적용됩니다.", icon="💾")
+        n_c = len(new_meta.get('cable', {}))
+        n_h = len(new_meta.get('housing', {}))
+        st.toast(f"✅ 저장 완료! 케이블 {n_c}건 / 하우징 {n_h}건 저장됐습니다.", icon="💾")
         st.rerun()
 
 # ═══════════════════════════════════════════════════════════

@@ -14,6 +14,7 @@ from collections import defaultdict
 PAI_ORDER   = {'2.0mm': 0, '3.0mm': 1, '0.9mm': 2}
 REF_ONLY_KEYS = {('2.0mm', 'A1-4C'), ('2.0mm', 'OM4-DP')}
 MM          = {'om1', 'om1-pigtail', 'om3'}
+PIGTAIL_COLORS = ['청', '등', '녹', '적', '황', '자', '갈', '흑', '백', '회', '연청', '연등']
 
 # 연도별 컬러 팔레트 (최대 8개년 대응)
 YR_PALETTE  = ['2F5597', '2E75B6', '155480', '375623', '7030A0', '833C00', '1F3864', '595959']
@@ -178,7 +179,13 @@ def run(row_path: str, cable_meta: dict = None, housing_meta_in: dict = None,
             kind, pai, core, length = row[3], row[4], row[5], row[6]
             if not kind or not pai or not length: continue
             ct = _mc2(kind, core); p_c = _np(pai)
-            if ct == 'PIGTAIL' and p_c == '0.9mm': continue
+            if ct == 'PIGTAIL' and p_c == '0.9mm':
+                try: nc = int(core) if core else 1
+                except: nc = 1
+                for color in PIGTAIL_COLORS[:nc]:
+                    for i, q in enumerate(row[9:21]):
+                        if q: cable_agg[(p_c, f'pigtail-{color}')][yr][i] += float(q) * float(length)
+                continue
             for i, q in enumerate(row[9:21]):
                 if q: cable_agg[(p_c, ct)][yr][i] += float(q) * float(length)
 
