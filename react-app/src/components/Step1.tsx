@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+﻿import { useState, useRef } from 'react'
 import { runStep1 } from '../lib/step1Core'
 import { saveMetadata } from '../lib/supabase'
 import type { Metadata, AppSettings } from '../lib/types'
@@ -52,7 +52,7 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
   return (
     <div className="space-y-4">
       {/* Step-box */}
-      <div className="bg-[#f0f4fa] border-l-4 border-[#2E75B6] px-4 py-3 rounded text-sm">
+      <div className="bg-[#E0F2FE] border-l-4 border-[#0EA5E9] px-4 py-3 rounded text-sm">
         <b>STEP 1 — ERP 파일 가공</b>: 맥산 ERP에서 추출한 <b>구매조회</b> 또는 <b>구매현황</b> 파일을
         업로드하면 생산자재_사용내역.xlsx를 자동 생성합니다.
         두 형식 모두 지원하며 자동으로 감지합니다. 품번·품명·구매처·리드타임은 <b>📋 품번 관리</b> 탭 정보로 자동 채워집니다.
@@ -82,10 +82,10 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
         </div>
 
         {/* 상태 정보 */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm space-y-1">
-          <div className="font-semibold text-blue-800 mb-2">저장된 품번</div>
+        <div className="bg-sky-50 border border-sky-200 rounded-lg p-4 text-sm space-y-1">
+          <div className="font-semibold text-sky-800 mb-2">저장된 품번</div>
           <div>케이블 <b>{nCable}</b> 타입 / 하우징 <b>{nHousing}</b> 타입</div>
-          <div className="border-t border-blue-200 pt-2 mt-2 text-blue-700">
+          <div className="border-t border-sky-200 pt-2 mt-2 text-sky-700">
             리드타임 기본값: <b>{ltDefault}일</b>
           </div>
         </div>
@@ -97,7 +97,7 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
         <button
           onClick={run}
           disabled={running || !fileName}
-          className="bg-[#2E75B6] hover:bg-[#1F5597] disabled:bg-gray-300 text-white font-bold px-5 py-2 rounded transition text-sm"
+          className="bg-[#0EA5E9] hover:bg-[#0284C7] disabled:bg-gray-300 text-white font-bold px-5 py-2 rounded transition text-sm"
         >
           {running ? '⏳ 처리 중...' : '▶ STEP 1 실행 — ERP 파일 가공 & 사용내역 생성'}
         </button>

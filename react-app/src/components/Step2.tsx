@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+﻿import { useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { saveSalesAnalysis } from '../lib/supabase'
 import { classifyOjc } from '../lib/ojcFilter'
@@ -105,7 +105,7 @@ export default function Step2({ sales, setSales }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-[#EBF3FB] border-l-4 border-[#2E75B6] px-4 py-3 rounded">
+      <div className="bg-[#E0F2FE] border-l-4 border-[#0EA5E9] px-4 py-3 rounded">
         <b>STEP 2 — 판매 분석</b>: 전체 판매량 파일과 구매관리(맥산) 파일을 분석하여
         품목별 판매/생산 비중을 계산합니다. STEP 3 수요 기반 분석에 자동 반영됩니다.
       </div>
@@ -142,7 +142,7 @@ export default function Step2({ sales, setSales }: Props) {
       <button
         onClick={run}
         disabled={running || !salesName}
-        className="w-full bg-[#2E75B6] hover:bg-[#1F5597] disabled:bg-gray-300 text-white font-bold py-2.5 rounded transition"
+        className="w-full bg-[#0EA5E9] hover:bg-[#0284C7] disabled:bg-gray-300 text-white font-bold py-2.5 rounded transition"
       >
         {running ? '⏳ 분석 중...' : '▶ STEP 2 실행'}
       </button>
@@ -161,7 +161,7 @@ export default function Step2({ sales, setSales }: Props) {
 
       {nSales > 0 && !done && (
         <div className="bg-green-50 border border-green-300 rounded-lg overflow-hidden">
-          <div className="bg-[#1F3864] text-white px-4 py-2 font-bold text-sm">
+          <div className="bg-[#0369A1] text-white px-4 py-2 font-bold text-sm">
             📈 STEP 2 판매 분석 데이터 <b>{nSales.toLocaleString()}</b>개 품목 — 수요 기반 분석 자동 포함
           </div>
           <div className="overflow-x-auto max-h-72">

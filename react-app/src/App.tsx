@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import {
   loadSettings, loadMetadata, loadInventory, loadSalesAnalysis
 } from './lib/supabase'
@@ -56,13 +56,13 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-[#1F3864] text-white px-6 py-3 shadow">
+      <div className="bg-[#0369A1] text-white px-6 py-3 shadow">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">📦 AJW 생산자재 발주계획 시스템</h1>
-            <p className="text-blue-200 text-sm mt-0.5">(주)에이제이월드 SCM팀 — 로우데이터 업로드 후 버튼 클릭으로 Excel 자동 생성</p>
+            <p className="text-sky-200 text-sm mt-0.5">(주)에이제이월드 SCM팀 — 로우데이터 업로드 후 버튼 클릭으로 Excel 자동 생성</p>
           </div>
-          <div className="text-right text-xs text-blue-300 hidden md:block">
+          <div className="text-right text-xs text-sky-300 hidden md:block">
             <div>케이블 {Object.keys(metadata.cable).length}종</div>
             <div>하우징 {Object.keys(metadata.housing).length}종</div>
           </div>
@@ -78,7 +78,7 @@ export default function App() {
               onClick={() => setActiveTab(t.id)}
               className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
                 activeTab === t.id
-                  ? 'border-[#2E75B6] text-[#2E75B6]'
+                  ? 'border-[#0EA5E9] text-[#0EA5E9]'
                   : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
               }`}
             >
