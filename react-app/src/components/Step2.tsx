@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+﻿import { useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { saveSalesAnalysis } from '../lib/supabase'
 import { classifyOjc } from '../lib/ojcFilter'
@@ -105,42 +105,44 @@ export default function Step2({ sales, setSales }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-[#f0f4fa] border-l-4 border-[#375623] px-4 py-3 rounded">
+      <div className="bg-[#E0F2FE] border-l-4 border-[#0EA5E9] px-4 py-3 rounded">
         <b>STEP 2 — 판매 분석</b>: 전체 판매량 파일과 구매관리(맥산) 파일을 분석하여
         품목별 판매/생산 비중을 계산합니다. STEP 3 수요 기반 분석에 자동 반영됩니다.
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <label className="block text-sm font-semibold text-gray-700">판매량 파일 <span className="text-red-500">*필수</span></label>
-          <label className="flex items-center gap-3 border-2 border-dashed border-gray-300 rounded-lg px-4 py-4 cursor-pointer hover:border-green-400 hover:bg-green-50 transition">
-            <span className="text-2xl">📊</span>
-            <div>
-              <div className="text-sm text-gray-700">{salesName || '전체 판매량 Excel 파일'}</div>
-              <div className="text-xs text-gray-400">.xlsx 형식</div>
-            </div>
-            <input ref={salesRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={e => setSalesName(e.target.files?.[0]?.name ?? '')} />
-          </label>
+          <div className="bg-white border border-gray-300 rounded-lg px-4 py-3 flex items-center gap-3">
+            <label className="flex items-center gap-1.5 bg-white border border-gray-400 rounded px-3 py-1.5 cursor-pointer hover:bg-gray-50 transition text-sm font-medium text-gray-700 shrink-0">
+              <span>↑</span> Upload
+              <input ref={salesRef} type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={e => setSalesName(e.target.files?.[0]?.name ?? '')} />
+            </label>
+            <span className="text-sm text-gray-500 truncate">
+              {salesName ? <span className="text-green-600 font-medium">✓ {salesName}</span> : '200MB per file • XLSX'}
+            </span>
+          </div>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <label className="block text-sm font-semibold text-gray-700">구매관리(맥산) 파일 <span className="text-gray-400 font-normal">선택</span></label>
-          <label className="flex items-center gap-3 border-2 border-dashed border-gray-300 rounded-lg px-4 py-4 cursor-pointer hover:border-green-400 hover:bg-green-50 transition">
-            <span className="text-2xl">🏭</span>
-            <div>
-              <div className="text-sm text-gray-700">{purchaseName || '생산비중 계산용 (없으면 생략)'}</div>
-              <div className="text-xs text-gray-400">.xlsx 형식</div>
-            </div>
-            <input ref={purchaseRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={e => setPurchaseName(e.target.files?.[0]?.name ?? '')} />
-          </label>
+          <div className="bg-white border border-gray-300 rounded-lg px-4 py-3 flex items-center gap-3">
+            <label className="flex items-center gap-1.5 bg-white border border-gray-400 rounded px-3 py-1.5 cursor-pointer hover:bg-gray-50 transition text-sm font-medium text-gray-700 shrink-0">
+              <span>↑</span> Upload
+              <input ref={purchaseRef} type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={e => setPurchaseName(e.target.files?.[0]?.name ?? '')} />
+            </label>
+            <span className="text-sm text-gray-500 truncate">
+              {purchaseName ? <span className="text-green-600 font-medium">✓ {purchaseName}</span> : '200MB per file • XLSX'}
+            </span>
+          </div>
         </div>
       </div>
 
       <button
         onClick={run}
         disabled={running || !salesName}
-        className="w-full bg-[#375623] hover:bg-[#2a4019] disabled:bg-gray-400 text-white font-bold py-2.5 rounded transition"
+        className="w-full bg-[#0EA5E9] hover:bg-[#0284C7] disabled:bg-gray-300 text-white font-bold py-2.5 rounded transition"
       >
         {running ? '⏳ 분석 중...' : '▶ STEP 2 실행'}
       </button>
@@ -159,7 +161,7 @@ export default function Step2({ sales, setSales }: Props) {
 
       {nSales > 0 && !done && (
         <div className="bg-green-50 border border-green-300 rounded-lg overflow-hidden">
-          <div className="bg-[#375623] text-white px-4 py-2 font-bold text-sm">
+          <div className="bg-[#0369A1] text-white px-4 py-2 font-bold text-sm">
             📈 STEP 2 판매 분석 데이터 <b>{nSales.toLocaleString()}</b>개 품목 — 수요 기반 분석 자동 포함
           </div>
           <div className="overflow-x-auto max-h-72">

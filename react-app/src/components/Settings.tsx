@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { saveSettings, syncToSupabase, sb } from '../lib/supabase'
 import type { AppSettings, Metadata, Inventory, SalesAnalysis } from '../lib/types'
 
@@ -44,9 +44,8 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
 
   return (
     <div className="space-y-6">
-      <div className="bg-gray-50 border border-gray-200 rounded p-4">
-        <h3 className="font-bold text-gray-800 mb-1">⚙️ 파라미터 설정</h3>
-        <p className="text-sm text-gray-600">변경 후 저장 버튼을 눌러야 반영됩니다.</p>
+      <div className="bg-[#E0F2FE] border-l-4 border-[#0EA5E9] px-4 py-3 rounded text-sm">
+        <b>⚙️ 파라미터 설정</b>: 변경 후 저장 버튼을 눌러야 반영됩니다.
       </div>
 
       <div className="bg-white border rounded-lg p-5 space-y-4">
@@ -55,7 +54,7 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
           <input type="number" min="1" max="365"
             value={settings.lead_time_default}
             onChange={e => setSettings({ ...settings, lead_time_default: parseInt(e.target.value) || 60 })}
-            className="w-32 border rounded px-3 py-1.5 text-sm focus:outline-blue-400"
+            className="w-32 border rounded px-3 py-1.5 text-sm focus:outline-sky-400"
           />
           <p className="text-xs text-gray-400 mt-1">품번별 리드타임이 없을 때 사용되는 기본값</p>
         </div>
@@ -76,7 +75,7 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
                   <input
                     value={settings.colors[key]}
                     onChange={e => setSettings({ ...settings, colors: { ...settings.colors, [key]: e.target.value } })}
-                    className="flex-1 border rounded px-2 py-1 text-xs font-mono focus:outline-blue-400"
+                    className="flex-1 border rounded px-2 py-1 text-xs font-mono focus:outline-sky-400"
                     maxLength={6}
                   />
                 </div>
@@ -88,7 +87,7 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
 
       <div className="flex items-center gap-3">
         <button onClick={save}
-          className="bg-gray-700 hover:bg-gray-800 text-white font-bold px-6 py-2 rounded-lg transition">
+          className="bg-[#0369A1] hover:bg-[#075985] text-white font-bold px-6 py-2 rounded-lg transition">
           💾 설정 저장
         </button>
         {saved && <span className="text-green-600 text-sm font-semibold">✅ 저장됐습니다.</span>}
@@ -96,16 +95,16 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
 
       <hr />
 
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 space-y-3">
-        <h4 className="font-bold text-blue-800">☁️ Supabase 동기화</h4>
-        <p className="text-sm text-blue-700">
+      <div className="bg-sky-50 border border-sky-200 rounded-lg p-5 space-y-3">
+        <h4 className="font-bold text-sky-800">☁️ Supabase 동기화</h4>
+        <p className="text-sm text-sky-700">
           로컬(localStorage)에 저장된 데이터를 Supabase 클라우드에 수동 업로드합니다.
           {!sb && <span className="ml-1 text-red-600 font-semibold">⚠ .env.local에 API 키가 없어 비활성화됨</span>}
         </p>
         <button
           onClick={sync}
           disabled={syncing || !sb}
-          className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold px-6 py-2 rounded-lg transition"
+          className="bg-[#0EA5E9] hover:bg-[#0284C7] disabled:bg-gray-400 text-white font-semibold px-6 py-2 rounded-lg transition"
         >
           {syncing ? '⏳ 동기화 중...' : '☁️ Supabase에 동기화'}
         </button>
