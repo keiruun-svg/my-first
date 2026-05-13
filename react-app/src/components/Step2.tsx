@@ -111,29 +111,31 @@ export default function Step2({ sales, setSales }: Props) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <label className="block text-sm font-semibold text-gray-700">판매량 파일 <span className="text-red-500">*필수</span></label>
-          <label className="flex items-center gap-3 border-2 border-dashed border-gray-300 rounded-lg px-4 py-4 cursor-pointer hover:border-green-400 hover:bg-green-50 transition">
-            <span className="text-2xl">📊</span>
-            <div>
-              <div className="text-sm text-gray-700">{salesName || '전체 판매량 Excel 파일'}</div>
-              <div className="text-xs text-gray-400">.xlsx 형식</div>
-            </div>
-            <input ref={salesRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={e => setSalesName(e.target.files?.[0]?.name ?? '')} />
-          </label>
+          <div className="bg-white border border-gray-300 rounded-lg px-4 py-3 flex items-center gap-3">
+            <label className="flex items-center gap-1.5 bg-white border border-gray-400 rounded px-3 py-1.5 cursor-pointer hover:bg-gray-50 transition text-sm font-medium text-gray-700 shrink-0">
+              <span>↑</span> Upload
+              <input ref={salesRef} type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={e => setSalesName(e.target.files?.[0]?.name ?? '')} />
+            </label>
+            <span className="text-sm text-gray-500 truncate">
+              {salesName ? <span className="text-green-600 font-medium">✓ {salesName}</span> : '200MB per file • XLSX'}
+            </span>
+          </div>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <label className="block text-sm font-semibold text-gray-700">구매관리(맥산) 파일 <span className="text-gray-400 font-normal">선택</span></label>
-          <label className="flex items-center gap-3 border-2 border-dashed border-gray-300 rounded-lg px-4 py-4 cursor-pointer hover:border-green-400 hover:bg-green-50 transition">
-            <span className="text-2xl">🏭</span>
-            <div>
-              <div className="text-sm text-gray-700">{purchaseName || '생산비중 계산용 (없으면 생략)'}</div>
-              <div className="text-xs text-gray-400">.xlsx 형식</div>
-            </div>
-            <input ref={purchaseRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={e => setPurchaseName(e.target.files?.[0]?.name ?? '')} />
-          </label>
+          <div className="bg-white border border-gray-300 rounded-lg px-4 py-3 flex items-center gap-3">
+            <label className="flex items-center gap-1.5 bg-white border border-gray-400 rounded px-3 py-1.5 cursor-pointer hover:bg-gray-50 transition text-sm font-medium text-gray-700 shrink-0">
+              <span>↑</span> Upload
+              <input ref={purchaseRef} type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={e => setPurchaseName(e.target.files?.[0]?.name ?? '')} />
+            </label>
+            <span className="text-sm text-gray-500 truncate">
+              {purchaseName ? <span className="text-green-600 font-medium">✓ {purchaseName}</span> : '200MB per file • XLSX'}
+            </span>
+          </div>
         </div>
       </div>
 

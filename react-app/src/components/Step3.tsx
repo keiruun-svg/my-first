@@ -325,14 +325,16 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="md:col-span-2 space-y-2">
           <label className="block text-sm font-semibold text-gray-700">가공파일.xlsx (STEP 1 결과) <span className="text-red-500">*필수</span></label>
-          <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg px-4 py-8 cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition">
-            <span className="text-3xl mb-2">📂</span>
-            <span className="text-sm text-gray-600">STEP 1에서 다운로드한 가공파일 업로드</span>
-            <span className="text-xs text-gray-400 mt-1">연도별 시트(YY년_케이블, YY년 하우징) 포함 파일</span>
-            {fileName && <span className="mt-2 text-sm text-green-600 font-medium">✓ {fileName}</span>}
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={e => setFileName(e.target.files?.[0]?.name ?? '')} />
-          </label>
+          <div className="bg-white border border-gray-300 rounded-lg px-4 py-3 flex items-center gap-3">
+            <label className="flex items-center gap-1.5 bg-white border border-gray-400 rounded px-3 py-1.5 cursor-pointer hover:bg-gray-50 transition text-sm font-medium text-gray-700 shrink-0">
+              <span>↑</span> Upload
+              <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={e => setFileName(e.target.files?.[0]?.name ?? '')} />
+            </label>
+            <span className="text-sm text-gray-500 truncate">
+              {fileName ? <span className="text-green-600 font-medium">✓ {fileName}</span> : '200MB per file • XLSX'}
+            </span>
+          </div>
         </div>
 
         <div className="space-y-2 text-sm">
