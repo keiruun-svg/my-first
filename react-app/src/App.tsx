@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
   loadSettings, loadMetadata, loadInventory, loadSalesAnalysis
 } from './lib/supabase'
@@ -13,13 +13,13 @@ import Settings from './components/Settings'
 import PartNumberGenerator from './components/PartNumberGenerator'
 
 const TABS = [
-  { id: 'step1',     label: '📤 STEP 1 — ERP 파일 가공' },
-  { id: 'step2',     label: '📈 STEP 2 — 판매 분석' },
-  { id: 'step3',     label: '📊 STEP 3 — 발주계획 생성' },
-  { id: 'partnum',   label: '🏷 품번 생성기' },
-  { id: 'meta',      label: '📋 품번 관리' },
-  { id: 'inventory', label: '📦 재고 현황' },
-  { id: 'settings',  label: '⚙️ 파라미터 & 양식 설정' },
+  { id: 'step1',   label: '📤 STEP 1', title: 'ERP 파일 파싱' },
+  { id: 'step2',   label: '📈 STEP 2', title: '판매 분석' },
+  { id: 'step3',   label: '📊 STEP 3', title: '발주계획 생성' },
+  { id: 'partnum', label: '🏷 품번 생성기', title: '품번 생성기' },
+  { id: 'meta',    label: '📋 품번 관리', title: '품번 관리' },
+  { id: 'inventory', label: '📦 재고 현황', title: '재고 현황' },
+  { id: 'settings',  label: '⚙️ 설정', title: '파라미터 & 설정' },
 ] as const
 
 type TabId = typeof TABS[number]['id']
@@ -49,22 +49,22 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-500">⏳ 데이터 로드 중...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-gray-500 text-lg">⏳ 데이터 로드 중...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-100">
       {/* Header */}
-      <div className="bg-[#0369A1] text-white px-6 py-3 shadow">
-        <div className="flex items-center justify-between">
+      <div className="bg-[#1F3864] text-white px-6 py-4 shadow-lg">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">📦 AJW 생산자재 발주계획 시스템</h1>
-            <p className="text-sky-200 text-sm mt-0.5">(주)에이제이월드 SCM팀 — 로우데이터 업로드 후 버튼 클릭으로 Excel 자동 생성</p>
+            <h1 className="text-xl font-bold">AJW 생산자재 발주계획 시스템</h1>
+            <p className="text-blue-200 text-xs mt-0.5">AJWorld SCM팀 — 연간 발주계획 자동화</p>
           </div>
-          <div className="text-right text-xs text-sky-300 hidden md:block">
+          <div className="text-right text-xs text-blue-300">
             <div>케이블 {Object.keys(metadata.cable).length}종</div>
             <div>하우징 {Object.keys(metadata.housing).length}종</div>
           </div>
@@ -72,16 +72,16 @@ export default function App() {
       </div>
 
       {/* Tabs */}
-      <div className="bg-white border-b sticky top-0 z-10 shadow-sm">
-        <div className="flex overflow-x-auto px-2">
+      <div className="bg-white border-b shadow-sm sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto flex overflow-x-auto">
           {TABS.map(t => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
+              className={`px-4 py-3 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${
                 activeTab === t.id
-                  ? 'border-[#0EA5E9] text-[#0EA5E9]'
-                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50'
+                  : 'border-transparent text-gray-600 hover:text-blue-500 hover:bg-gray-50'
               }`}
             >
               {t.label}
@@ -90,32 +90,34 @@ export default function App() {
         </div>
       </div>
 
-      {/* Content — wide, no card wrapper */}
-      <div className="px-6 py-6 max-w-screen-xl mx-auto">
-        {activeTab === 'step1' && (
-          <Step1 metadata={metadata} setMetadata={setMetadata} settings={settings} />
-        )}
-        {activeTab === 'step2' && (
-          <Step2 sales={sales} setSales={setSales} />
-        )}
-        {activeTab === 'step3' && (
-          <Step3 metadata={metadata} inventory={inventory} sales={sales} settings={settings} />
-        )}
-        {activeTab === 'partnum' && (
-          <PartNumberGenerator />
-        )}
-        {activeTab === 'meta' && (
-          <MetaManager metadata={metadata} setMetadata={setMetadata} />
-        )}
-        {activeTab === 'inventory' && (
-          <InventoryComp inventory={inventory} setInventory={setInventory} metadata={metadata} />
-        )}
-        {activeTab === 'settings' && (
-          <Settings
-            settings={settings} setSettings={setSettings}
-            metadata={metadata} inventory={inventory} sales={sales}
-          />
-        )}
+      {/* Content */}
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="bg-white rounded-xl shadow p-6">
+          {activeTab === 'step1' && (
+            <Step1 metadata={metadata} setMetadata={setMetadata} settings={settings} />
+          )}
+          {activeTab === 'step2' && (
+            <Step2 sales={sales} setSales={setSales} />
+          )}
+          {activeTab === 'step3' && (
+            <Step3 metadata={metadata} inventory={inventory} sales={sales} settings={settings} />
+          )}
+          {activeTab === 'partnum' && (
+            <PartNumberGenerator />
+          )}
+          {activeTab === 'meta' && (
+            <MetaManager metadata={metadata} setMetadata={setMetadata} />
+          )}
+          {activeTab === 'inventory' && (
+            <InventoryComp inventory={inventory} setInventory={setInventory} metadata={metadata} />
+          )}
+          {activeTab === 'settings' && (
+            <Settings
+              settings={settings} setSettings={setSettings}
+              metadata={metadata} inventory={inventory} sales={sales}
+            />
+          )}
+        </div>
       </div>
     </div>
   )

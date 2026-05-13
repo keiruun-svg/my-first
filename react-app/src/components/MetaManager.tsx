@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { saveMetadata } from '../lib/supabase'
 import type { Metadata, CableMeta, HousingComp } from '../lib/types'
 
@@ -51,7 +51,7 @@ export default function MetaManager({ metadata, setMetadata }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-[#E0F2FE] border-l-4 border-[#C55A11] px-4 py-3 rounded text-sm">
+      <div className="bg-[#f0f4fa] border-l-4 border-[#C55A11] px-4 py-3 rounded text-sm">
         <b>품번 관리</b>: STEP 1 실행 후 발견된 신규 타입이 자동으로 추가됩니다.
         품번·품명·구매처·리드타임을 직접 입력하고 <b>저장</b> 버튼을 누르세요.
         다음 STEP 1/3 실행 시 자동으로 적용됩니다.
@@ -59,13 +59,13 @@ export default function MetaManager({ metadata, setMetadata }: Props) {
 
       <div className="flex gap-2">
         <button onClick={() => setTab('cable')}
-          className={`px-4 py-2 rounded font-semibold text-sm transition flex items-center gap-2 ${tab==='cable' ? 'bg-[#0EA5E9] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+          className={`px-4 py-2 rounded font-semibold text-sm transition flex items-center gap-2 ${tab==='cable' ? 'bg-[#2E75B6] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
           케이블
           <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${tab==='cable' ? 'bg-white/20' : 'bg-gray-300'}`}>{cableKeys.length}</span>
           {cableMissing > 0 && <span className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full">⚠ {cableMissing}</span>}
         </button>
         <button onClick={() => setTab('housing')}
-          className={`px-4 py-2 rounded font-semibold text-sm transition flex items-center gap-2 ${tab==='housing' ? 'bg-[#0369A1] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+          className={`px-4 py-2 rounded font-semibold text-sm transition flex items-center gap-2 ${tab==='housing' ? 'bg-[#375623] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
           하우징
           <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${tab==='housing' ? 'bg-white/20' : 'bg-gray-300'}`}>{housingKeys.length}</span>
           {housingMissing > 0 && <span className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full">⚠ {housingMissing}</span>}
@@ -76,7 +76,7 @@ export default function MetaManager({ metadata, setMetadata }: Props) {
         <div className="overflow-x-auto">
           <table className="text-xs w-full border-collapse">
             <thead>
-              <tr className="bg-[#0EA5E9] text-white">
+              <tr className="bg-[#2E75B6] text-white">
                 {['파이','케이블종류','품번','품명','구매처','리드타임(일)','상태'].map(h => (
                   <th key={h} className="px-3 py-2 text-left font-semibold border-r border-white/20 last:border-0">{h}</th>
                 ))}
@@ -96,7 +96,7 @@ export default function MetaManager({ metadata, setMetadata }: Props) {
                         <input
                           value={String(m[f] ?? '')}
                           onChange={e => updateCable(key, f, e.target.value)}
-                          className={`w-full border rounded px-2 py-0.5 text-xs focus:outline-sky-400 ${missing && f==='품번' ? 'border-red-400 bg-red-50' : ''}`}
+                          className={`w-full border rounded px-2 py-0.5 text-xs focus:outline-blue-400 ${missing && f==='품번' ? 'border-red-400 bg-red-50' : ''}`}
                           placeholder={f === '리드타임' ? '숫자(일)' : f}
                         />
                       </td>
@@ -119,7 +119,7 @@ export default function MetaManager({ metadata, setMetadata }: Props) {
         <div className="overflow-x-auto">
           <table className="text-xs w-full border-collapse">
             <thead>
-              <tr className="bg-[#0369A1] text-white">
+              <tr className="bg-[#375623] text-white">
                 {['파이','하우징타입','품번','품명','구매처','리드타임(일)','상태'].map(h => (
                   <th key={h} className="px-3 py-2 text-left font-semibold border-r border-white/20 last:border-0">{h}</th>
                 ))}
@@ -139,7 +139,7 @@ export default function MetaManager({ metadata, setMetadata }: Props) {
                         <input
                           value={String(m[f] ?? '')}
                           onChange={e => updateHousing(key, f, e.target.value)}
-                          className={`w-full border rounded px-2 py-0.5 text-xs focus:outline-sky-400 ${missing && f==='품번' ? 'border-red-400 bg-red-50' : ''}`}
+                          className={`w-full border rounded px-2 py-0.5 text-xs focus:outline-blue-400 ${missing && f==='품번' ? 'border-red-400 bg-red-50' : ''}`}
                           placeholder={f === '리드타임' ? '숫자(일)' : f}
                         />
                       </td>
@@ -160,7 +160,7 @@ export default function MetaManager({ metadata, setMetadata }: Props) {
 
       <div className="flex items-center gap-3 pt-1">
         <button onClick={save}
-          className="bg-[#0369A1] hover:bg-[#075985] text-white font-bold px-6 py-2 rounded-lg transition">
+          className="bg-[#1F3864] hover:bg-[#162a4d] text-white font-bold px-6 py-2 rounded-lg transition">
           💾 품번 저장
         </button>
         {saved && <span className="text-green-600 text-sm font-semibold">✅ 저장됐습니다.</span>}
