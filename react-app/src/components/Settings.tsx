@@ -44,9 +44,8 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
 
   return (
     <div className="space-y-6">
-      <div className="bg-gray-50 border border-gray-200 rounded p-4">
-        <h3 className="font-bold text-gray-800 mb-1">⚙️ 파라미터 설정</h3>
-        <p className="text-sm text-gray-600">변경 후 저장 버튼을 눌러야 반영됩니다.</p>
+      <div className="bg-[#EBF3FB] border-l-4 border-[#2E75B6] px-4 py-3 rounded text-sm">
+        <b>⚙️ 파라미터 설정</b>: 변경 후 저장 버튼을 눌러야 반영됩니다.
       </div>
 
       <div className="bg-white border rounded-lg p-5 space-y-4">
@@ -88,7 +87,7 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
 
       <div className="flex items-center gap-3">
         <button onClick={save}
-          className="bg-gray-700 hover:bg-gray-800 text-white font-bold px-6 py-2 rounded-lg transition">
+          className="bg-[#1F3864] hover:bg-[#162a4d] text-white font-bold px-6 py-2 rounded-lg transition">
           💾 설정 저장
         </button>
         {saved && <span className="text-green-600 text-sm font-semibold">✅ 저장됐습니다.</span>}

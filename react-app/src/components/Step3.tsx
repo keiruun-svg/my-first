@@ -316,7 +316,7 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-[#f0f4fa] border-l-4 border-[#7030A0] px-4 py-3 rounded">
+      <div className="bg-[#EBF3FB] border-l-4 border-[#2E75B6] px-4 py-3 rounded">
         <b>STEP 3 — 발주계획 생성</b>: STEP 1에서 생성한 <b>가공파일</b>을 업로드하면
         연간발주계획.xlsx를 생성합니다.
         현재고·기발주는 <b>📦 재고 현황</b> 탭, 수요 기반 분석은 <b>📈 STEP 2</b> 탭에서 사전 실행하세요.
@@ -361,7 +361,7 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
         <button
           onClick={run}
           disabled={running || !fileName}
-          className="flex-1 bg-[#7030A0] hover:bg-[#5a2580] disabled:bg-gray-400 text-white font-bold py-2.5 rounded transition"
+          className="flex-1 bg-[#2E75B6] hover:bg-[#1F5597] disabled:bg-gray-400 text-white font-bold py-2.5 rounded transition"
         >
           {running ? '⏳ 생성 중...' : '▶ STEP 3 실행 — 발주계획 생성'}
         </button>

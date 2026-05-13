@@ -41,18 +41,17 @@ export default function Inventory({ inventory, setInventory, metadata }: Props) 
 
   return (
     <div className="space-y-4">
-      <div className="bg-teal-50 border border-teal-200 rounded p-4">
-        <h3 className="font-bold text-teal-800 mb-1">재고 현황</h3>
-        <p className="text-sm text-teal-700">현재고 및 기발주 수량을 입력하세요. STEP 3 발주계획 생성 시 자동 반영됩니다.</p>
+      <div className="bg-[#EBF3FB] border-l-4 border-[#2E75B6] px-4 py-3 rounded text-sm">
+        <b>재고 현황</b>: 현재고 및 기발주 수량을 입력하세요. STEP 3 발주계획 생성 시 자동 반영됩니다.
       </div>
 
       <div className="flex gap-2">
         <button onClick={() => setTab('cable')}
-          className={`px-4 py-2 rounded font-semibold text-sm transition ${tab==='cable' ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+          className={`px-4 py-2 rounded font-semibold text-sm transition ${tab==='cable' ? 'bg-[#2E75B6] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
           케이블 ({cableKeys.length})
         </button>
         <button onClick={() => setTab('housing')}
-          className={`px-4 py-2 rounded font-semibold text-sm transition ${tab==='housing' ? 'bg-teal-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+          className={`px-4 py-2 rounded font-semibold text-sm transition ${tab==='housing' ? 'bg-[#2E75B6] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
           하우징 ({housingKeys.length})
         </button>
       </div>
@@ -60,7 +59,7 @@ export default function Inventory({ inventory, setInventory, metadata }: Props) 
       {tab === 'cable' && (
         <div className="overflow-x-auto">
           <table className="text-sm w-full border-collapse">
-            <thead className="bg-teal-700 text-white">
+            <thead className="bg-[#1F3864] text-white">
               <tr>
                 {['파이','케이블종류','품번','품명','현재고(m)'].map(h => (
                   <th key={h} className="px-3 py-2 text-left font-semibold">{h}</th>
@@ -82,7 +81,7 @@ export default function Inventory({ inventory, setInventory, metadata }: Props) 
                       <input type="number" min="0"
                         value={inv.현재고}
                         onChange={e => updateCable(key, e.target.value)}
-                        className="w-28 border rounded px-2 py-0.5 text-right text-sm focus:outline-teal-400"
+                        className="w-28 border rounded px-2 py-0.5 text-right text-sm focus:outline-blue-400"
                       />
                     </td>
                   </tr>
@@ -99,7 +98,7 @@ export default function Inventory({ inventory, setInventory, metadata }: Props) 
       {tab === 'housing' && (
         <div className="overflow-x-auto">
           <table className="text-sm w-full border-collapse">
-            <thead className="bg-teal-700 text-white">
+            <thead className="bg-[#1F3864] text-white">
               <tr>
                 {['파이','하우징타입','품번','품명','현재고(EA)','기발주(EA)'].map(h => (
                   <th key={h} className="px-3 py-2 text-left font-semibold">{h}</th>
@@ -123,14 +122,14 @@ export default function Inventory({ inventory, setInventory, metadata }: Props) 
                       <input type="number" min="0"
                         value={inv.현재고}
                         onChange={e => updateHousing(key, '현재고', e.target.value)}
-                        className="w-24 border rounded px-2 py-0.5 text-right text-sm focus:outline-teal-400"
+                        className="w-24 border rounded px-2 py-0.5 text-right text-sm focus:outline-blue-400"
                       />
                     </td>
                     <td className="px-2 py-1">
                       <input type="number" min="0"
                         value={inv.기발주}
                         onChange={e => updateHousing(key, '기발주', e.target.value)}
-                        className="w-24 border rounded px-2 py-0.5 text-right text-sm focus:outline-teal-400"
+                        className="w-24 border rounded px-2 py-0.5 text-right text-sm focus:outline-blue-400"
                       />
                     </td>
                   </tr>
@@ -146,7 +145,7 @@ export default function Inventory({ inventory, setInventory, metadata }: Props) 
 
       <div className="flex items-center gap-3">
         <button onClick={save}
-          className="bg-teal-600 hover:bg-teal-700 text-white font-bold px-6 py-2 rounded-lg transition">
+          className="bg-[#1F3864] hover:bg-[#162a4d] text-white font-bold px-6 py-2 rounded-lg transition">
           💾 저장
         </button>
         {saved && <span className="text-green-600 text-sm font-semibold">✅ 저장됐습니다.</span>}

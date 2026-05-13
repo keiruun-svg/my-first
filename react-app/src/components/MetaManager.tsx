@@ -65,7 +65,7 @@ export default function MetaManager({ metadata, setMetadata }: Props) {
           {cableMissing > 0 && <span className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full">⚠ {cableMissing}</span>}
         </button>
         <button onClick={() => setTab('housing')}
-          className={`px-4 py-2 rounded font-semibold text-sm transition flex items-center gap-2 ${tab==='housing' ? 'bg-[#375623] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+          className={`px-4 py-2 rounded font-semibold text-sm transition flex items-center gap-2 ${tab==='housing' ? 'bg-[#1F3864] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
           하우징
           <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${tab==='housing' ? 'bg-white/20' : 'bg-gray-300'}`}>{housingKeys.length}</span>
           {housingMissing > 0 && <span className="text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full">⚠ {housingMissing}</span>}
@@ -119,7 +119,7 @@ export default function MetaManager({ metadata, setMetadata }: Props) {
         <div className="overflow-x-auto">
           <table className="text-xs w-full border-collapse">
             <thead>
-              <tr className="bg-[#375623] text-white">
+              <tr className="bg-[#1F3864] text-white">
                 {['파이','하우징타입','품번','품명','구매처','리드타임(일)','상태'].map(h => (
                   <th key={h} className="px-3 py-2 text-left font-semibold border-r border-white/20 last:border-0">{h}</th>
                 ))}
