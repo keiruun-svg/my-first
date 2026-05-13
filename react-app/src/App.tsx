@@ -10,11 +10,13 @@ import Step3 from './components/Step3'
 import MetaManager from './components/MetaManager'
 import InventoryComp from './components/Inventory'
 import Settings from './components/Settings'
+import PartNumberGenerator from './components/PartNumberGenerator'
 
 const TABS = [
   { id: 'step1',     label: '📤 STEP 1 — ERP 파일 가공' },
   { id: 'step2',     label: '📈 STEP 2 — 판매 분석' },
   { id: 'step3',     label: '📊 STEP 3 — 발주계획 생성' },
+  { id: 'partnum',   label: '🏷 품번 생성기' },
   { id: 'meta',      label: '📋 품번 관리' },
   { id: 'inventory', label: '📦 재고 현황' },
   { id: 'settings',  label: '⚙️ 파라미터 & 양식 설정' },
@@ -98,6 +100,9 @@ export default function App() {
         )}
         {activeTab === 'step3' && (
           <Step3 metadata={metadata} inventory={inventory} sales={sales} settings={settings} />
+        )}
+        {activeTab === 'partnum' && (
+          <PartNumberGenerator />
         )}
         {activeTab === 'meta' && (
           <MetaManager metadata={metadata} setMetadata={setMetadata} />
