@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from 'react'
+import { useState, useRef } from 'react'
 import ExcelJS from 'exceljs'
 import { aggregateStats, buildOrderPlan } from '../lib/step2Core'
 import type { Metadata, Inventory, SalesAnalysis, AppSettings } from '../lib/types'
@@ -316,7 +316,7 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-[#E0F2FE] border-l-4 border-[#0EA5E9] px-4 py-3 rounded">
+      <div className="bg-[#f0f4fa] border-l-4 border-[#7030A0] px-4 py-3 rounded">
         <b>STEP 3 — 발주계획 생성</b>: STEP 1에서 생성한 <b>가공파일</b>을 업로드하면
         연간발주계획.xlsx를 생성합니다.
         현재고·기발주는 <b>📦 재고 현황</b> 탭, 수요 기반 분석은 <b>📈 STEP 2</b> 탭에서 사전 실행하세요.
@@ -325,24 +325,22 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="md:col-span-2 space-y-2">
           <label className="block text-sm font-semibold text-gray-700">가공파일.xlsx (STEP 1 결과) <span className="text-red-500">*필수</span></label>
-          <div className="bg-white border border-gray-300 rounded-lg px-4 py-3 flex items-center gap-3">
-            <label className="flex items-center gap-1.5 bg-white border border-gray-400 rounded px-3 py-1.5 cursor-pointer hover:bg-gray-50 transition text-sm font-medium text-gray-700 shrink-0">
-              <span>↑</span> Upload
-              <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
-                onChange={e => setFileName(e.target.files?.[0]?.name ?? '')} />
-            </label>
-            <span className="text-sm text-gray-500 truncate">
-              {fileName ? <span className="text-green-600 font-medium">✓ {fileName}</span> : '200MB per file • XLSX'}
-            </span>
-          </div>
+          <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg px-4 py-8 cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition">
+            <span className="text-3xl mb-2">📂</span>
+            <span className="text-sm text-gray-600">STEP 1에서 다운로드한 가공파일 업로드</span>
+            <span className="text-xs text-gray-400 mt-1">연도별 시트(YY년_케이블, YY년 하우징) 포함 파일</span>
+            {fileName && <span className="mt-2 text-sm text-green-600 font-medium">✓ {fileName}</span>}
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+              onChange={e => setFileName(e.target.files?.[0]?.name ?? '')} />
+          </label>
         </div>
 
         <div className="space-y-2 text-sm">
-          <div className="bg-sky-50 border border-sky-200 rounded-lg p-3">
-            <div className="font-semibold text-sky-800 mb-1">재고 현황 탭 입력값</div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="font-semibold text-blue-800 mb-1">재고 현황 탭 입력값</div>
             <div>케이블 <span className="font-bold">{nCableInv}</span>항목 입력됨</div>
             <div>하우징 <span className="font-bold">{nHousingInv}</span>항목 입력됨</div>
-            <div className="text-xs text-sky-600 mt-1">수정: 📦 재고 현황 탭</div>
+            <div className="text-xs text-blue-600 mt-1">수정: 📦 재고 현황 탭</div>
           </div>
           {nSales > 0 ? (
             <div className="bg-green-50 border border-green-300 rounded-lg p-3 text-green-800">
@@ -361,7 +359,7 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
         <button
           onClick={run}
           disabled={running || !fileName}
-          className="flex-1 bg-[#0EA5E9] hover:bg-[#0284C7] disabled:bg-gray-400 text-white font-bold py-2.5 rounded transition"
+          className="flex-1 bg-[#7030A0] hover:bg-[#5a2580] disabled:bg-gray-400 text-white font-bold py-2.5 rounded transition"
         >
           {running ? '⏳ 생성 중...' : '▶ STEP 3 실행 — 발주계획 생성'}
         </button>

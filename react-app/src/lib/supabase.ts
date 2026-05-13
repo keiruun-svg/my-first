@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { AppSettings, Inventory, Metadata, OjcRules, SalesAnalysis } from './types'
-import { DEFAULT_OJC_RULES } from './types'
+import type { AppSettings, Inventory, Metadata, SalesAnalysis } from './types'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string
 const key = import.meta.env.VITE_SUPABASE_KEY as string
@@ -77,17 +76,6 @@ export async function loadSalesAnalysis(): Promise<SalesAnalysis> {
 
 export function saveSalesAnalysis(s: SalesAnalysis) {
   lsSet('ajw_sales', s)
-}
-
-export async function loadOjcRules(): Promise<OjcRules> {
-  const d = await sbLoad('ojc_rules')
-  if (d) return d as OjcRules
-  return lsGet('ajw_ojc_rules', DEFAULT_OJC_RULES)
-}
-
-export async function saveOjcRules(rules: OjcRules): Promise<void> {
-  lsSet('ajw_ojc_rules', rules)
-  await sbSave('ojc_rules', rules)
 }
 
 export async function syncToSupabase(
