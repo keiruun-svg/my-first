@@ -24,14 +24,14 @@ export function extractTypes(p: string): [string, string] {
     const m = p.match(/\((.+?)\)/)
     if (m) {
       const t = m[1].match(/(?:SC|LC|FC)\/(?:PC|APC)/g) ?? []
-      if (t.length >= 2) return [t[0], t[1]]
-      if (t.length === 1) return [t[0], t[0]]
+      if (t.length >= 2) return [t[0]!, t[1]!]
+      if (t.length === 1) return [t[0]!, t[0]!]
     }
     return ['', '']
   }
   if (p.startsWith('PIGTAIL')) {
     const t = p.match(/(?:SC|LC|FC)\/(?:PC|APC)/g) ?? []
-    return t.length ? [t[0], ''] : ['', '']
+    return t.length ? [t[0]!, ''] : ['', '']
   }
   if (p.startsWith('OJC-')) {
     const parts = p.split('-')
@@ -45,8 +45,8 @@ export function extractTypes(p: string): [string, string] {
   }
   if (/^(?:SOJC|DOJC|MOJC|Optical Cable Parts)/.test(p)) {
     const t = p.match(/(?:SC|LC|FC)\/(?:PC|APC)/g) ?? []
-    if (t.length >= 2) return [t[0], t[1]]
-    if (t.length === 1) return [t[0], t[0]]
+    if (t.length >= 2) return [t[0]!, t[1]!]
+    if (t.length === 1) return [t[0]!, t[0]!]
     return ['', '']
   }
   return ['', '']
@@ -348,5 +348,5 @@ export function preprocessERP(fileBuffer: ArrayBuffer, logs: string[]): ArrayBuf
   }
 
   const buf = XLSX.write(wb_out, { type: 'array', bookType: 'xlsx' }) as Uint8Array
-  return buf.buffer
+  return buf.buffer as ArrayBuffer
 }
