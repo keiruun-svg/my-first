@@ -2,36 +2,7 @@ import { useState, useRef } from 'react'
 import ExcelJS from 'exceljs'
 import { aggregateStats, buildOrderPlan } from '../lib/step2Core'
 import type { Metadata, Inventory, SalesAnalysis, AppSettings } from '../lib/types'
-
-function FileUploader({
-  label, fileRef, fileName, onChange,
-}: {
-  label: string; fileRef: React.RefObject<HTMLInputElement | null>; fileName: string
-  onChange: (name: string) => void
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <div className={`border rounded px-4 py-6 text-center bg-[#fafafa] transition-colors ${
-        fileName ? 'border-[#2E75B6] bg-[#f0f4fa]' : 'border-gray-300 hover:border-gray-400'
-      }`}>
-        {fileName ? (
-          <div className="text-sm text-[#2E75B6] font-medium mb-2">📄 {fileName}</div>
-        ) : (
-          <>
-            <div className="text-sm text-gray-500 mb-1">Drag and drop file here</div>
-            <div className="text-xs text-gray-400 mb-3">Limit 200MB per file • XLSX</div>
-          </>
-        )}
-        <label className="inline-flex items-center px-4 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded cursor-pointer hover:bg-gray-50 transition">
-          Browse files
-          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
-            onChange={e => onChange(e.target.files?.[0]?.name ?? '')} />
-        </label>
-      </div>
-    </div>
-  )
-}
+import FileUploader from './FileUploader'
 
 interface Props {
   metadata: Metadata
