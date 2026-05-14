@@ -99,7 +99,7 @@ export default function App() {
           <Step2 salesAgg={salesAgg} setSalesAgg={setSalesAgg} />
         )}
         {activeTab === 'step3' && (
-          <Step3 metadata={metadata} inventory={inventory} sales={sales} settings={settings} />
+          <Step3 metadata={metadata} inventory={inventory} settings={settings} />
         )}
         {activeTab === 'partnum' && (
           <PartNumberGenerator />

@@ -1,346 +1,72 @@
 import { useState } from 'react'
 import ExcelJS from 'exceljs'
-import { aggregateStats, buildOrderPlan } from '../lib/step2Core'
-import type { Metadata, Inventory, SalesAnalysis, AppSettings } from '../lib/types'
+import { buildStep3Plan } from '../lib/step3Core'
+import type { Step3Row } from '../lib/step3Core'
+import type { Metadata, Inventory, AppSettings } from '../lib/types'
 import FileUploader from './FileUploader'
 
 interface Props {
-  metadata: Metadata
+  metadata:  Metadata
   inventory: Inventory
-  sales: SalesAnalysis
-  settings: AppSettings
+  settings:  AppSettings
 }
 
-const MONTHS = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']
+const MAIN_COLOR = 'FF1F3864'
+const HEADER_BG  = 'FFBDD7EE'
+const BORDER: Partial<ExcelJS.Border> = { style: 'thin', color: { argb: 'FF000000' } }
+const ALL_BORDERS = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER }
+const num = (v: number, unit = '') => v === 0 ? '—' : v.toLocaleString() + (unit ? ' ' + unit : '')
 
-export default function Step3({ metadata, inventory, sales, settings }: Props) {
-  const [logs, setLogs] = useState<string[]>([])
-  const [running, setRunning] = useState(false)
-  const [done, setDone] = useState(false)
+export default function Step3({ metadata, inventory, settings }: Props) {
+  const [logs, setLogs]         = useState<string[]>([])
+  const [running, setRunning]   = useState(false)
+  const [done, setDone]         = useState(false)
   const [gaongFile, setGaongFile] = useState<File | null>(null)
-
-  const nCableInv = Object.values(inventory.cable).filter(v => (v?.현재고 ?? 0) > 0).length
-  const nHousingInv = Object.values(inventory.housing).filter(v => {
-    const items = Array.isArray(v) ? v : [v]
-    return items.some(i => (i?.현재고 ?? 0) > 0 || (i?.기발주 ?? 0) > 0)
-  }).length
-  const nSales = Object.values(sales).filter(v =>
-    Object.keys(v).filter(k => /^\d{2}$/.test(k)).some(yr => ((v[yr] as { sales: number } | undefined)?.sales ?? 0) > 0)
-  ).length
+  const [rows, setRows]         = useState<Step3Row[]>([])
+  const [years, setYears]       = useState<string[]>([])
 
   const run = async () => {
     if (!gaongFile) return alert('가공파일을 선택해주세요.')
-    setRunning(true); setDone(false); setLogs([])
+    setRunning(true); setDone(false); setLogs([]); setRows([])
     try {
       const buf = await gaongFile.arrayBuffer()
-      const stats = aggregateStats(buf)
-      setLogs(stats.logs)
-      const allYears = stats.years
-
-      const rows = buildOrderPlan(stats, metadata, inventory, sales, settings.lead_time_default)
-      const wb = new ExcelJS.Workbook()
-      wb.creator = 'AJW 발주계획 시스템'
-
-      const mainColor = settings.colors.main_header
-      const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF' + mainColor } }
-      const border: Partial<ExcelJS.Border> = { style: 'thin' as const, color: { argb: 'FF000000' } }
-      const allBorders = { top: border, bottom: border, left: border, right: border }
-
-      // ── 케이블 사용내역 시트 ──
-      const wsc = wb.addWorksheet('케이블 사용내역')
-      wsc.mergeCells('A1:W1')
-      const title = wsc.getCell('A1')
-      title.value = '2026 연간 발주 계획 — 케이블 사용내역'
-      title.fill = headerFill
-      title.font = { name: 'Arial', bold: true, size: 13, color: { argb: 'FFFFFFFF' } }
-      title.alignment = { horizontal: 'center', vertical: 'middle' }
-      wsc.getRow(1).height = 26
-
-      const yrSlots: (string | undefined)[] = [
-        allYears[allYears.length - 3],
-        allYears[allYears.length - 2],
-        allYears[allYears.length - 1],
-      ]
-      const yrColors = [settings.colors.year_23, settings.colors.year_24, settings.colors.year_25]
-      const yrLabel = (s: string | undefined) => s ? `20${s}년` : '—'
-      const nYrs = allYears.length
-
-      wsc.getRow(2).height = 18
-      const subHeaders = [
-        ['A2:G2','기본 정보','374151'],
-        ['H2:I2', yrLabel(yrSlots[0]), yrColors[0]],
-        ['J2:K2', yrLabel(yrSlots[1]), yrColors[1]],
-        ['L2:M2', yrLabel(yrSlots[2]), yrColors[2]],
-        ['N2:Q2','📊 트렌드 분석','375623'],
-        ['R2:R2','⚠ 안전재고','C00000'],
-        ['S2:T2','재고 현황','7030A0'],
-        ['U2:V2','✏ 2026 발주 계획','C55A11'],
-        ['W2:W2','비고','595959'],
-      ]
-      for (const [rng, lbl, color] of subHeaders) {
-        if (rng.includes(':')) wsc.mergeCells(rng)
-        const cell = wsc.getCell(rng.split(':')[0])
-        cell.value = lbl
-        cell.fill = { type:'pattern', pattern:'solid', fgColor: { argb:'FF'+color } }
-        cell.font = { name:'Arial', bold:true, size:9, color:{ argb:'FFFFFFFF' } }
-        cell.alignment = { horizontal:'center', vertical:'middle' }
-        cell.border = allBorders
-      }
-
-      wsc.getRow(3).height = 42
-      const hdrs = ['NO','파이','케이블종류','품번','품명','구매처','리드타임\n(일)',
-        '연간(m)','피크(m)','연간(m)','피크(m)','연간(m)','피크(m)',
-        `${nYrs}개년\n평균연간`, `${nYrs}개년\n피크평균`,
-        `${yrSlots[0]??'—'}→${yrSlots[1]??'—'}\n증감률`, `${yrSlots[1]??'—'}→${yrSlots[2]??'—'}\n증감률`,
-        '안전재고\n(m)','현재고\n(m)','기발주\n(참고)','2026목표\n(m)','필요발주\n(m)','비고']
-      const colWidths = [5,8,20,16,38,14,9,12,12,12,12,12,12,13,13,11,11,11,11,11,13,13,20]
-      hdrs.forEach((h, i) => {
-        const cell = wsc.getCell(3, i + 1)
-        cell.value = h
-        cell.fill = { type:'pattern', pattern:'solid', fgColor: { argb:'FFBDD7EE' } }
-        cell.font = { name:'Arial', bold:true, size:9, color:{ argb:'FFFFFFFF' } }
-        cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true }
-        cell.border = allBorders
-        wsc.getColumn(i + 1).width = colWidths[i]
-      })
-
-      let ri = 4; let no = 1
-      const cableRows = rows.filter(r => r.type === 'cable')
-      for (const row of cableRows) {
-        const rf = ri % 2 === 0 ? { type:'pattern' as const, pattern:'solid' as const, fgColor:{ argb:'FFF5F5F5' } } : undefined
-        const vals = [no, row.pai, row.ctype, row.품번, row.품명, row.구매처, row.리드타임,
-          yrSlots[0] ? row.yearStats[yrSlots[0]]?.annual||null : null, yrSlots[0] ? row.yearStats[yrSlots[0]]?.peak||null : null,
-          yrSlots[1] ? row.yearStats[yrSlots[1]]?.annual||null : null, yrSlots[1] ? row.yearStats[yrSlots[1]]?.peak||null : null,
-          yrSlots[2] ? row.yearStats[yrSlots[2]]?.annual||null : null, yrSlots[2] ? row.yearStats[yrSlots[2]]?.peak||null : null,
-          { formula: `=ROUND(AVERAGE(H${ri},J${ri},L${ri}),0)` },
-          { formula: `=ROUND(AVERAGE(I${ri},K${ri},M${ri}),0)` },
-          { formula: `=IFERROR((J${ri}-H${ri})/H${ri},"")` },
-          { formula: `=IFERROR((L${ri}-J${ri})/J${ri},"")` },
-          { formula: `=ROUND(O${ri}*G${ri}/30,0)` },
-          row.현재고 || null, row.기발주 || null, null,
-          { formula: `=IFERROR(U${ri}-IFERROR(S${ri},0)-IFERROR(T${ri},0),"")` }, ''
-        ]
-        vals.forEach((v, ci) => {
-          const cell = wsc.getCell(ri, ci + 1)
-          if (typeof v === 'object' && v !== null && 'formula' in v) cell.value = v as ExcelJS.CellFormulaValue
-          else cell.value = v as ExcelJS.CellValue
-          cell.border = allBorders
-          if (rf) cell.fill = rf
-          cell.font = { name:'Arial', size:9 }
-          if (ci >= 7) { cell.numFmt = '#,##0'; cell.alignment = { horizontal:'right', vertical:'middle' } }
-          else if (ci === 15 || ci === 16) { cell.numFmt = '0.0%;[Red]-0.0%'; cell.alignment = { horizontal:'center', vertical:'middle' } }
-          else { cell.alignment = { horizontal: ci === 0 ? 'center' : 'left', vertical:'middle' } }
-        })
-        wsc.getCell(ri, 18).fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFFF2CC' } }
-        wsc.getCell(ri, 18).font = { name:'Arial', bold:true, size:9 }
-        const targetCell = wsc.getCell(ri, 21)
-        targetCell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFFFFC0' } }
-        targetCell.font = { name:'Arial', bold:true, size:9, color:{ argb:'FF0000FF' } }
-        targetCell.border = { top:{style:'medium',color:{argb:'FFC55A11'}}, bottom:{style:'medium',color:{argb:'FFC55A11'}}, left:{style:'medium',color:{argb:'FFC55A11'}}, right:{style:'medium',color:{argb:'FFC55A11'}} }
-        wsc.getCell(ri, 22).font = { name:'Arial', bold:true, size:9, color:{ argb:'FFC00000' } }
-        wsc.getRow(ri).height = 17
-        ri++; no++
-      }
-      wsc.views = [{ state: 'frozen', xSplit: 3, ySplit: 3 }]
-
-      // ── 하우징 사용내역 시트 ──
-      const wsh = wb.addWorksheet('하우징 사용내역')
-      wsh.mergeCells('A1:W1')
-      const titleH = wsh.getCell('A1')
-      titleH.value = '2026 연간 발주 계획 — 하우징 사용내역'
-      titleH.fill = headerFill
-      titleH.font = { name:'Arial', bold:true, size:13, color:{ argb:'FFFFFFFF' } }
-      titleH.alignment = { horizontal:'center', vertical:'middle' }
-      wsh.getRow(1).height = 26
-
-      wsh.getRow(2).height = 18
-      for (const [rng, lbl, color] of subHeaders) {
-        if (rng.includes(':')) wsh.mergeCells(rng)
-        const cell = wsh.getCell(rng.split(':')[0])
-        cell.value = lbl
-        cell.fill = { type:'pattern', pattern:'solid', fgColor: { argb:'FF'+color } }
-        cell.font = { name:'Arial', bold:true, size:9, color:{ argb:'FFFFFFFF' } }
-        cell.alignment = { horizontal:'center', vertical:'middle' }
-        cell.border = allBorders
-      }
-
-      ri = 4; no = 1
-      const housingRows = rows.filter(r => r.type === 'housing')
-      for (const [i, col] of hdrs.entries()) {
-        const cell = wsh.getCell(3, i + 1)
-        cell.value = col
-        cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFBDD7EE' } }
-        cell.font = { name:'Arial', bold:true, size:9, color:{ argb:'FFFFFFFF' } }
-        cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true }
-        cell.border = allBorders
-        wsh.getColumn(i + 1).width = colWidths[i]
-      }
-      for (const row of housingRows) {
-        const rf = ri % 2 === 0 ? { type:'pattern' as const, pattern:'solid' as const, fgColor:{ argb:'FFF5F5F5' } } : undefined
-        const vals = [no, row.pai, row.ctype, row.품번, row.품명, row.구매처, row.리드타임,
-          yrSlots[0] ? row.yearStats[yrSlots[0]]?.annual||null : null, yrSlots[0] ? row.yearStats[yrSlots[0]]?.peak||null : null,
-          yrSlots[1] ? row.yearStats[yrSlots[1]]?.annual||null : null, yrSlots[1] ? row.yearStats[yrSlots[1]]?.peak||null : null,
-          yrSlots[2] ? row.yearStats[yrSlots[2]]?.annual||null : null, yrSlots[2] ? row.yearStats[yrSlots[2]]?.peak||null : null,
-          { formula: `=ROUND(AVERAGE(H${ri},J${ri},L${ri}),0)` },
-          { formula: `=ROUND(AVERAGE(I${ri},K${ri},M${ri}),0)` },
-          { formula: `=IFERROR((J${ri}-H${ri})/H${ri},"")` },
-          { formula: `=IFERROR((L${ri}-J${ri})/J${ri},"")` },
-          { formula: `=ROUND(O${ri}*G${ri}/30,0)` },
-          row.현재고||null, row.기발주||null, null,
-          { formula: `=IFERROR(U${ri}-IFERROR(S${ri},0)-IFERROR(T${ri},0),"")` }, ''
-        ]
-        vals.forEach((v, ci) => {
-          const cell = wsh.getCell(ri, ci + 1)
-          if (typeof v === 'object' && v !== null && 'formula' in v) cell.value = v as ExcelJS.CellFormulaValue
-          else cell.value = v as ExcelJS.CellValue
-          cell.border = allBorders
-          if (rf) cell.fill = rf
-          cell.font = { name:'Arial', size:9 }
-          if (ci >= 7) { cell.numFmt = '#,##0'; cell.alignment = { horizontal:'right', vertical:'middle' } }
-          else if (ci === 15 || ci === 16) { cell.numFmt = '0.0%;[Red]-0.0%'; cell.alignment = { horizontal:'center', vertical:'middle' } }
-          else { cell.alignment = { horizontal: ci === 0 ? 'center' : 'left', vertical:'middle' } }
-        })
-        wsh.getCell(ri, 18).fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFFF2CC' } }
-        wsh.getCell(ri, 18).font = { name:'Arial', bold:true, size:9 }
-        const tc = wsh.getCell(ri, 21)
-        tc.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFFFFC0' } }
-        tc.font = { name:'Arial', bold:true, size:9, color:{ argb:'FF0000FF' } }
-        tc.border = { top:{style:'medium',color:{argb:'FFC55A11'}}, bottom:{style:'medium',color:{argb:'FFC55A11'}}, left:{style:'medium',color:{argb:'FFC55A11'}}, right:{style:'medium',color:{argb:'FFC55A11'}} }
-        wsh.getCell(ri, 22).font = { name:'Arial', bold:true, size:9, color:{ argb:'FFC00000' } }
-        wsh.getRow(ri).height = 17
-        ri++; no++
-      }
-      wsh.views = [{ state: 'frozen', xSplit: 3, ySplit: 3 }]
-
-      // ── 월별 발주계획 시트 ──
-      const wsm = wb.addWorksheet('2026 월별 발주계획')
-      wsm.mergeCells(`A1:T1`)
-      const titleM = wsm.getCell('A1')
-      titleM.value = '2026 월별 발주 계획 (과거 계절 패턴 기반 자동 분배)'
-      titleM.fill = headerFill
-      titleM.font = { name:'Arial', bold:true, size:13, color:{ argb:'FFFFFFFF' } }
-      titleM.alignment = { horizontal:'center', vertical:'middle' }
-      wsm.getRow(1).height = 26
-
-      const mHdrs = ['NO','분류','파이','종류','품번','단위','연간목표',...MONTHS,'합계검증']
-      const mWidths = [5,10,8,20,16,6,14,...new Array(12).fill(9),10]
-      mHdrs.forEach((h, i) => {
-        const cell = wsm.getCell(3, i + 1)
-        cell.value = h
-        cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFBDD7EE' } }
-        cell.font = { name:'Arial', bold:true, size:9, color:{ argb:'FFFFFFFF' } }
-        cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true }
-        cell.border = allBorders
-        wsm.getColumn(i + 1).width = mWidths[i]
-      })
-      wsm.getRow(3).height = 40
-
-      let mri = 4; let midx = 1
-      for (const row of rows) {
-        const rf = mri % 2 === 0 ? { type:'pattern' as const, pattern:'solid' as const, fgColor:{ argb:'FFF5F5F5' } } : undefined
-        const combined = new Array(12).fill(0)
-        let total = 0
-        for (const yr of stats.years) {
-          const m = row.yearStats[yr]?.monthly ?? new Array(12).fill(0)
-          m.forEach((v, i) => { combined[i] += v; total += v })
-        }
-        const ratios = combined.map(v => total > 0 ? Math.round(v / total * 1000000) / 1000000 : Math.round(1/12 * 1000000) / 1000000)
-        const unit = row.type === 'cable' ? 'm' : 'EA'
-        const baseVals = [midx, row.type === 'cable' ? '케이블' : '하우징', row.pai, row.ctype, row.품번, unit]
-        baseVals.forEach((v, ci) => {
-          const cell = wsm.getCell(mri, ci + 1)
-          cell.value = v as ExcelJS.CellValue
-          cell.font = { name:'Arial', size:9 }; cell.border = allBorders
-          cell.alignment = { horizontal: ci <= 2 ? 'center' : 'left', vertical:'middle' }
-          if (rf) cell.fill = rf
-        })
-        const tgtCell = wsm.getCell(mri, 7)
-        tgtCell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFFFFC0' } }
-        tgtCell.font = { name:'Arial', bold:true, size:9, color:{ argb:'FF0000FF' } }
-        tgtCell.border = { top:{style:'medium',color:{argb:'FFC55A11'}}, bottom:{style:'medium',color:{argb:'FFC55A11'}}, left:{style:'medium',color:{argb:'FFC55A11'}}, right:{style:'medium',color:{argb:'FFC55A11'}} }
-        tgtCell.numFmt = '#,##0'; tgtCell.alignment = { horizontal:'right', vertical:'middle' }
-        ratios.forEach((ratio, mi) => {
-          const cell = wsm.getCell(mri, 8 + mi)
-          cell.value = { formula: `=IFERROR(ROUND($G${mri}*${ratio},0),"")` } as ExcelJS.CellFormulaValue
-          cell.font = { name:'Arial', size:9 }; cell.border = allBorders
-          cell.numFmt = '#,##0'; cell.alignment = { horizontal:'right', vertical:'middle' }
-          if (rf) cell.fill = rf
-        })
-        const sumCell = wsm.getCell(mri, 20)
-        sumCell.value = { formula: `=IFERROR(SUM(H${mri}:S${mri}),"")` } as ExcelJS.CellFormulaValue
-        sumCell.font = { name:'Arial', size:9, bold:true, color:{ argb:'FF375623' } }
-        sumCell.border = allBorders; sumCell.numFmt = '#,##0'; sumCell.alignment = { horizontal:'right', vertical:'middle' }
-        if (rf) sumCell.fill = rf
-        wsm.getRow(mri).height = 17; mri++; midx++
-      }
-      wsm.views = [{ state: 'frozen', xSplit: 0, ySplit: 3 }]
-
-      // ── 이상항목 검토 시트 ──
-      const wsa = wb.addWorksheet('⚠ 이상항목 검토')
-      wsa.mergeCells('A1:D1')
-      const titleA = wsa.getCell('A1')
-      titleA.value = '데이터 이상 항목 검토 (자동 분석)'
-      titleA.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFC00000' } }
-      titleA.font = { name:'Arial', bold:true, size:13, color:{ argb:'FFFFFFFF' } }
-      titleA.alignment = { horizontal:'center', vertical:'middle' }
-      wsa.getRow(1).height = 26
-      wsa.getRow(3).height = 30
-      const aHdrs = ['구분','항목','품번','내용 및 조치 권고']
-      const aWidths = [10, 22, 16, 65]
-      aHdrs.forEach((h, i) => {
-        const cell = wsa.getCell(3, i + 1)
-        cell.value = h
-        cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFBDD7EE' } }
-        cell.font = { name:'Arial', bold:true, size:9, color:{ argb:'FFFFFFFF' } }
-        cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true }
-        cell.border = allBorders
-        wsa.getColumn(i + 1).width = aWidths[i]
-      })
-      const anomalies: [string, string, string, string, string][] = [
-        ['주의','2.0mm 자켓 피그테일','(확인필요)','참고파일에 품번 미등재. 사용 케이블 품번 확인 필요.','orange'],
-        ['정보','OM4 피그테일 케이블','P14-RM-417K','3개년 사용 없음. 재고 보유. 단종 검토 필요.','red'],
-        ['정보','OM3 피그테일 케이블','P14-RM-417H','23년 648m → 24~25년 0m. 미사용 추세.','orange'],
-        ['정보','피그테일 전체','(전 색상)','23년 대비 25년 약 81% 급감. 2026 목표량 보수적 설정 권고.','blue'],
-      ]
-      const anomalyColors: Record<string, string> = { red:'FFD7D7', orange:'FFE6C8', blue:'D7E8FF' }
-      anomalies.forEach(([type, item, bunho, desc, color], idx) => {
-        const ari = 4 + idx
-        const rf2 = { type:'pattern' as const, pattern:'solid' as const, fgColor:{ argb:'FF' + (anomalyColors[color] ?? 'FFFFFF') } }
-        ;[type, item, bunho, desc].forEach((v, ci) => {
-          const cell = wsa.getCell(ari, ci + 1)
-          cell.value = v
-          cell.fill = rf2
-          cell.font = { name:'Arial', size:9, bold: ci === 0 }
-          cell.border = allBorders
-          cell.alignment = ci === 0 ? { horizontal:'center', vertical:'middle' }
-            : ci === 3 ? { horizontal:'left', vertical:'middle', wrapText:true }
-            : { horizontal:'left', vertical:'middle' }
-        })
-        wsa.getRow(ari).height = 36
-      })
-      wsa.views = [{ state: 'frozen', xSplit: 0, ySplit: 3 }]
-
-      const arrayBuf = await wb.xlsx.writeBuffer()
-      const blob = new Blob([arrayBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a'); a.href = url
-      a.download = `연간발주계획_${new Date().toISOString().slice(0,10)}.xlsx`
-      a.click(); URL.revokeObjectURL(url)
-      setLogs(l => [...l, `✅ STEP 3 완료 — 케이블 ${cableRows.length}행 / 하우징 ${housingRows.length}행`])
+      const result = buildStep3Plan(buf, metadata, inventory, settings.lead_time_default)
+      setLogs(result.logs)
+      setRows(result.rows)
+      setYears(result.years)
       setDone(true)
     } catch (e) {
-      setLogs(l => [...l, `❌ 오류: ${e}`])
+      setLogs([`❌ 오류: ${e}`])
     } finally {
       setRunning(false)
     }
   }
 
+  const exportExcel = async () => {
+    if (!rows.length) return
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'AJW 발주계획 시스템'
+    writeSheet(wb, '케이블 발주계획',  rows.filter(r => r.type === 'cable'),   years, settings.colors.main_header)
+    writeSheet(wb, '하우징 발주계획',  rows.filter(r => r.type === 'housing'),  years, settings.colors.main_header)
+    const buf  = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = `발주계획_${new Date().toISOString().slice(0,10)}.xlsx`
+    a.click(); URL.revokeObjectURL(url)
+  }
+
+  const cableRows   = rows.filter(r => r.type === 'cable')
+  const housingRows = rows.filter(r => r.type === 'housing')
+  const missingPn   = rows.filter(r => !r.품번).length
+  const latestYr    = years[years.length - 1]
+
   return (
     <div className="space-y-4">
       <div className="bg-[#f0f4fa] border-l-4 border-[#2E75B6] px-5 py-4 rounded-md text-sm">
-        <b>STEP 3 — 발주계획 생성</b>: STEP 1에서 생성한 <b>가공파일</b>을 업로드하면
-        연간발주계획.xlsx를 생성합니다.
-        현재고·기발주는 <b>📦 재고 현황</b> 탭, 수요 기반 분석은 <b>📈 STEP 2</b> 탭에서 사전 실행하세요.
+        <b>STEP 3 — 발주계획 생성</b>: STEP 1 가공파일을 업로드하면 자재별 <b>안전재고</b>와
+        <b>발주 필요량</b>을 한눈에 파악하고 Excel로 다운로드합니다.
+        <span className="text-gray-500 ml-1">안전재고 = 월최대 × 리드타임(일) / 30</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
@@ -351,16 +77,11 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
             onFile={setGaongFile}
           />
         </div>
-
-        <div className="bg-[#e8f4fd] rounded-lg p-4 text-sm text-gray-700 space-y-2">
-          <div className="font-semibold mb-1">재고 현황 탭 입력값</div>
-          <div>케이블 <b>{nCableInv}</b>항목 / 하우징 <b>{nHousingInv}</b>항목</div>
-          <hr className="border-gray-300" />
-          {nSales > 0 ? (
-            <div className="text-[#1a6a2a] font-semibold">✅ 판매 분석 <b>{nSales}</b>개 품목 포함</div>
-          ) : (
-            <div className="text-[#856404]">⚠ 판매 분석 없음 — STEP 2 먼저 실행하세요.</div>
-          )}
+        <div className="bg-[#e8f4fd] rounded-lg p-4 text-sm text-gray-700 space-y-1">
+          <div className="font-semibold">현재 등록 데이터</div>
+          <div>케이블 품번 <b>{Object.keys(metadata.cable).length}</b>타입</div>
+          <div>하우징 품번 <b>{Object.keys(metadata.housing).length}</b>타입</div>
+          <div className="text-gray-500 text-xs">리드타임 기본값: {settings.lead_time_default}일</div>
         </div>
       </div>
 
@@ -372,11 +93,19 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
           disabled={running || !gaongFile}
           className="flex-1 bg-[#FF4B4B] hover:bg-[#e03030] disabled:bg-gray-300 text-white font-semibold py-2 px-4 rounded transition text-sm"
         >
-          {running ? '⏳ 생성 중...' : '▶ STEP 3 실행 — 발주계획 생성'}
+          {running ? '⏳ 분석 중...' : '▶ STEP 3 실행 — 발주계획 생성'}
         </button>
+        {done && (
+          <button
+            onClick={exportExcel}
+            className="px-4 py-2 text-sm bg-[#2E75B6] hover:bg-[#1a5a9e] text-white font-semibold rounded transition"
+          >
+            📥 Excel 다운로드
+          </button>
+        )}
         {(done || logs.length > 0) && (
           <button
-            onClick={() => { setDone(false); setLogs([]); setGaongFile(null) }}
+            onClick={() => { setDone(false); setLogs([]); setGaongFile(null); setRows([]); setYears([]) }}
             className="px-4 py-2 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition"
           >
             🗑 초기화
@@ -384,17 +113,206 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
         )}
       </div>
 
-      {done && (
-        <div className="bg-[#D6F0D8] px-4 py-3 rounded-md text-sm font-semibold text-[#1a6a2a]">
-          ✅ STEP 3 완료 — 발주계획 생성! 💡 노란색 셀(2026 목표 발주량)에 목표량을 입력하면 필요 발주량이 자동 계산됩니다.
+      {logs.length > 0 && (
+        <div className="bg-[#1e1e1e] text-[#d4d4d4] rounded p-3 font-mono text-xs leading-5 max-h-32 overflow-y-auto">
+          {logs.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}
 
-      {logs.length > 0 && (
-        <div className="bg-[#1e1e1e] text-[#d4d4d4] rounded p-3 font-mono text-xs space-y-0.5 max-h-48 overflow-y-auto">
-          {logs.map((l, i) => <div key={i}>{l}</div>)}
+      {done && missingPn > 0 && (
+        <div className="bg-[#FFF3CD] border border-yellow-300 px-4 py-3 rounded-md text-sm text-[#856404]">
+          ⚠ 품번 미등록 <b>{missingPn}건</b> — <b>품번 관리</b> 탭에서 품번·품명·구매처·리드타임을 입력 후 재실행하세요.
+        </div>
+      )}
+
+      {done && rows.length > 0 && (
+        <div className="space-y-4">
+          {/* 케이블 */}
+          <SectionTable
+            title={`케이블 자재 (${cableRows.length}타입)`}
+            rows={cableRows}
+            years={years}
+            latestYr={latestYr}
+            unitSuffix="m"
+          />
+          {/* 하우징 */}
+          <SectionTable
+            title={`하우징 자재 (${housingRows.length}타입)`}
+            rows={housingRows}
+            years={years}
+            latestYr={latestYr}
+            unitSuffix="EA"
+          />
         </div>
       )}
     </div>
   )
+}
+
+// ── 섹션 테이블 컴포넌트 ─────────────────────────────────────────
+function SectionTable({
+  title, rows, years, latestYr, unitSuffix
+}: {
+  title: string; rows: Step3Row[]; years: string[]; latestYr: string; unitSuffix: string
+}) {
+  if (!rows.length) return null
+  return (
+    <div>
+      <div className="text-sm font-semibold text-gray-700 mb-1.5">{title}</div>
+      <div className="overflow-x-auto border border-gray-200 rounded">
+        <table className="text-xs w-full whitespace-nowrap">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>타입</th>
+              <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>파이</th>
+              <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>품번</th>
+              <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>품명</th>
+              <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>구매처</th>
+              <th className="px-2 py-1 text-center border-b font-semibold text-gray-600" rowSpan={2}>LT<br/>(일)</th>
+              <th className="px-2 py-1 text-center border-b border-l font-semibold text-blue-700"
+                colSpan={years.length}>연간 사용량({unitSuffix})</th>
+              <th className="px-2 py-1 text-center border-b font-semibold text-orange-700" rowSpan={2}>월최대<br/>({latestYr}년)</th>
+              <th className="px-2 py-1 text-center border-b font-semibold text-red-700" rowSpan={2}>안전재고<br/>({unitSuffix})</th>
+              <th className="px-2 py-1 text-center border-b font-semibold text-purple-700" rowSpan={2}>현재고</th>
+              <th className="px-2 py-1 text-center border-b font-semibold text-purple-700" rowSpan={2}>기발주</th>
+              <th className="px-2 py-1 text-center border-b font-semibold text-green-700" rowSpan={2}>발주<br/>필요량</th>
+            </tr>
+            <tr>
+              {years.map(yr => (
+                <th key={yr} className="px-2 py-1 text-right border-b border-l text-blue-600 font-normal">{yr}년</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => {
+              const missingPn = !row.품번
+              const needsOrder = row.발주필요량 > 0
+              return (
+                <tr key={row.key} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-3 py-1.5 font-medium">{row.label}</td>
+                  <td className="px-3 py-1.5 text-gray-500">{row.pai}</td>
+                  <td className={`px-3 py-1.5 font-mono ${missingPn ? 'text-red-500 font-semibold' : 'text-gray-600'}`}>
+                    {row.품번 || '미등록'}
+                  </td>
+                  <td className="px-3 py-1.5 max-w-[200px] truncate" title={row.품명}>{row.품명 || '—'}</td>
+                  <td className="px-3 py-1.5 text-gray-500">{row.구매처 || '—'}</td>
+                  <td className="px-2 py-1.5 text-center">{row.리드타임}</td>
+                  {years.map(yr => (
+                    <td key={yr} className="px-2 py-1.5 text-right border-l">
+                      {num(row.byYear[yr]?.annual ?? 0)}
+                    </td>
+                  ))}
+                  <td className="px-2 py-1.5 text-right text-orange-700">{num(row.latestPeak)}</td>
+                  <td className="px-2 py-1.5 text-right text-red-700 font-semibold">{num(row.안전재고)}</td>
+                  <td className="px-2 py-1.5 text-right text-purple-700">{num(row.현재고)}</td>
+                  <td className="px-2 py-1.5 text-right text-purple-700">{num(row.기발주)}</td>
+                  <td className={`px-2 py-1.5 text-right font-bold ${needsOrder ? 'text-green-700 bg-green-50' : 'text-gray-400'}`}>
+                    {needsOrder ? row.발주필요량.toLocaleString() : '—'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="text-xs text-gray-400 mt-1">
+        발주필요량 = 최근년 연간사용량 + 안전재고 − 현재고 − 기발주
+      </div>
+    </div>
+  )
+}
+
+// ── Excel 출력 ────────────────────────────────────────────────────
+function writeSheet(
+  wb:      ExcelJS.Workbook,
+  name:    string,
+  rows:    Step3Row[],
+  years:   string[],
+  color:   string,
+) {
+  if (!rows.length) return
+  const ws      = wb.addWorksheet(name)
+  const latestYr = years[years.length - 1]
+  const unitCol  = rows[0]?.unit === 'm' ? 'm' : 'EA'
+  const nYears   = years.length
+  const mainFill  = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF' + color } }
+  const cell = (r: number, c: number) => ws.getCell(r, c)
+  const hdr  = (r: number, c: number, v: string, w?: number) => {
+    const cl = cell(r, c)
+    cl.value = v; cl.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } }
+    cl.font = { name: 'Arial', bold: true, size: 9, color: { argb: 'FF1F3864' } }
+    cl.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    cl.border = ALL_BORDERS
+    if (w) ws.getColumn(c).width = w
+  }
+
+  // 타이틀
+  const totalCols = 7 + nYears + 4
+  ws.mergeCells(1, 1, 1, totalCols)
+  const titleCell = cell(1, 1)
+  titleCell.value = name
+  titleCell.fill = mainFill
+  titleCell.font = { name: 'Arial', bold: true, size: 13, color: { argb: 'FFFFFFFF' } }
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
+  ws.getRow(1).height = 26
+
+  // 헤더 행
+  ws.getRow(2).height = 36
+  const baseHdrs: [string, number][] = [
+    ['NO', 5], ['파이', 8], ['타입', 20], ['품번', 16], ['품명', 38], ['구매처', 14], [`LT\n(일)`, 9],
+  ]
+  baseHdrs.forEach(([h, w], i) => hdr(2, i + 1, h, w))
+  let col = 8
+  years.forEach(yr => { hdr(2, col, `${yr}년\n연간(${unitCol})`, 12); col++ })
+  hdr(2, col++, `피크\n(${latestYr}년)`, 11)
+  hdr(2, col++, `안전재고\n(${unitCol})`, 11)
+  hdr(2, col++, '현재고', 10)
+  hdr(2, col++, `발주\n필요량`, 12)
+
+  // 데이터 행
+  rows.forEach((row, idx) => {
+    const ri   = idx + 3
+    const even = idx % 2 === 0
+    const bg   = even ? undefined : { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFF5F5F5' } }
+    const setCell = (c: number, v: ExcelJS.CellValue, right = false) => {
+      const cl = cell(ri, c)
+      cl.value = v
+      cl.font = { name: 'Arial', size: 9 }
+      cl.border = ALL_BORDERS
+      if (bg) cl.fill = bg
+      cl.alignment = { horizontal: right ? 'right' : c <= 2 ? 'center' : 'left', vertical: 'middle' }
+      if (right) cl.numFmt = '#,##0'
+    }
+    setCell(1, idx + 1)
+    setCell(2, row.pai)
+    setCell(3, row.label)
+    setCell(4, row.품번 || '(미등록)')
+    setCell(5, row.품명 || '')
+    setCell(6, row.구매처 || '')
+    setCell(7, row.리드타임, true)
+    let c2 = 8
+    years.forEach(yr => { setCell(c2, row.byYear[yr]?.annual || null, true); c2++ })
+    setCell(c2++, row.latestPeak || null, true)
+    // 안전재고 — 강조
+    const safeCell = cell(ri, c2)
+    safeCell.value = row.안전재고 || null
+    safeCell.font  = { name: 'Arial', bold: true, size: 9 }
+    safeCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } }
+    safeCell.border = ALL_BORDERS; safeCell.numFmt = '#,##0'
+    safeCell.alignment = { horizontal: 'right', vertical: 'middle' }
+    c2++
+    setCell(c2++, row.현재고 || null, true)
+    // 발주필요량 — 강조
+    const orderCell = cell(ri, c2)
+    orderCell.value = row.발주필요량 || null
+    orderCell.font  = { name: 'Arial', bold: true, size: 9, color: { argb: row.발주필요량 > 0 ? 'FF375623' : 'FF999999' } }
+    orderCell.fill  = row.발주필요량 > 0
+      ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } }
+      : (bg ?? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } })
+    orderCell.border = ALL_BORDERS; orderCell.numFmt = '#,##0'
+    orderCell.alignment = { horizontal: 'right', vertical: 'middle' }
+    ws.getRow(ri).height = 17
+  })
+
+  ws.views = [{ state: 'frozen', xSplit: 3, ySplit: 2 }]
 }
