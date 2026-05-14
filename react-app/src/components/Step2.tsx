@@ -9,6 +9,39 @@ interface Props {
   setSales: (s: SalesAnalysis) => void
 }
 
+function FileUploader({
+  label, fileRef, fileName, onChange, optional = false,
+}: {
+  label: string; fileRef: React.RefObject<HTMLInputElement | null>; fileName: string
+  onChange: (name: string) => void; optional?: boolean
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="block text-sm font-medium text-gray-700">
+        {label}
+        {optional && <span className="text-gray-400 font-normal ml-1">(선택)</span>}
+      </label>
+      <div className={`border rounded px-4 py-6 text-center bg-[#fafafa] transition-colors ${
+        fileName ? 'border-[#2E75B6] bg-[#f0f4fa]' : 'border-gray-300 hover:border-gray-400'
+      }`}>
+        {fileName ? (
+          <div className="text-sm text-[#2E75B6] font-medium mb-2">📄 {fileName}</div>
+        ) : (
+          <>
+            <div className="text-sm text-gray-500 mb-1">Drag and drop file here</div>
+            <div className="text-xs text-gray-400 mb-3">Limit 200MB per file • XLSX</div>
+          </>
+        )}
+        <label className="inline-flex items-center px-4 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded cursor-pointer hover:bg-gray-50 transition">
+          Browse files
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+            onChange={e => onChange(e.target.files?.[0]?.name ?? '')} />
+        </label>
+      </div>
+    </div>
+  )
+}
+
 export default function Step2({ sales, setSales }: Props) {
   const [logs, setLogs] = useState<string[]>([])
   const [running, setRunning] = useState(false)
@@ -105,48 +138,52 @@ export default function Step2({ sales, setSales }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-[#f0f4fa] border-l-4 border-[#375623] px-4 py-3 rounded">
+      {/* step-box */}
+      <div className="bg-[#f0f4fa] border-l-4 border-[#2E75B6] px-5 py-4 rounded-md text-sm">
         <b>STEP 2 — 판매 분석</b>: 전체 판매량 파일과 구매관리(맥산) 파일을 분석하여
         품목별 판매/생산 비중을 계산합니다. STEP 3 수요 기반 분석에 자동 반영됩니다.
       </div>
 
+      {/* columns [1, 1] */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <label className="block text-sm font-semibold text-gray-700">판매량 파일 <span className="text-red-500">*필수</span></label>
-          <label className="flex items-center gap-3 border-2 border-dashed border-gray-300 rounded-lg px-4 py-4 cursor-pointer hover:border-green-400 hover:bg-green-50 transition">
-            <span className="text-2xl">📊</span>
-            <div>
-              <div className="text-sm text-gray-700">{salesName || '전체 판매량 Excel 파일'}</div>
-              <div className="text-xs text-gray-400">.xlsx 형식</div>
-            </div>
-            <input ref={salesRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={e => setSalesName(e.target.files?.[0]?.name ?? '')} />
-          </label>
-        </div>
-        <div className="space-y-1">
-          <label className="block text-sm font-semibold text-gray-700">구매관리(맥산) 파일 <span className="text-gray-400 font-normal">선택</span></label>
-          <label className="flex items-center gap-3 border-2 border-dashed border-gray-300 rounded-lg px-4 py-4 cursor-pointer hover:border-green-400 hover:bg-green-50 transition">
-            <span className="text-2xl">🏭</span>
-            <div>
-              <div className="text-sm text-gray-700">{purchaseName || '생산비중 계산용 (없으면 생략)'}</div>
-              <div className="text-xs text-gray-400">.xlsx 형식</div>
-            </div>
-            <input ref={purchaseRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={e => setPurchaseName(e.target.files?.[0]?.name ?? '')} />
-          </label>
-        </div>
+        <FileUploader
+          label="① 전체 판매량.xlsx (ERP 원본)"
+          fileRef={salesRef}
+          fileName={salesName}
+          onChange={setSalesName}
+        />
+        <FileUploader
+          label="② 구매관리(맥산).xlsx (ERP 원본)"
+          fileRef={purchaseRef}
+          fileName={purchaseName}
+          onChange={setPurchaseName}
+          optional
+        />
       </div>
 
-      <button
-        onClick={run}
-        disabled={running || !salesName}
-        className="w-full bg-[#375623] hover:bg-[#2a4019] disabled:bg-gray-400 text-white font-bold py-2.5 rounded transition"
-      >
-        {running ? '⏳ 분석 중...' : '▶ STEP 2 실행'}
-      </button>
+      <hr className="border-gray-200" />
+
+      {/* buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={run}
+          disabled={running || !salesName}
+          className="flex-1 bg-[#FF4B4B] hover:bg-[#e03030] disabled:bg-gray-300 text-white font-semibold py-2 px-4 rounded transition text-sm"
+        >
+          {running ? '⏳ 분석 중...' : '▶ STEP 2 실행 — 판매 분석'}
+        </button>
+        {(done || logs.length > 0) && (
+          <button
+            onClick={() => { setDone(false); setLogs([]) }}
+            className="px-4 py-2 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition"
+          >
+            🗑 초기화
+          </button>
+        )}
+      </div>
 
       {done && nSales > 0 && (
-        <div className="bg-[#e8f5e9] border-l-4 border-[#1a7a3c] px-4 py-2 rounded text-sm font-semibold text-[#1a7a3c]">
+        <div className="bg-[#D6F0D8] px-4 py-3 rounded-md text-sm font-semibold text-[#1a6a2a]">
           ✅ 판매 분석 완료 — <b>{nSales.toLocaleString()}</b>개 품목 저장됨. STEP 3에서 수요 기반 분석이 자동 포함됩니다.
         </div>
       )}
@@ -158,11 +195,11 @@ export default function Step2({ sales, setSales }: Props) {
       )}
 
       {nSales > 0 && !done && (
-        <div className="bg-green-50 border border-green-300 rounded-lg overflow-hidden">
-          <div className="bg-[#375623] text-white px-4 py-2 font-bold text-sm">
-            📈 STEP 2 판매 분석 데이터 <b>{nSales.toLocaleString()}</b>개 품목 — 수요 기반 분석 자동 포함
+        <div>
+          <div className="text-sm font-semibold text-gray-700 mb-2">
+            저장된 분석 데이터 — <b>{nSales.toLocaleString()}</b>개 품목
           </div>
-          <div className="overflow-x-auto max-h-72">
+          <div className="overflow-x-auto border border-gray-200 rounded">
             <table className="text-xs w-full">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
@@ -174,12 +211,12 @@ export default function Step2({ sales, setSales }: Props) {
               <tbody>
                 {Object.entries(sales).slice(0, 100).map(([code, item]) => (
                   <tr key={code} className="hover:bg-gray-50 border-b">
-                    <td className="px-3 py-1 font-mono text-gray-500">{code}</td>
-                    <td className="px-3 py-1 max-w-xs truncate">{item.품목명}</td>
-                    <td className="px-3 py-1 text-right">{item['23'].sales.toLocaleString()}</td>
-                    <td className="px-3 py-1 text-right">{item['24'].sales.toLocaleString()}</td>
-                    <td className="px-3 py-1 text-right">{item['25'].sales.toLocaleString()}</td>
-                    <td className="px-3 py-1 text-right">{(item['25'].ratio * 100).toFixed(1)}%</td>
+                    <td className="px-3 py-1.5 font-mono text-gray-500">{code}</td>
+                    <td className="px-3 py-1.5 max-w-xs truncate">{item.품목명}</td>
+                    <td className="px-3 py-1.5 text-right">{item['23'].sales.toLocaleString()}</td>
+                    <td className="px-3 py-1.5 text-right">{item['24'].sales.toLocaleString()}</td>
+                    <td className="px-3 py-1.5 text-right">{item['25'].sales.toLocaleString()}</td>
+                    <td className="px-3 py-1.5 text-right">{(item['25'].ratio * 100).toFixed(1)}%</td>
                   </tr>
                 ))}
               </tbody>

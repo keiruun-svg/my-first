@@ -44,9 +44,8 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
 
   return (
     <div className="space-y-6">
-      <div className="bg-gray-50 border border-gray-200 rounded p-4">
-        <h3 className="font-bold text-gray-800 mb-1">⚙️ 파라미터 설정</h3>
-        <p className="text-sm text-gray-600">변경 후 저장 버튼을 눌러야 반영됩니다.</p>
+      <div className="bg-[#f0f4fa] border-l-4 border-[#2E75B6] px-5 py-4 rounded-md text-sm">
+        <b>⚙️ 파라미터 & 양식 설정</b>: 변경 후 저장 버튼을 눌러야 반영됩니다.
       </div>
 
       <div className="bg-white border rounded-lg p-5 space-y-4">
@@ -88,7 +87,7 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
 
       <div className="flex items-center gap-3">
         <button onClick={save}
-          className="bg-gray-700 hover:bg-gray-800 text-white font-bold px-6 py-2 rounded-lg transition">
+          className="bg-[#FF4B4B] hover:bg-[#e03030] text-white font-bold px-6 py-2 rounded-lg transition">
           💾 설정 저장
         </button>
         {saved && <span className="text-green-600 text-sm font-semibold">✅ 저장됐습니다.</span>}
@@ -96,16 +95,16 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
 
       <hr />
 
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 space-y-3">
-        <h4 className="font-bold text-blue-800">☁️ Supabase 동기화</h4>
-        <p className="text-sm text-blue-700">
+      <div className="bg-[#e8f4fd] rounded-lg p-5 space-y-3">
+        <h4 className="font-bold text-gray-700">☁️ Supabase 동기화</h4>
+        <p className="text-sm text-gray-600">
           로컬(localStorage)에 저장된 데이터를 Supabase 클라우드에 수동 업로드합니다.
           {!sb && <span className="ml-1 text-red-600 font-semibold">⚠ .env.local에 API 키가 없어 비활성화됨</span>}
         </p>
         <button
           onClick={sync}
           disabled={syncing || !sb}
-          className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold px-6 py-2 rounded-lg transition"
+          className="bg-[#2E75B6] hover:bg-[#1a5fa0] disabled:bg-gray-300 text-white font-semibold px-6 py-2 rounded-lg transition"
         >
           {syncing ? '⏳ 동기화 중...' : '☁️ Supabase에 동기화'}
         </button>

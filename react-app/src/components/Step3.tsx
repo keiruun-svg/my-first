@@ -3,6 +3,36 @@ import ExcelJS from 'exceljs'
 import { aggregateStats, buildOrderPlan } from '../lib/step2Core'
 import type { Metadata, Inventory, SalesAnalysis, AppSettings } from '../lib/types'
 
+function FileUploader({
+  label, fileRef, fileName, onChange,
+}: {
+  label: string; fileRef: React.RefObject<HTMLInputElement | null>; fileName: string
+  onChange: (name: string) => void
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <div className={`border rounded px-4 py-6 text-center bg-[#fafafa] transition-colors ${
+        fileName ? 'border-[#2E75B6] bg-[#f0f4fa]' : 'border-gray-300 hover:border-gray-400'
+      }`}>
+        {fileName ? (
+          <div className="text-sm text-[#2E75B6] font-medium mb-2">📄 {fileName}</div>
+        ) : (
+          <>
+            <div className="text-sm text-gray-500 mb-1">Drag and drop file here</div>
+            <div className="text-xs text-gray-400 mb-3">Limit 200MB per file • XLSX</div>
+          </>
+        )}
+        <label className="inline-flex items-center px-4 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded cursor-pointer hover:bg-gray-50 transition">
+          Browse files
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+            onChange={e => onChange(e.target.files?.[0]?.name ?? '')} />
+        </label>
+      </div>
+    </div>
+  )
+}
+
 interface Props {
   metadata: Metadata
   inventory: Inventory
@@ -316,57 +346,48 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-[#f0f4fa] border-l-4 border-[#7030A0] px-4 py-3 rounded">
+      <div className="bg-[#f0f4fa] border-l-4 border-[#2E75B6] px-5 py-4 rounded-md text-sm">
         <b>STEP 3 — 발주계획 생성</b>: STEP 1에서 생성한 <b>가공파일</b>을 업로드하면
         연간발주계획.xlsx를 생성합니다.
         현재고·기발주는 <b>📦 재고 현황</b> 탭, 수요 기반 분석은 <b>📈 STEP 2</b> 탭에서 사전 실행하세요.
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 space-y-2">
-          <label className="block text-sm font-semibold text-gray-700">가공파일.xlsx (STEP 1 결과) <span className="text-red-500">*필수</span></label>
-          <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg px-4 py-8 cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition">
-            <span className="text-3xl mb-2">📂</span>
-            <span className="text-sm text-gray-600">STEP 1에서 다운로드한 가공파일 업로드</span>
-            <span className="text-xs text-gray-400 mt-1">연도별 시트(YY년_케이블, YY년 하우징) 포함 파일</span>
-            {fileName && <span className="mt-2 text-sm text-green-600 font-medium">✓ {fileName}</span>}
-            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={e => setFileName(e.target.files?.[0]?.name ?? '')} />
-          </label>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+        <div className="md:col-span-2">
+          <FileUploader
+            label="가공파일.xlsx (STEP 1 결과)"
+            fileRef={fileRef}
+            fileName={fileName}
+            onChange={setFileName}
+          />
         </div>
 
-        <div className="space-y-2 text-sm">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <div className="font-semibold text-blue-800 mb-1">재고 현황 탭 입력값</div>
-            <div>케이블 <span className="font-bold">{nCableInv}</span>항목 입력됨</div>
-            <div>하우징 <span className="font-bold">{nHousingInv}</span>항목 입력됨</div>
-            <div className="text-xs text-blue-600 mt-1">수정: 📦 재고 현황 탭</div>
-          </div>
+        <div className="bg-[#e8f4fd] rounded-lg p-4 text-sm text-gray-700 space-y-2">
+          <div className="font-semibold mb-1">재고 현황 탭 입력값</div>
+          <div>케이블 <b>{nCableInv}</b>항목 / 하우징 <b>{nHousingInv}</b>항목</div>
+          <hr className="border-gray-300" />
           {nSales > 0 ? (
-            <div className="bg-green-50 border border-green-300 rounded-lg p-3 text-green-800">
-              ✅ 판매 분석 <span className="font-bold">{nSales}</span>개 품목 — 수요 기반 분석 자동 포함
-            </div>
+            <div className="text-[#1a6a2a] font-semibold">✅ 판매 분석 <b>{nSales}</b>개 품목 포함</div>
           ) : (
-            <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 text-yellow-800">
-              ⚠ 판매 분석 없음<br />
-              <span className="text-xs">📈 STEP 2 탭에서 먼저 실행하세요.</span>
-            </div>
+            <div className="text-[#856404]">⚠ 판매 분석 없음 — STEP 2 먼저 실행하세요.</div>
           )}
         </div>
       </div>
 
-      <div className="flex gap-3">
+      <hr className="border-gray-200" />
+
+      <div className="flex gap-2">
         <button
           onClick={run}
           disabled={running || !fileName}
-          className="flex-1 bg-[#7030A0] hover:bg-[#5a2580] disabled:bg-gray-400 text-white font-bold py-2.5 rounded transition"
+          className="flex-1 bg-[#FF4B4B] hover:bg-[#e03030] disabled:bg-gray-300 text-white font-semibold py-2 px-4 rounded transition text-sm"
         >
           {running ? '⏳ 생성 중...' : '▶ STEP 3 실행 — 발주계획 생성'}
         </button>
-        {done && (
+        {(done || logs.length > 0) && (
           <button
             onClick={() => { setDone(false); setLogs([]); setFileName(''); if (fileRef.current) fileRef.current.value = '' }}
-            className="px-4 py-2 text-sm border rounded text-gray-600 hover:bg-gray-100 transition"
+            className="px-4 py-2 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition"
           >
             🗑 초기화
           </button>
@@ -374,7 +395,7 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       </div>
 
       {done && (
-        <div className="bg-[#e8f5e9] border-l-4 border-[#1a7a3c] px-4 py-2 rounded text-sm font-semibold text-[#1a7a3c]">
+        <div className="bg-[#D6F0D8] px-4 py-3 rounded-md text-sm font-semibold text-[#1a6a2a]">
           ✅ STEP 3 완료 — 발주계획 생성! 💡 노란색 셀(2026 목표 발주량)에 목표량을 입력하면 필요 발주량이 자동 계산됩니다.
         </div>
       )}
