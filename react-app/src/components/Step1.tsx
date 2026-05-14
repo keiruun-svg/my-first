@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { runStep1 } from '../lib/step1Core'
+import { preprocessERP } from '../lib/convertCore'
 import { saveMetadata } from '../lib/supabase'
 import type { Metadata, AppSettings } from '../lib/types'
 import FileUploader from './FileUploader'
@@ -27,8 +28,26 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
     setRunning(true); setDone(false); setLogs([])
     try {
       const buf = await file.arrayBuffer()
-      const result = runStep1(buf, metadata)
-      setLogs(result.logs)
+      const convertLogs: string[] = []
+
+      // Step 1-A: ERP 원본 → 가공파일 변환
+      const gaongBuf = await preprocessERP(buf, convertLogs)
+
+      // Step 1-B: 가공파일 다운로드
+      const today = new Date()
+      const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`
+      const blob = new Blob([gaongBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `가공파일_${dateStr}.xlsx`
+      document.body.appendChild(a); a.click()
+      document.body.removeChild(a); URL.revokeObjectURL(url)
+
+      // Step 1-C: 가공파일로 품번 메타 업데이트
+      const result = runStep1(gaongBuf, metadata)
+      const allLogs = [...convertLogs, ...result.logs]
+      setLogs(allLogs)
+
       if (result.newCableKeys.length || result.newHousingKeys.length) {
         const newMeta: Metadata = {
           cable: { ...metadata.cable },
@@ -60,7 +79,7 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
       {/* step-box — matches web_app.py .step-box CSS exactly */}
       <div className="bg-[#f0f4fa] border-l-4 border-[#2E75B6] px-5 py-4 rounded-md text-sm">
         <b>STEP 1 — ERP 파일 가공</b>: 맥산 ERP에서 추출한 <b>구매조회</b> 또는 <b>구매현황</b> 파일을
-        업로드하면 생산자재_사용내역.xlsx를 자동 생성합니다.
+        업로드하면 <b>가공파일.xlsx</b>를 자동 다운로드하고, 품번 관리를 업데이트합니다.
         두 형식 모두 지원하며 자동으로 감지합니다. 품번·품명·구매처·리드타임은 <b>📋 품번 관리</b> 탭 정보로 자동 채워집니다.
       </div>
 
