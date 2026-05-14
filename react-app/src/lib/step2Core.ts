@@ -175,7 +175,7 @@ export function buildOrderPlan(
   const rows: OrderPlanRow[] = []
   const { cableStats, housingStats, years } = stats
 
-  const activeYears = years.filter(yr => ['23','24','25'].includes(yr))
+  const activeYears = years
 
   const addRows = (
     statsMap: Record<string, Record<string, YearStats>>,
@@ -200,15 +200,15 @@ export function buildOrderPlan(
         ? (Array.isArray(invRaw) ? invRaw : [invRaw])
         : [{ 현재고: 0, 기발주: 0 }]
 
-      const yrs23 = d['23']?.annual ?? 0
-      const yrs24 = d['24']?.annual ?? 0
-      const yrs25 = d['25']?.annual ?? 0
-      const avg = Math.round((yrs23 + yrs24 + yrs25) / 3)
-      const avgPeak = Math.round(
-        ((d['23']?.peak ?? 0) + (d['24']?.peak ?? 0) + (d['25']?.peak ?? 0)) / 3
-      )
-      const trend2324 = yrs23 > 0 ? (yrs24 - yrs23) / yrs23 : null
-      const trend2425 = yrs24 > 0 ? (yrs25 - yrs24) / yrs24 : null
+      const annuals = activeYears.map(yr => d[yr]?.annual ?? 0)
+      const peaks = activeYears.map(yr => d[yr]?.peak ?? 0)
+      const n = Math.max(activeYears.length, 1)
+      const avg = Math.round(annuals.reduce((a, b) => a + b, 0) / n)
+      const avgPeak = Math.round(peaks.reduce((a, b) => a + b, 0) / n)
+      const trend2324 = annuals.length >= 2 && annuals[annuals.length - 2] > 0
+        ? (annuals[annuals.length - 1] - annuals[annuals.length - 2]) / annuals[annuals.length - 2] : null
+      const trend2425 = annuals.length >= 3 && annuals[annuals.length - 3] > 0
+        ? (annuals[annuals.length - 2] - annuals[annuals.length - 3]) / annuals[annuals.length - 3] : null
 
       for (let i = 0; i < metas.length; i++) {
         const m = metas[i] as Record<string, unknown> ?? {}

@@ -51,8 +51,12 @@ export default function Step2({ sales, setSales }: Props) {
   const [salesName, setSalesName] = useState('')
   const [purchaseName, setPurchaseName] = useState('')
 
+  const salesYears = Array.from(new Set(
+    Object.values(sales).flatMap(v => Object.keys(v).filter(k => /^\d{2}$/.test(k)))
+  )).sort()
+
   const nSales = Object.values(sales).filter(v =>
-    ['23','24','25'].some(yr => (v[yr as '23'|'24'|'25']?.sales ?? 0) > 0)
+    salesYears.some(yr => ((v[yr] as { sales: number } | undefined)?.sales ?? 0) > 0)
   ).length
 
   const run = async () => {
@@ -83,9 +87,9 @@ export default function Step2({ sales, setSales }: Props) {
           const yrS = String(parseInt(String(yrRaw)))
           yr = yrS.length === 4 ? yrS.slice(2) : yrS.slice(-2)
         }
-        if (!['23','24','25'].includes(yr)) continue
+        if (!/^\d{2}$/.test(yr)) continue
         if (!salesBy[code]) salesBy[code] = { 품목명: name }
-        salesBy[code][yr] = (Number(salesBy[code][yr] ?? 0)) + qty
+        salesBy[code][yr] = (Number(salesBy[code][yr] as number ?? 0)) + qty
       }
       newLogs.push(`OJC 분류 완료 — ${Object.keys(salesBy).length.toLocaleString()}개 품목`)
 
@@ -106,18 +110,22 @@ export default function Step2({ sales, setSales }: Props) {
           const dateRaw = String(row['입고일자'] ?? '')
           const m = dateRaw.replace(/\s*-\d+\s*$/, '').match(/^(\d{2,4})/)
           if (m) yr = m[1].length === 4 ? m[1].slice(2) : m[1]
-          if (!['23','24','25'].includes(yr)) continue
+          if (!/^\d{2}$/.test(yr)) continue
           if (!prodBy[code]) prodBy[code] = {}
           prodBy[code][yr] = (prodBy[code][yr] ?? 0) + qty
         }
         newLogs.push(`구매관리(맥산) 파일 로드 완료`)
       }
 
+      const detectedYears = Array.from(new Set(
+        Object.values(salesBy).flatMap(sd => Object.keys(sd).filter(k => /^\d{2}$/.test(k)))
+      )).sort()
+
       const analysis: SalesAnalysis = {}
       for (const [code, sd] of Object.entries(salesBy)) {
-        const item: SalesItem = { 품목명: sd['품목명'] as string, '23': {sales:0,production:0,ratio:0}, '24': {sales:0,production:0,ratio:0}, '25': {sales:0,production:0,ratio:0} }
-        for (const yr of ['23','24','25'] as const) {
-          const s = Number(sd[yr] ?? 0)
+        const item: SalesItem = { 품목명: sd['품목명'] as string }
+        for (const yr of detectedYears) {
+          const s = Number(sd[yr] as number ?? 0)
           const p = Number(prodBy[code]?.[yr] ?? 0)
           item[yr] = { sales: s, production: p, ratio: p > 0 ? s / p : 0 }
         }
@@ -203,9 +211,14 @@ export default function Step2({ sales, setSales }: Props) {
             <table className="text-xs w-full">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
-                  {['품목코드','품목명','23년 판매','24년 판매','25년 판매','25년 생산비중'].map(h => (
-                    <th key={h} className="px-3 py-2 text-left border-b font-semibold text-gray-600">{h}</th>
+                  <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">품목코드</th>
+                  <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">품목명</th>
+                  {salesYears.map(yr => (
+                    <th key={yr} className="px-3 py-2 text-left border-b font-semibold text-gray-600">{yr}년 판매</th>
                   ))}
+                  {salesYears.length > 0 && (
+                    <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">{salesYears[salesYears.length - 1]}년 생산비중</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -213,10 +226,16 @@ export default function Step2({ sales, setSales }: Props) {
                   <tr key={code} className="hover:bg-gray-50 border-b">
                     <td className="px-3 py-1.5 font-mono text-gray-500">{code}</td>
                     <td className="px-3 py-1.5 max-w-xs truncate">{item.품목명}</td>
-                    <td className="px-3 py-1.5 text-right">{item['23'].sales.toLocaleString()}</td>
-                    <td className="px-3 py-1.5 text-right">{item['24'].sales.toLocaleString()}</td>
-                    <td className="px-3 py-1.5 text-right">{item['25'].sales.toLocaleString()}</td>
-                    <td className="px-3 py-1.5 text-right">{(item['25'].ratio * 100).toFixed(1)}%</td>
+                    {salesYears.map(yr => (
+                      <td key={yr} className="px-3 py-1.5 text-right">
+                        {((item[yr] as { sales: number } | undefined)?.sales ?? 0).toLocaleString()}
+                      </td>
+                    ))}
+                    {salesYears.length > 0 && (
+                      <td className="px-3 py-1.5 text-right">
+                        {(((item[salesYears[salesYears.length - 1]] as { ratio: number } | undefined)?.ratio ?? 0) * 100).toFixed(1)}%
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

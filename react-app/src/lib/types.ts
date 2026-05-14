@@ -1,5 +1,3 @@
-export type YearKey = '23' | '24' | '25'
-
 export interface YearStats {
   monthly: number[]
   annual: number
@@ -48,9 +46,7 @@ export interface SalesYearData {
 
 export interface SalesItem {
   품목명: string
-  '23': SalesYearData
-  '24': SalesYearData
-  '25': SalesYearData
+  [yr: string]: SalesYearData | string
 }
 
 export type SalesAnalysis = Record<string, SalesItem>
