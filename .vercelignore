@@ -1,0 +1,10 @@
+requirements.txt
+streamlit_app.py
+converter_app.py
+ojc_part_number.py
+pdf_to_excel_app.py
+read_sample.py
+AI/
+*.xlsx
+*.docx
+*.py
