@@ -1,16 +1,18 @@
 import { useState } from 'react'
 import { saveSettings, syncToSupabase, sb } from '../lib/supabase'
 import type { AppSettings, Metadata, Inventory, SalesAnalysis } from '../lib/types'
+import type { SalesAggResult } from '../lib/aggregate/salesAgg'
 
 interface Props {
-  settings: AppSettings
+  settings:    AppSettings
   setSettings: (s: AppSettings) => void
-  metadata: Metadata
-  inventory: Inventory
-  sales: SalesAnalysis
+  metadata:    Metadata
+  inventory:   Inventory
+  sales:       SalesAnalysis
+  salesAgg?:   SalesAggResult | null
 }
 
-export default function Settings({ settings, setSettings, metadata, inventory, sales }: Props) {
+export default function Settings({ settings, setSettings, metadata, inventory, sales, salesAgg }: Props) {
   const [saved, setSaved] = useState(false)
   const [syncStatus, setSyncStatus] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
@@ -28,10 +30,10 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
     }
     setSyncing(true); setSyncStatus(null)
     try {
-      const results = await syncToSupabase(settings, metadata, inventory, sales)
+      const results = await syncToSupabase(settings, metadata, inventory, sales, salesAgg)
       const failed = Object.entries(results).filter(([, v]) => !v).map(([k]) => k)
       if (!failed.length) {
-        setSyncStatus('✅ Supabase 동기화 완료! (설정 / 품번 메타 / 재고 / 판매 분석)')
+        setSyncStatus('✅ Supabase 동기화 완료! (설정 / 품번 메타 / 재고 / 판매 분석 / 판매 집계)')
       } else {
         setSyncStatus(`❌ 동기화 실패 항목: ${failed.join(', ')}`)
       }

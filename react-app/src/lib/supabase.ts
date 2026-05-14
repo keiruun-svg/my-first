@@ -48,6 +48,7 @@ export async function loadSettings(): Promise<AppSettings> {
 
 export function saveSettings(s: AppSettings) {
   lsSet('ajw_settings', s)
+  void sbSave('settings', s)
 }
 
 export async function loadMetadata(): Promise<Metadata> {
@@ -58,6 +59,7 @@ export async function loadMetadata(): Promise<Metadata> {
 
 export function saveMetadata(m: Metadata) {
   lsSet('ajw_metadata', m)
+  void sbSave('metadata', m)
 }
 
 export async function loadInventory(): Promise<Inventory> {
@@ -68,6 +70,7 @@ export async function loadInventory(): Promise<Inventory> {
 
 export function saveInventory(inv: Inventory) {
   lsSet('ajw_inventory', inv)
+  void sbSave('inventory', inv)
 }
 
 export async function loadSalesAnalysis(): Promise<SalesAnalysis> {
@@ -78,6 +81,7 @@ export async function loadSalesAnalysis(): Promise<SalesAnalysis> {
 
 export function saveSalesAnalysis(s: SalesAnalysis) {
   lsSet('ajw_sales', s)
+  void sbSave('sales', s)
 }
 
 export async function loadSalesAgg(): Promise<SalesAggResult | null> {
@@ -91,6 +95,7 @@ export async function loadSalesAgg(): Promise<SalesAggResult | null> {
 
 export function saveSalesAgg(s: SalesAggResult) {
   lsSet('ajw_sales_agg', s)
+  void sbSave('sales_agg', s)
 }
 
 export async function loadOjcRules(): Promise<OjcRules> {
@@ -109,12 +114,14 @@ export async function syncToSupabase(
   metadata: Metadata,
   inventory: Inventory,
   sales: SalesAnalysis,
+  salesAgg?: SalesAggResult | null,
 ): Promise<Record<string, boolean>> {
-  const [r1, r2, r3, r4] = await Promise.all([
-    sbSave('settings', settings),
-    sbSave('metadata', metadata),
+  const [r1, r2, r3, r4, r5] = await Promise.all([
+    sbSave('settings',  settings),
+    sbSave('metadata',  metadata),
     sbSave('inventory', inventory),
-    sbSave('sales', sales),
+    sbSave('sales',     sales),
+    salesAgg ? sbSave('sales_agg', salesAgg) : Promise.resolve(true),
   ])
-  return { 설정: r1, '품번 메타': r2, 재고: r3, '판매 분석': r4 }
+  return { 설정: r1, '품번 메타': r2, 재고: r3, '판매 분석': r4, '판매 집계': r5 }
 }

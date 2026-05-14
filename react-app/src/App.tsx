@@ -114,6 +114,7 @@ export default function App() {
           <Settings
             settings={settings} setSettings={setSettings}
             metadata={metadata} inventory={inventory} sales={sales}
+            salesAgg={salesAgg}
           />
         )}
       </div>
