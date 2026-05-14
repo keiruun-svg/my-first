@@ -348,6 +348,6 @@ export function preprocessERP(fileBuffer: ArrayBuffer, logs: string[]): ArrayBuf
     logs.push(`  ${year}년: ${merged.length}개 품목 변환 완료`)
   }
 
-  const buf = XLSX.write(wb_out, { type: 'array', bookType: 'xlsx' }) as Uint8Array
-  return buf.buffer as ArrayBuffer
+  const out = XLSX.write(wb_out, { type: 'array', bookType: 'xlsx' }) as number[]
+  return new Uint8Array(out).buffer as ArrayBuffer
 }
