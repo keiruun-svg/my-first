@@ -180,6 +180,7 @@ function parseRows(ws: XLSX.WorkSheet, sheetType: 'ojc' | 'purchase', logs: stri
   for (let i = 2; i < raw.length; i++) {
     const cells = raw[i] as unknown[]
     const cellsNum = rawNum[i] as unknown[]
+    if (!cells || !cellsNum) { skippedNoKey++; continue }
     let buyNo: unknown, pc: unknown, pr: unknown, gyRaw: unknown, qty: unknown
 
     if (sheetType === 'ojc') {

@@ -61,7 +61,8 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
       }
       setDone(true)
     } catch (e) {
-      setLogs([`❌ 오류: ${e}`])
+      const stack = e instanceof Error ? e.stack ?? '' : ''
+      setLogs([`❌ 오류: ${e}`, ...(stack ? [stack] : [])])
     } finally {
       setRunning(false)
     }
