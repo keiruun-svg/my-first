@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
-  loadSettings, loadMetadata, loadInventory, loadSalesAnalysis
+  loadSettings, loadMetadata, loadInventory, loadSalesAnalysis, loadSalesAgg
 } from './lib/supabase'
 import { DEFAULT_SETTINGS } from './lib/types'
 import type { AppSettings, Metadata, Inventory, SalesAnalysis } from './lib/types'
+import type { SalesAggResult } from './lib/aggregate/salesAgg'
 import Step1 from './components/Step1'
 import Step2 from './components/Step2'
 import Step3 from './components/Step3'
@@ -30,7 +31,8 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [metadata, setMetadata] = useState<Metadata>({ cable: {}, housing: {} })
   const [inventory, setInventory] = useState<Inventory>({ cable: {}, housing: {} })
-  const [sales, setSales] = useState<SalesAnalysis>({})
+  const [sales, setSales]         = useState<SalesAnalysis>({})
+  const [salesAgg, setSalesAgg]   = useState<SalesAggResult | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -38,11 +40,13 @@ export default function App() {
       loadMetadata(),
       loadInventory(),
       loadSalesAnalysis(),
-    ]).then(([s, m, inv, sa]) => {
+      loadSalesAgg(),
+    ]).then(([s, m, inv, sa, sagg]) => {
       setSettings(s)
       setMetadata(m)
       setInventory(inv)
       setSales(sa)
+      setSalesAgg(sagg)
       setLoading(false)
     })
   }, [])
@@ -92,7 +96,7 @@ export default function App() {
           <Step1 metadata={metadata} setMetadata={setMetadata} settings={settings} />
         )}
         {activeTab === 'step2' && (
-          <Step2 sales={sales} setSales={setSales} />
+          <Step2 salesAgg={salesAgg} setSalesAgg={setSalesAgg} />
         )}
         {activeTab === 'step3' && (
           <Step3 metadata={metadata} inventory={inventory} sales={sales} settings={settings} />

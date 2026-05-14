@@ -1,104 +1,51 @@
-import { useState } from 'react'
-import * as XLSX from 'xlsx'
-import { saveSalesAnalysis } from '../lib/supabase'
-import { classifyOjc } from '../lib/ojcFilter'
-import type { SalesAnalysis, SalesItem } from '../lib/types'
+import { useState, Fragment } from 'react'
+import { parseSalesFile, parseProductionFile } from '../lib/parse/parseSales'
+import { aggregateSales, forecastProduction } from '../lib/aggregate/salesAgg'
+import { saveSalesAgg } from '../lib/supabase'
+import type { SalesAggResult, SalesProductEntry } from '../lib/aggregate/salesAgg'
 import FileUploader from './FileUploader'
 
 interface Props {
-  sales: SalesAnalysis
-  setSales: (s: SalesAnalysis) => void
+  salesAgg:    SalesAggResult | null
+  setSalesAgg: (s: SalesAggResult) => void
 }
 
-export default function Step2({ sales, setSales }: Props) {
-  const [logs, setLogs] = useState<string[]>([])
-  const [running, setRunning] = useState(false)
-  const [done, setDone] = useState(false)
-  const [salesFile, setSalesFile] = useState<File | null>(null)
-  const [purchaseFile, setPurchaseFile] = useState<File | null>(null)
+const KIND_LABEL: Record<string, string> = {
+  'a1': 'A1 (SM)', 'a1-청': 'A1 청색', 'a1-녹': 'A1 녹색', 'a1-적': 'A1 적색', 'a1-자': 'A1 자색',
+  'b3': 'B3 (SM)', 'om1': 'OM1 (MM)', 'om3': 'OM3 (MM)',
+  'drop': 'DROP', 'pigtail': 'PIGTAIL', 'om1-pigtail': 'PIGTAIL (MM)',
+  'a2': 'Optical Cable',
+}
 
-  const salesYears = Array.from(new Set(
-    Object.values(sales).flatMap(v => Object.keys(v).filter(k => /^\d{2}$/.test(k)))
-  )).sort()
+const kindLabel = (k: string) => KIND_LABEL[k] ?? k.toUpperCase()
+const pct = (v: number) => `${Math.round(v * 100)}%`
+const cagr = (v: number) => {
+  const s = Math.round(v * 100)
+  return s === 0 ? '0%' : s > 0 ? `+${s}%` : `${s}%`
+}
+const num = (v: number) => v === 0 ? '—' : v.toLocaleString()
 
-  const nSales = Object.values(sales).filter(v =>
-    salesYears.some(yr => ((v[yr] as { sales: number } | undefined)?.sales ?? 0) > 0)
-  ).length
+export default function Step2({ salesAgg, setSalesAgg }: Props) {
+  const [logs, setLogs]                     = useState<string[]>([])
+  const [running, setRunning]               = useState(false)
+  const [done, setDone]                     = useState(false)
+  const [salesFile, setSalesFile]           = useState<File | null>(null)
+  const [purchaseFile, setPurchaseFile]     = useState<File | null>(null)
+  const [view, setView]                     = useState<'type' | 'product'>('type')
 
   const run = async () => {
-    if (!salesFile) return alert('판매량 파일을 선택해주세요.')
+    if (!salesFile) return alert('전체 판매량 파일을 선택해주세요.')
     setRunning(true); setDone(false); setLogs([])
     try {
       const newLogs: string[] = []
       const salesBuf = await salesFile.arrayBuffer()
-      const wb = XLSX.read(salesBuf, { type: 'array' })
-      const ws = wb.Sheets[wb.SheetNames[0]]
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
-      newLogs.push(`판매량 파일 로드 — ${rows.length.toLocaleString()}행`)
-
-      const salesBy: Record<string, { 품목명: string; [yr: string]: number | string }> = {}
-      for (const row of rows) {
-        const name = String(row['품목명'] ?? '')
-        const ojcType = classifyOjc(name)
-        if (!ojcType) continue
-        const code = String(row['품목코드'] ?? '').trim()
-        if (!code) continue
-        let qty = 0
-        try { qty = parseInt(String(row['수량'])) || 0 } catch {}
-        if (qty <= 0) continue
-        let yr = ''
-        const yrRaw = row['년']
-        if (yrRaw) {
-          const yrS = String(parseInt(String(yrRaw)))
-          yr = yrS.length === 4 ? yrS.slice(2) : yrS.slice(-2)
-        }
-        if (!/^\d{2}$/.test(yr)) continue
-        if (!salesBy[code]) salesBy[code] = { 품목명: name }
-        salesBy[code][yr] = (Number(salesBy[code][yr] as number ?? 0)) + qty
-      }
-      newLogs.push(`OJC 분류 완료 — ${Object.keys(salesBy).length.toLocaleString()}개 품목`)
-
-      const prodBy: Record<string, { [yr: string]: number }> = {}
-      if (purchaseFile) {
-        const purchBuf = await purchaseFile.arrayBuffer()
-        const pwb = XLSX.read(purchBuf, { type: 'array' })
-        const pws = pwb.Sheets[pwb.SheetNames[0]]
-        const prows = XLSX.utils.sheet_to_json<Record<string, unknown>>(pws, { defval: null })
-        for (const row of prows) {
-          const code = String(row['품목코드'] ?? '').trim()
-          if (!code) continue
-          let qty = 0
-          try { qty = parseInt(String(row['수량'])) || 0 } catch {}
-          if (qty <= 0) continue
-          let yr = ''
-          const dateRaw = String(row['입고일자'] ?? '')
-          const m = dateRaw.replace(/\s*-\d+\s*$/, '').match(/^(\d{2,4})/)
-          if (m) yr = m[1].length === 4 ? m[1].slice(2) : m[1]
-          if (!/^\d{2}$/.test(yr)) continue
-          if (!prodBy[code]) prodBy[code] = {}
-          prodBy[code][yr] = (prodBy[code][yr] ?? 0) + qty
-        }
-        newLogs.push(`구매관리(맥산) 파일 로드 완료`)
-      }
-
-      const detectedYears = Array.from(new Set(
-        Object.values(salesBy).flatMap(sd => Object.keys(sd).filter(k => /^\d{2}$/.test(k)))
-      )).sort()
-
-      const analysis: SalesAnalysis = {}
-      for (const [code, sd] of Object.entries(salesBy)) {
-        const item: SalesItem = { 품목명: sd['품목명'] as string }
-        for (const yr of detectedYears) {
-          const s = Number(sd[yr] as number ?? 0)
-          const p = Number(prodBy[code]?.[yr] ?? 0)
-          item[yr] = { sales: s, production: p, ratio: p > 0 ? s / p : 0 }
-        }
-        analysis[code] = item
-      }
-
-      saveSalesAnalysis(analysis)
-      setSales(analysis)
-      newLogs.push(`✅ 판매 분석 완료 — ${Object.keys(analysis).length.toLocaleString()}개 품목`)
+      const salesRows = parseSalesFile(salesBuf, newLogs)
+      const prodRows = purchaseFile
+        ? parseProductionFile(await purchaseFile.arrayBuffer(), newLogs)
+        : []
+      const result = aggregateSales(salesRows, prodRows, newLogs)
+      saveSalesAgg(result)
+      setSalesAgg(result)
       setLogs(newLogs)
       setDone(true)
     } catch (e) {
@@ -108,23 +55,28 @@ export default function Step2({ sales, setSales }: Props) {
     }
   }
 
+  const years      = salesAgg?.years ?? []
+  const latestYr   = years[years.length - 1]
+  const nextYrLabel = latestYr ? `${Number(latestYr) + 1}년` : ''
+  const forecast   = salesAgg && latestYr
+    ? forecastProduction(salesAgg, String(Number(latestYr) + 1), latestYr)
+    : {}
+
   return (
     <div className="space-y-4">
-      {/* step-box */}
       <div className="bg-[#f0f4fa] border-l-4 border-[#2E75B6] px-5 py-4 rounded-md text-sm">
-        <b>STEP 2 — 판매 분석</b>: 전체 판매량 파일과 구매관리(맥산) 파일을 분석하여
-        품목별 판매/생산 비중을 계산합니다. STEP 3 수요 기반 분석에 자동 반영됩니다.
+        <b>STEP 2 — 판매 분석</b>: OJC 완제품의 <b>전체 판매량</b>과 <b>맥산 생산량</b>을 비교합니다.
+        수입 완제품 = 전체 판매 − 맥산 생산. 판매 CAGR × 생산비중 = <b>B안 발주 예측</b>으로 STEP 3에 자동 반영됩니다.
       </div>
 
-      {/* columns [1, 1] */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FileUploader
-          label="① 전체 판매량.xlsx (ERP 원본)"
+          label="① 전체 판매량.xlsx — 컬럼: 품목코드, 품목명, 년, 수량"
           fileName={salesFile?.name ?? ''}
           onFile={setSalesFile}
         />
         <FileUploader
-          label="② 구매관리(맥산).xlsx (ERP 원본)"
+          label="② 구매관리(맥산).xlsx — 컬럼: 품목코드, 품목명, 입고일자, 수량"
           fileName={purchaseFile?.name ?? ''}
           onFile={setPurchaseFile}
           optional
@@ -133,7 +85,6 @@ export default function Step2({ sales, setSales }: Props) {
 
       <hr className="border-gray-200" />
 
-      {/* buttons */}
       <div className="flex gap-2">
         <button
           onClick={run}
@@ -152,59 +103,168 @@ export default function Step2({ sales, setSales }: Props) {
         )}
       </div>
 
-      {done && nSales > 0 && (
+      {done && (
         <div className="bg-[#D6F0D8] px-4 py-3 rounded-md text-sm font-semibold text-[#1a6a2a]">
-          ✅ 판매 분석 완료 — <b>{nSales.toLocaleString()}</b>개 품목 저장됨. STEP 3에서 수요 기반 분석이 자동 포함됩니다.
+          ✅ 판매 분석 완료 — STEP 3에 B안(판매CAGR × 생산비중) 예측이 자동 반영됩니다.
         </div>
       )}
 
       {logs.length > 0 && (
-        <div className="bg-[#1e1e1e] text-[#d4d4d4] rounded p-3 font-mono text-xs space-y-0.5 max-h-48 overflow-y-auto">
+        <div className="bg-[#1e1e1e] text-[#d4d4d4] rounded p-3 font-mono text-xs leading-5 max-h-48 overflow-y-auto">
           {logs.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}
 
-      {nSales > 0 && !done && (
-        <div>
-          <div className="text-sm font-semibold text-gray-700 mb-2">
-            저장된 분석 데이터 — <b>{nSales.toLocaleString()}</b>개 품목
+      {salesAgg && years.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex gap-1 text-sm">
+            {(['type', 'product'] as const).map(v => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`px-3 py-1.5 rounded font-medium border transition ${
+                  view === v
+                    ? 'bg-[#2E75B6] text-white border-[#2E75B6]'
+                    : 'bg-white text-gray-600 border-gray-300 hover:border-[#2E75B6]'
+                }`}
+              >
+                {v === 'type' ? '① 타입별 요약' : '② 품목별 상세'}
+              </button>
+            ))}
           </div>
-          <div className="overflow-x-auto border border-gray-200 rounded">
-            <table className="text-xs w-full">
-              <thead className="bg-gray-50 sticky top-0">
-                <tr>
-                  <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">품목코드</th>
-                  <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">품목명</th>
-                  {salesYears.map(yr => (
-                    <th key={yr} className="px-3 py-2 text-left border-b font-semibold text-gray-600">{yr}년 판매</th>
-                  ))}
-                  {salesYears.length > 0 && (
-                    <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">{salesYears[salesYears.length - 1]}년 생산비중</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(sales).slice(0, 100).map(([code, item]) => (
-                  <tr key={code} className="hover:bg-gray-50 border-b">
-                    <td className="px-3 py-1.5 font-mono text-gray-500">{code}</td>
-                    <td className="px-3 py-1.5 max-w-xs truncate">{item.품목명}</td>
-                    {salesYears.map(yr => (
-                      <td key={yr} className="px-3 py-1.5 text-right">
-                        {((item[yr] as { sales: number } | undefined)?.sales ?? 0).toLocaleString()}
-                      </td>
-                    ))}
-                    {salesYears.length > 0 && (
-                      <td className="px-3 py-1.5 text-right">
-                        {(((item[salesYears[salesYears.length - 1]] as { ratio: number } | undefined)?.ratio ?? 0) * 100).toFixed(1)}%
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+
+          {view === 'type' && (
+            <TypeSummary
+              byType={salesAgg.byType}
+              salesCagr={salesAgg.salesCagr}
+              years={years}
+              forecast={forecast}
+              nextYrLabel={nextYrLabel}
+            />
+          )}
+          {view === 'product' && (
+            <ProductDetail byProduct={salesAgg.byProduct} years={years} />
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── 타입별 요약 테이블 ──────────────────────────────────────────
+function TypeSummary({
+  byType, salesCagr, years, forecast, nextYrLabel,
+}: {
+  byType:       SalesAggResult['byType']
+  salesCagr:    SalesAggResult['salesCagr']
+  years:        string[]
+  forecast:     Record<string, number>
+  nextYrLabel:  string
+}) {
+  const kinds = Object.keys(byType).sort()
+
+  return (
+    <div className="overflow-x-auto border border-gray-200 rounded">
+      <table className="text-xs w-full whitespace-nowrap">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>타입</th>
+            {years.map(yr => (
+              <th key={yr} className="px-2 py-1 text-center border-b font-semibold text-gray-600" colSpan={3}>
+                {yr}년
+              </th>
+            ))}
+            <th className="px-3 py-2 text-center border-b font-semibold text-blue-700" rowSpan={2}>판매<br/>CAGR</th>
+            {nextYrLabel && (
+              <th className="px-3 py-2 text-center border-b font-semibold text-orange-700" rowSpan={2}>
+                B안 예측<br/>{nextYrLabel}
+              </th>
+            )}
+          </tr>
+          <tr>
+            {years.map(yr => (
+              <Fragment key={yr}>
+                <th className="px-2 py-1 text-right border-b text-gray-500 font-normal">판매</th>
+                <th className="px-2 py-1 text-right border-b text-gray-500 font-normal">생산</th>
+                <th className="px-2 py-1 text-right border-b text-gray-500 font-normal">생산%</th>
+              </Fragment>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {kinds.map((kind, i) => {
+            const entry = byType[kind]
+            const c = salesCagr[kind] ?? 0
+            const f = forecast[kind]
+            return (
+              <tr key={kind} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                <td className="px-3 py-1.5 font-medium text-gray-800">{kindLabel(kind)}</td>
+                {years.map(yr => {
+                  const e = entry[yr]
+                  return (
+                    <Fragment key={yr}>
+                      <td className="px-2 py-1.5 text-right">{num(e?.sales ?? 0)}</td>
+                      <td className="px-2 py-1.5 text-right text-blue-700">{num(e?.production ?? 0)}</td>
+                      <td className="px-2 py-1.5 text-right text-gray-500">
+                        {e?.sales ? pct(e.ratio) : '—'}
+                      </td>
+                    </Fragment>
+                  )
+                })}
+                <td className={`px-3 py-1.5 text-center font-semibold ${c >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
+                  {cagr(c)}
+                </td>
+                {nextYrLabel && (
+                  <td className="px-3 py-1.5 text-right font-semibold text-orange-700">
+                    {f ? f.toLocaleString() : '—'}
+                  </td>
+                )}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      <div className="px-3 py-2 text-xs text-gray-400 border-t">
+        ※ B안 예측 = 최근년 판매 × (1 + 판매CAGR) × 최근년 생산비중 | 단위: 완제품 수량(EA) | STEP 3에서 자재량으로 변환
+      </div>
+    </div>
+  )
+}
+
+// ── 품목별 상세 테이블 ──────────────────────────────────────────
+function ProductDetail({ byProduct, years }: { byProduct: SalesProductEntry[]; years: string[] }) {
+  return (
+    <div className="overflow-x-auto border border-gray-200 rounded">
+      <table className="text-xs w-full">
+        <thead className="bg-gray-50 sticky top-0">
+          <tr>
+            <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">품목코드</th>
+            <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">품목명</th>
+            <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">타입</th>
+            {years.map(yr => (
+              <th key={yr} className="px-3 py-2 text-right border-b font-semibold text-gray-600">{yr}년 판매</th>
+            ))}
+            {years.map(yr => (
+              <th key={`p-${yr}`} className="px-3 py-2 text-right border-b font-semibold text-blue-600">{yr}년 생산</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {byProduct.map((p, i) => (
+            <tr key={p.code || p.name} className={i % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 hover:bg-gray-100'}>
+              <td className="px-3 py-1.5 font-mono text-gray-500 text-xs">{p.code || '—'}</td>
+              <td className="px-3 py-1.5 max-w-xs truncate" title={p.name}>{p.name}</td>
+              <td className="px-3 py-1.5 text-gray-500">{kindLabel(p.kind)}</td>
+              {years.map(yr => (
+                <td key={yr} className="px-3 py-1.5 text-right">{num(p.byYear[yr]?.sales ?? 0)}</td>
+              ))}
+              {years.map(yr => (
+                <td key={`p-${yr}`} className="px-3 py-1.5 text-right text-blue-700">{num(p.byYear[yr]?.production ?? 0)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

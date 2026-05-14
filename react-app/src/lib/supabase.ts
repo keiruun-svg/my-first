@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { AppSettings, Inventory, Metadata, OjcRules, SalesAnalysis } from './types'
 import { DEFAULT_OJC_RULES } from './types'
+import type { SalesAggResult } from './aggregate/salesAgg'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string
 const key = import.meta.env.VITE_SUPABASE_KEY as string
@@ -77,6 +78,19 @@ export async function loadSalesAnalysis(): Promise<SalesAnalysis> {
 
 export function saveSalesAnalysis(s: SalesAnalysis) {
   lsSet('ajw_sales', s)
+}
+
+export async function loadSalesAgg(): Promise<SalesAggResult | null> {
+  const d = await sbLoad('sales_agg')
+  if (d) return d as SalesAggResult
+  try {
+    const v = localStorage.getItem('ajw_sales_agg')
+    return v ? JSON.parse(v) as SalesAggResult : null
+  } catch { return null }
+}
+
+export function saveSalesAgg(s: SalesAggResult) {
+  lsSet('ajw_sales_agg', s)
 }
 
 export async function loadOjcRules(): Promise<OjcRules> {
