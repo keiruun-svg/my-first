@@ -3,7 +3,6 @@
  * 구매조회 / 구매현황 ERP 파일 → 연도별 시트(가공파일) 변환
  */
 import * as XLSX from 'xlsx'
-import ExcelJS from 'exceljs'
 
 // ── 타입 ─────────────────────────────────────────────────────
 interface ErpRow {
@@ -243,8 +242,8 @@ function buildMerged(rows: ErpRow[]): PivotRow[] {
   return [...map.values()].sort((a, b) => a.품목코드.localeCompare(b.품목코드))
 }
 
-// ── 시트 작성 ────────────────────────────────────────────────
-function writeSheets(wb: ExcelJS.Workbook, merged: PivotRow[], YY: string) {
+// ── 시트 작성 (SheetJS) ──────────────────────────────────────
+function writeSheets(wb_out: XLSX.WorkBook, merged: PivotRow[], YY: string) {
   const cH = ['품목코드','품목명','규격명','케이블 종류','파이','코어수','케이블 길이','타입 1','타입2',
     ...Array.from({length:12}, (_,i) => `${YY}년${String(i+1).padStart(2,'0')}월`),
     '케이블 사용량','최고제작량','최고판매 케이블 소요량']
@@ -260,9 +259,8 @@ function writeSheets(wb: ExcelJS.Workbook, merged: PivotRow[], YY: string) {
     '3.0MM - FC/PC(흑색)','3.0MM - FC/PC(적색)','3.0MM - FC/APC(녹색)','3.0MM - FC/APC(적색)',
     '검증','계산수량']
 
-  const wsc = wb.addWorksheet(`${YY}년_케이블`)
-  const wsh = wb.addWorksheet(`${YY}년 하우징`)
-  wsc.addRow(cH); wsh.addRow(hH)
+  const cData: (string | number | null)[][] = [cH]
+  const hData: (string | number | null)[][] = [hH]
 
   for (const row of merged) {
     const total  = row.monthly.reduce((a, b) => a + b, 0)
@@ -272,8 +270,7 @@ function writeSheets(wb: ExcelJS.Workbook, merged: PivotRow[], YY: string) {
     const peakUsage = Math.round(peak * len)
     const core   = row.코어수
 
-    // 케이블 시트 행
-    wsc.addRow([
+    cData.push([
       row.품목코드, row.품목명, row.규격명,
       row.케이블종류, row.파이, core, row.케이블길이 ?? null,
       row.타입1 || null, row.타입2 || null,
@@ -281,32 +278,33 @@ function writeSheets(wb: ExcelJS.Workbook, merged: PivotRow[], YY: string) {
       usage || null, peak || null, peakUsage || null,
     ])
 
-    // 하우징 시트 행
     const hRow: (string | number | null)[] = [
       row.품목코드, row.품목명, row.규격명,
       row.케이블종류, row.파이, core, row.케이블길이 ?? null,
       row.타입1 || null, row.타입2 || null,
       ...row.monthly.map(v => v || null),
       total || null,
-      ...new Array(25).fill(null),  // cols 23-47 (housing quantities)
-      null, null,                    // cols 48-49
+      ...new Array(25).fill(null),
+      null, null,
     ]
     const housing = calcHousing(row)
     for (const [col1, val] of Object.entries(housing))
-      hRow[parseInt(col1) - 1] = val || null   // convert 1-based col to 0-based index
+      hRow[parseInt(col1) - 1] = val || null
 
-    // 검증 (col 48, index 47): IF(F=1,V*2,IF(F=2,V*F*2,V*F*2))
-    const vTotal = total
-    hRow[47] = core === 1 ? vTotal * 2 : vTotal * core * 2
-    // 계산수량 (col 49, index 48): SUM of cols 23-47
+    hRow[47] = core === 1 ? total * 2 : total * core * 2
     hRow[48] = Object.values(housing).reduce((a, b) => a + b, 0) || null
 
-    wsh.addRow(hRow)
+    hData.push(hRow)
   }
+
+  const wsc = XLSX.utils.aoa_to_sheet(cData)
+  const wsh = XLSX.utils.aoa_to_sheet(hData)
+  XLSX.utils.book_append_sheet(wb_out, wsc, `${YY}년_케이블`)
+  XLSX.utils.book_append_sheet(wb_out, wsh, `${YY}년 하우징`)
 }
 
 // ── 메인 함수 ────────────────────────────────────────────────
-export async function preprocessERP(fileBuffer: ArrayBuffer, logs: string[]): Promise<ArrayBuffer> {
+export function preprocessERP(fileBuffer: ArrayBuffer, logs: string[]): ArrayBuffer {
   const wb_in = XLSX.read(fileBuffer, { type: 'array', cellDates: false, raw: false })
   const sheets = wb_in.SheetNames
 
@@ -331,15 +329,13 @@ export async function preprocessERP(fileBuffer: ArrayBuffer, logs: string[]): Pr
     throw new Error(`파싱된 데이터가 없습니다. 파일 형식을 확인해주세요.${diag ? '\n' + diag : ''}`)
   }
 
-  // 연도별로 그룹화
   const yearMap = new Map<string, ErpRow[]>()
   for (const row of rows) {
     if (!yearMap.has(row.연도)) yearMap.set(row.연도, [])
     yearMap.get(row.연도)!.push(row)
   }
 
-  const wb_out = new ExcelJS.Workbook()
-  wb_out.creator = 'AJW 발주계획 시스템'
+  const wb_out = XLSX.utils.book_new()
 
   for (const [year, yRows] of [...yearMap.entries()].sort()) {
     const YY = year.slice(-2)
@@ -348,6 +344,6 @@ export async function preprocessERP(fileBuffer: ArrayBuffer, logs: string[]): Pr
     logs.push(`  ${year}년: ${merged.length}개 품목 변환 완료`)
   }
 
-  const buf = await wb_out.xlsx.writeBuffer()
-  return buf as ArrayBuffer
+  const buf = XLSX.write(wb_out, { type: 'array', bookType: 'xlsx' }) as Uint8Array
+  return buf.buffer
 }

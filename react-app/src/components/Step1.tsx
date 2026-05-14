@@ -31,7 +31,7 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
       const convertLogs: string[] = []
 
       // Step 1-A: ERP 원본 → 가공파일 변환
-      const gaongBuf = await preprocessERP(buf, convertLogs)
+      const gaongBuf = preprocessERP(buf, convertLogs)
 
       // Step 1-B: 가공파일 다운로드
       const today = new Date()
