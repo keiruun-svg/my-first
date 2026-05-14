@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { saveSettings, syncToSupabase, sb } from '../lib/supabase'
+import { saveSettings, syncToSupabase, sb, CAN_WRITE } from '../lib/supabase'
 import type { AppSettings, Metadata, Inventory, SalesAnalysis } from '../lib/types'
 import type { SalesAggResult } from '../lib/aggregate/salesAgg'
 
@@ -111,21 +111,29 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
 
       <div className="bg-[#e8f4fd] rounded-lg p-5 space-y-3">
         <h4 className="font-bold text-gray-700">☁️ Supabase 동기화</h4>
-        <p className="text-sm text-gray-600">
-          로컬(localStorage)에 저장된 데이터를 Supabase 클라우드에 수동 업로드합니다.
-          {!sb && <span className="ml-1 text-red-600 font-semibold">⚠ .env.local에 API 키가 없어 비활성화됨</span>}
-        </p>
-        <button
-          onClick={sync}
-          disabled={syncing || !sb}
-          className="bg-[#2E75B6] hover:bg-[#1a5fa0] disabled:bg-gray-300 text-white font-semibold px-6 py-2 rounded-lg transition"
-        >
-          {syncing ? '⏳ 동기화 중...' : '☁️ Supabase에 동기화'}
-        </button>
-        {syncStatus && (
-          <div className={`rounded p-3 text-sm font-medium ${syncStatus.startsWith('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-            {syncStatus}
-          </div>
+        {CAN_WRITE ? (
+          <>
+            <p className="text-sm text-gray-600">
+              로컬(localStorage)에 저장된 데이터를 Supabase 클라우드에 수동 업로드합니다.
+              {!sb && <span className="ml-1 text-red-600 font-semibold">⚠ .env.local에 API 키가 없어 비활성화됨</span>}
+            </p>
+            <button
+              onClick={sync}
+              disabled={syncing || !sb}
+              className="bg-[#2E75B6] hover:bg-[#1a5fa0] disabled:bg-gray-300 text-white font-semibold px-6 py-2 rounded-lg transition"
+            >
+              {syncing ? '⏳ 동기화 중...' : '☁️ Supabase에 동기화'}
+            </button>
+            {syncStatus && (
+              <div className={`rounded p-3 text-sm font-medium ${syncStatus.startsWith('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                {syncStatus}
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-gray-500">
+            🔒 이 환경에서는 Supabase 쓰기가 비활성화됩니다. 품번 수정은 로컬 개발 환경에서만 가능합니다.
+          </p>
         )}
       </div>
 

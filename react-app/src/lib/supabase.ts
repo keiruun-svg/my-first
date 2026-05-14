@@ -8,6 +8,9 @@ const key = import.meta.env.VITE_SUPABASE_KEY as string
 
 export const sb = url && key ? createClient(url, key) : null
 
+// 프로덕션 빌드(Vercel)에서는 Supabase 쓰기 차단 — 읽기 전용
+export const CAN_WRITE = import.meta.env.DEV
+
 async function sbLoad(id: string): Promise<unknown | null> {
   if (!sb) return null
   try {
@@ -17,7 +20,7 @@ async function sbLoad(id: string): Promise<unknown | null> {
 }
 
 async function sbSave(id: string, data: unknown): Promise<boolean> {
-  if (!sb) return false
+  if (!sb || !CAN_WRITE) return false
   try {
     await sb.from('app_data').upsert({ id, data })
     return true

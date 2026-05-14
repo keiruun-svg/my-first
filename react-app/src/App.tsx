@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
-  loadSettings, loadMetadata, loadInventory, loadSalesAnalysis, loadSalesAgg
+  loadSettings, loadMetadata, loadInventory, loadSalesAnalysis, loadSalesAgg, CAN_WRITE
 } from './lib/supabase'
 import { DEFAULT_SETTINGS } from './lib/types'
 import type { AppSettings, Metadata, Inventory, SalesAnalysis } from './lib/types'
@@ -13,17 +13,19 @@ import InventoryComp from './components/Inventory'
 import Settings from './components/Settings'
 import PartNumberGenerator from './components/PartNumberGenerator'
 
-const TABS = [
-  { id: 'step1',     label: '📤 STEP 1 — ERP 파일 가공' },
-  { id: 'step2',     label: '📈 STEP 2 — 판매 분석' },
-  { id: 'step3',     label: '📊 STEP 3 — 발주계획 생성' },
-  { id: 'partnum',   label: '🏷 품번 생성기' },
-  { id: 'meta',      label: '📋 품번 관리' },
-  { id: 'inventory', label: '📦 재고 현황' },
-  { id: 'settings',  label: '⚙️ 파라미터 & 양식 설정' },
+const ALL_TABS = [
+  { id: 'step1',     label: '📤 STEP 1 — ERP 파일 가공',  devOnly: false },
+  { id: 'step2',     label: '📈 STEP 2 — 판매 분석',      devOnly: false },
+  { id: 'step3',     label: '📊 STEP 3 — 발주계획 생성',  devOnly: false },
+  { id: 'partnum',   label: '🏷 품번 생성기',              devOnly: false },
+  { id: 'meta',      label: '📋 품번 관리',                devOnly: true  },  // 로컬 전용
+  { id: 'inventory', label: '📦 재고 현황',                devOnly: false },
+  { id: 'settings',  label: '⚙️ 파라미터 & 양식 설정',   devOnly: false },
 ] as const
 
-type TabId = typeof TABS[number]['id']
+const TABS = ALL_TABS.filter(t => !t.devOnly || CAN_WRITE)
+
+type TabId = typeof ALL_TABS[number]['id']
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('step1')
@@ -104,7 +106,7 @@ export default function App() {
         {activeTab === 'partnum' && (
           <PartNumberGenerator />
         )}
-        {activeTab === 'meta' && (
+        {activeTab === 'meta' && CAN_WRITE && (
           <MetaManager metadata={metadata} setMetadata={setMetadata} />
         )}
         {activeTab === 'inventory' && (
