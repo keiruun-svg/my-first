@@ -320,6 +320,9 @@ export function preprocessERP(fileBuffer: ArrayBuffer, logs: string[]): ArrayBuf
       ? '구매현황 파일 (맥산 납품 형식) 감지 → 자동 변환 시작'
       : '구매현황 형식 감지 → 자동 변환 시작')
     rows = parseRows(ws, fmt, logs)
+  } else if (sheets.includes('생산현황')) {
+    logs.push('생산현황 형식 감지 → 자동 변환 시작')
+    rows = parseRows(wb_in.Sheets['생산현황'], 'ojc', logs)
   } else {
     throw new Error(`지원하지 않는 파일 형식입니다. 시트 목록: ${sheets.join(', ')}`)
   }
