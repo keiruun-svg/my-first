@@ -3,6 +3,7 @@ import type { Metadata, Inventory, SalesAnalysis, YearStats } from './types'
 
 const MM_KINDS = new Set(['om1','om1-pigtail','om3'])
 const PAI_ORDER: Record<string, number> = { '2.0mm': 0, '3.0mm': 1, '0.9mm': 2 }
+const PIGTAIL_COLORS = ['청','등','녹','적','황','자','갈','흑','백','회','연청','연등']
 
 function normalPai(p: unknown): string {
   const s = String(p ?? '').trim()
@@ -23,7 +24,7 @@ function mc2(kind: unknown, core: unknown): string {
     'a1-청':'A1_청','a1-녹':'A1_녹','a1-적':'A1_적','a1-자':'A1_자',
   }
   if (bm[k]) return `${bm[k]}-${sd}`
-  if (k === 'drop') return 'DROP'
+  if (k === 'drop') return `DROP-${sd}`
   if (k === 'pigtail' || k === 'om1-pigtail') return 'PIGTAIL'
   if (k === 'a2') return 'Optical cable'
   return k.toUpperCase()
@@ -100,7 +101,16 @@ export function aggregateStats(fileBuffer: ArrayBuffer): Step2Stats {
         if (!kind || !pai || !length) continue
         const ct = mc2(kind, core); const p = normalPai(pai)
         const len = parseFloat(String(length)) || 0
-        if (ct === 'PIGTAIL' && p === '0.9mm') continue
+        if (ct === 'PIGTAIL' && p === '0.9mm') {
+          let nc = 1; try { nc = parseInt(String(core)) || 1 } catch {}
+          for (const color of PIGTAIL_COLORS.slice(0, nc)) {
+            const key = `${p}|pigtail-${color}`; initKey(cableAgg, key)
+            for (let i = 0; i < 12; i++) {
+              const q = row[9 + i]; if (q) cableAgg[key][yr][i] += parseFloat(String(q)) * len
+            }
+          }
+          continue
+        }
         const key = `${p}|${ct}`; initKey(cableAgg, key)
         for (let i = 0; i < 12; i++) {
           const q = row[9 + i]; if (q) cableAgg[key][yr][i] += parseFloat(String(q)) * len
@@ -240,12 +250,34 @@ export function buildOrderPlan(
   addRows(cableStats, 'cable')
   addRows(housingStats, 'housing')
 
-  // Sales-based 제안량
-  if (Object.keys(sales).length) {
-    // simplified: use 25년 sales trend to project
-    for (const row of rows) {
-      row.제안량 = Math.round(row.avgAnnual * 1.05)
+  for (const row of rows) {
+    const { yearStats } = row
+    const lastYr = activeYears[activeYears.length - 1]
+    const firstYr = activeYears[0]
+    const aLast = yearStats[lastYr]?.annual ?? 0
+    const aFirst = yearStats[firstYr]?.annual ?? 0
+    const nYrs = activeYears.length - 1
+    let cagr = 0
+    if (aFirst > 0 && aLast > 0 && nYrs > 0) {
+      cagr = Math.pow(aLast / aFirst, 1 / nYrs) - 1
+    } else if (aLast > 0 && activeYears.length >= 2) {
+      const aPrev = yearStats[activeYears[activeYears.length - 2]]?.annual ?? 0
+      if (aPrev > 0) cagr = aLast / aPrev - 1
     }
+    if (Object.keys(sales).length) {
+      const salesItem = sales[row.품번] as Record<string, { sales: number; ratio: number }> | undefined
+      if (salesItem) {
+        const sLast = (salesItem[lastYr]?.sales ?? 0)
+        const sFirst = (salesItem[firstYr]?.sales ?? 0)
+        if (sFirst > 0 && sLast > 0 && nYrs > 0) cagr = Math.pow(sLast / sFirst, 1 / nYrs) - 1
+        else if (sLast > 0 && activeYears.length >= 2) {
+          const sPrev = salesItem[activeYears[activeYears.length - 2]]?.sales ?? 0
+          if (sPrev > 0) cagr = sLast / sPrev - 1
+        }
+      }
+    }
+    cagr = Math.min(Math.max(cagr, -0.5), 1.0)
+    row.제안량 = Math.round(aLast > 0 ? aLast * (1 + cagr) : row.avgAnnual)
   }
 
   return rows

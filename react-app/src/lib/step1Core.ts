@@ -3,6 +3,7 @@ import type { YearStats, Metadata } from './types'
 
 const MM_KINDS = new Set(['om1','om1-pigtail','om3'])
 const PAI_ORDER: Record<string, number> = { '2.0mm': 0, '3.0mm': 1, '0.9mm': 2 }
+const PIGTAIL_COLORS = ['청','등','녹','적','황','자','갈','흑','백','회','연청','연등']
 
 function normalPai(p: unknown): string {
   const s = String(p ?? '').trim()
@@ -23,7 +24,7 @@ function mc2(kind: unknown, core: unknown): string {
     'a1-청': 'A1_청', 'a1-녹': 'A1_녹', 'a1-적': 'A1_적', 'a1-자': 'A1_자',
   }
   if (bm[k]) return `${bm[k]}-${sd}`
-  if (k === 'drop') return 'DROP'
+  if (k === 'drop') return `DROP-${sd}`
   if (k === 'pigtail' || k === 'om1-pigtail') return 'PIGTAIL'
   if (k === 'a2') return 'Optical cable'
   return k.toUpperCase()
@@ -108,7 +109,17 @@ export function runStep1(fileBuffer: ArrayBuffer, metadata: Metadata): Step1Resu
       const pc = normalPai(pai)
       const len = parseFloat(String(length)) || 0
 
-      if (ct === 'PIGTAIL' && pc === '0.9mm') continue
+      if (ct === 'PIGTAIL' && pc === '0.9mm') {
+        let nc = 1; try { nc = parseInt(String(core)) || 1 } catch {}
+        for (const color of PIGTAIL_COLORS.slice(0, nc)) {
+          const key = `${pc}|pigtail-${color}`; initKey(cableAgg, key)
+          for (let i = 0; i < 12; i++) {
+            const q = (row as unknown[])[9 + i]
+            if (q) cableAgg[key][yr][i] += parseFloat(String(q)) * len
+          }
+        }
+        continue
+      }
 
       const key = `${pc}|${ct}`
       initKey(cableAgg, key)

@@ -35,6 +35,7 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       const buf = await gaongFile.arrayBuffer()
       const stats = aggregateStats(buf)
       setLogs(stats.logs)
+      const allYears = stats.years
 
       const rows = buildOrderPlan(stats, metadata, inventory, sales, settings.lead_time_default)
       const wb = new ExcelJS.Workbook()
@@ -55,12 +56,21 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       title.alignment = { horizontal: 'center', vertical: 'middle' }
       wsc.getRow(1).height = 26
 
+      const yrSlots: (string | undefined)[] = [
+        allYears[allYears.length - 3],
+        allYears[allYears.length - 2],
+        allYears[allYears.length - 1],
+      ]
+      const yrColors = [settings.colors.year_23, settings.colors.year_24, settings.colors.year_25]
+      const yrLabel = (s: string | undefined) => s ? `20${s}년` : '—'
+      const nYrs = allYears.length
+
       wsc.getRow(2).height = 18
       const subHeaders = [
         ['A2:G2','기본 정보','374151'],
-        ['H2:I2','2023년',settings.colors.year_23],
-        ['J2:K2','2024년',settings.colors.year_24],
-        ['L2:M2','2025년',settings.colors.year_25],
+        ['H2:I2', yrLabel(yrSlots[0]), yrColors[0]],
+        ['J2:K2', yrLabel(yrSlots[1]), yrColors[1]],
+        ['L2:M2', yrLabel(yrSlots[2]), yrColors[2]],
         ['N2:Q2','📊 트렌드 분석','375623'],
         ['R2:R2','⚠ 안전재고','C00000'],
         ['S2:T2','재고 현황','7030A0'],
@@ -80,7 +90,8 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       wsc.getRow(3).height = 42
       const hdrs = ['NO','파이','케이블종류','품번','품명','구매처','리드타임\n(일)',
         '연간(m)','피크(m)','연간(m)','피크(m)','연간(m)','피크(m)',
-        '3개년\n평균연간','3개년\n피크평균','23→24\n증감률','24→25\n증감률',
+        `${nYrs}개년\n평균연간`, `${nYrs}개년\n피크평균`,
+        `${yrSlots[0]??'—'}→${yrSlots[1]??'—'}\n증감률`, `${yrSlots[1]??'—'}→${yrSlots[2]??'—'}\n증감률`,
         '안전재고\n(m)','현재고\n(m)','기발주\n(참고)','2026목표\n(m)','필요발주\n(m)','비고']
       const colWidths = [5,8,20,16,38,14,9,12,12,12,12,12,12,13,13,11,11,11,11,11,13,13,20]
       hdrs.forEach((h, i) => {
@@ -98,9 +109,9 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       for (const row of cableRows) {
         const rf = ri % 2 === 0 ? { type:'pattern' as const, pattern:'solid' as const, fgColor:{ argb:'FFF5F5F5' } } : undefined
         const vals = [no, row.pai, row.ctype, row.품번, row.품명, row.구매처, row.리드타임,
-          row.yearStats['23']?.annual||null, row.yearStats['23']?.peak||null,
-          row.yearStats['24']?.annual||null, row.yearStats['24']?.peak||null,
-          row.yearStats['25']?.annual||null, row.yearStats['25']?.peak||null,
+          yrSlots[0] ? row.yearStats[yrSlots[0]]?.annual||null : null, yrSlots[0] ? row.yearStats[yrSlots[0]]?.peak||null : null,
+          yrSlots[1] ? row.yearStats[yrSlots[1]]?.annual||null : null, yrSlots[1] ? row.yearStats[yrSlots[1]]?.peak||null : null,
+          yrSlots[2] ? row.yearStats[yrSlots[2]]?.annual||null : null, yrSlots[2] ? row.yearStats[yrSlots[2]]?.peak||null : null,
           { formula: `=ROUND(AVERAGE(H${ri},J${ri},L${ri}),0)` },
           { formula: `=ROUND(AVERAGE(I${ri},K${ri},M${ri}),0)` },
           { formula: `=IFERROR((J${ri}-H${ri})/H${ri},"")` },
@@ -142,6 +153,17 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       titleH.alignment = { horizontal:'center', vertical:'middle' }
       wsh.getRow(1).height = 26
 
+      wsh.getRow(2).height = 18
+      for (const [rng, lbl, color] of subHeaders) {
+        if (rng.includes(':')) wsh.mergeCells(rng)
+        const cell = wsh.getCell(rng.split(':')[0])
+        cell.value = lbl
+        cell.fill = { type:'pattern', pattern:'solid', fgColor: { argb:'FF'+color } }
+        cell.font = { name:'Arial', bold:true, size:9, color:{ argb:'FFFFFFFF' } }
+        cell.alignment = { horizontal:'center', vertical:'middle' }
+        cell.border = allBorders
+      }
+
       ri = 4; no = 1
       const housingRows = rows.filter(r => r.type === 'housing')
       for (const [i, col] of hdrs.entries()) {
@@ -156,9 +178,9 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       for (const row of housingRows) {
         const rf = ri % 2 === 0 ? { type:'pattern' as const, pattern:'solid' as const, fgColor:{ argb:'FFF5F5F5' } } : undefined
         const vals = [no, row.pai, row.ctype, row.품번, row.품명, row.구매처, row.리드타임,
-          row.yearStats['23']?.annual||null, row.yearStats['23']?.peak||null,
-          row.yearStats['24']?.annual||null, row.yearStats['24']?.peak||null,
-          row.yearStats['25']?.annual||null, row.yearStats['25']?.peak||null,
+          yrSlots[0] ? row.yearStats[yrSlots[0]]?.annual||null : null, yrSlots[0] ? row.yearStats[yrSlots[0]]?.peak||null : null,
+          yrSlots[1] ? row.yearStats[yrSlots[1]]?.annual||null : null, yrSlots[1] ? row.yearStats[yrSlots[1]]?.peak||null : null,
+          yrSlots[2] ? row.yearStats[yrSlots[2]]?.annual||null : null, yrSlots[2] ? row.yearStats[yrSlots[2]]?.peak||null : null,
           { formula: `=ROUND(AVERAGE(H${ri},J${ri},L${ri}),0)` },
           { formula: `=ROUND(AVERAGE(I${ri},K${ri},M${ri}),0)` },
           { formula: `=IFERROR((J${ri}-H${ri})/H${ri},"")` },
