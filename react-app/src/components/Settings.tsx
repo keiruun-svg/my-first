@@ -60,6 +60,18 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
         </div>
 
         <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">안전재고 계수 k</label>
+          <input type="number" min="0.5" max="3.0" step="0.1"
+            value={settings.safety_stock_k ?? 1.5}
+            onChange={e => setSettings({ ...settings, safety_stock_k: parseFloat(e.target.value) || 1.5 })}
+            className="w-32 border rounded px-3 py-1.5 text-sm focus:outline-blue-400"
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            안전재고 = 월평균 × (리드타임/30) × k &nbsp;|&nbsp; 권장: 1.5(보통) ~ 2.0(보수적)
+          </p>
+        </div>
+
+        <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">연도별 색상 (HEX, # 제외)</label>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {([

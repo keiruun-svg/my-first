@@ -30,7 +30,7 @@ export default function Step3({ metadata, inventory, settings }: Props) {
     setRunning(true); setDone(false); setLogs([]); setRows([])
     try {
       const buf = await gaongFile.arrayBuffer()
-      const result = buildStep3Plan(buf, metadata, inventory, settings.lead_time_default)
+      const result = buildStep3Plan(buf, metadata, inventory, settings.lead_time_default, settings.safety_stock_k ?? 1.5)
       setLogs(result.logs)
       setRows(result.rows)
       setYears(result.years)
@@ -66,7 +66,7 @@ export default function Step3({ metadata, inventory, settings }: Props) {
       <div className="bg-[#f0f4fa] border-l-4 border-[#2E75B6] px-5 py-4 rounded-md text-sm">
         <b>STEP 3 — 발주계획 생성</b>: STEP 1 가공파일을 업로드하면 자재별 <b>안전재고</b>와
         <b>발주 필요량</b>을 한눈에 파악하고 Excel로 다운로드합니다.
-        <span className="text-gray-500 ml-1">안전재고 = 월최대 × 리드타임(일) / 30</span>
+        <span className="text-gray-500 ml-1">안전재고 = 월평균 × (LT/30) × k &nbsp;(k={settings.safety_stock_k ?? 1.5}, ⚙️ 설정에서 변경)</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">

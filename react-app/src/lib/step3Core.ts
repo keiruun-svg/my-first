@@ -37,6 +37,7 @@ export function buildStep3Plan(
   metadata:  Metadata,
   inventory: Inventory,
   ltDefault: number,
+  safetyK = 1.5,
 ): { rows: Step3Row[]; years: string[]; logs: string[] } {
   const logs: string[] = []
   const wb    = XLSX.read(fileBuffer, { type: 'array' })
@@ -112,7 +113,7 @@ export function buildStep3Plan(
     row.품명     = String(meta['품명'] ?? '')
     row.구매처   = String(meta['구매처'] ?? '')
     row.리드타임 = ltDays(meta['리드타임'], ltDefault)
-    row.안전재고 = Math.round(row.latestPeak * row.리드타임 / 30)
+    row.안전재고 = Math.round((row.latestAnnual / 12) * (row.리드타임 / 30) * safetyK)
     row.현재고   = Number(inv['현재고'] ?? 0)
     row.기발주   = 0
     row.발주필요량 = Math.max(0, row.latestAnnual + row.안전재고 - row.현재고)
@@ -131,7 +132,7 @@ export function buildStep3Plan(
     row.품명     = String(meta['품명'] ?? '')
     row.구매처   = String(meta['구매처'] ?? '')
     row.리드타임 = ltDays(meta['리드타임'], ltDefault)
-    row.안전재고 = Math.round(row.latestPeak * row.리드타임 / 30)
+    row.안전재고 = Math.round((row.latestAnnual / 12) * (row.리드타임 / 30) * safetyK)
     row.현재고   = Number(inv['현재고'] ?? 0)
     row.기발주   = Number(inv['기발주'] ?? 0)
     row.발주필요량 = Math.max(0, row.latestAnnual + row.안전재고 - row.현재고 - row.기발주)
@@ -148,6 +149,7 @@ export function buildStep3Plan(
   const nH = allRows.filter(r => r.type === 'housing').length
   const nMissing = allRows.filter(r => !r.품번).length
   logs.push(`집계 완료 — 케이블 ${nC}타입 / 하우징 ${nH}타입`)
+  logs.push(`안전재고 계수 k=${safetyK} (안전재고 = 월평균 × LT/30 × ${safetyK})`)
   if (nMissing) logs.push(`⚠ 품번 미등록 ${nMissing}건 — 품번 관리 탭에서 입력 필요`)
 
   return { rows: allRows, years, logs }

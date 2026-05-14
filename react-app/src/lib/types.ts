@@ -53,6 +53,7 @@ export type SalesAnalysis = Record<string, SalesItem>
 
 export interface AppSettings {
   lead_time_default: number
+  safety_stock_k: number   // 안전재고 계수 (1.0~3.0, default 1.5)
   colors: {
     main_header: string
     year_23: string
@@ -63,6 +64,7 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   lead_time_default: 60,
+  safety_stock_k: 1.5,
   colors: {
     main_header: '1F3864',
     year_23: '2F5597',
