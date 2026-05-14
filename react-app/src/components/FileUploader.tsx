@@ -1,27 +1,34 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 interface Props {
   label: string
-  fileRef: React.RefObject<HTMLInputElement | null>
   fileName: string
-  onChange: (name: string) => void
+  onFile: (file: File) => void
   optional?: boolean
 }
 
-export default function FileUploader({ label, fileRef, fileName, onChange, optional = false }: Props) {
+export default function FileUploader({ label, fileName, onFile, optional = false }: Props) {
+  const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
+  const dragCounter = useRef(0)
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
+    dragCounter.current = 0
     setDragging(false)
     const file = e.dataTransfer.files?.[0]
-    if (!file) return
-    if (fileRef.current) {
-      const dt = new DataTransfer()
-      dt.items.add(file)
-      fileRef.current.files = dt.files
-    }
-    onChange(file.name)
+    if (file) onFile(file)
+  }
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounter.current++
+    setDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    if (--dragCounter.current === 0) setDragging(false)
   }
 
   return (
@@ -38,9 +45,9 @@ export default function FileUploader({ label, fileRef, fileName, onChange, optio
               ? 'border-[#2E75B6] bg-[#f0f4fa]'
               : 'border-gray-300 hover:border-gray-400'
         }`}
-        onDragOver={e => { e.preventDefault(); setDragging(true) }}
-        onDragEnter={e => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={e => { e.preventDefault(); setDragging(false) }}
+        onDragOver={e => e.preventDefault()}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
         {fileName ? (
@@ -53,11 +60,20 @@ export default function FileUploader({ label, fileRef, fileName, onChange, optio
             <div className="text-xs text-gray-400 mb-3">Limit 200MB per file • XLSX</div>
           </>
         )}
-        <label className="inline-flex items-center px-4 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded cursor-pointer hover:bg-gray-50 transition">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="inline-flex items-center px-4 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded cursor-pointer hover:bg-gray-50 transition"
+        >
           Browse files
-          <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
-            onChange={e => onChange(e.target.files?.[0]?.name ?? '')} />
-        </label>
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f) }}
+        />
       </div>
     </div>
   )

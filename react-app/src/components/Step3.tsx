@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import ExcelJS from 'exceljs'
 import { aggregateStats, buildOrderPlan } from '../lib/step2Core'
 import type { Metadata, Inventory, SalesAnalysis, AppSettings } from '../lib/types'
@@ -17,8 +17,7 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
   const [logs, setLogs] = useState<string[]>([])
   const [running, setRunning] = useState(false)
   const [done, setDone] = useState(false)
-  const [fileName, setFileName] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [gaongFile, setGaongFile] = useState<File | null>(null)
 
   const nCableInv = Object.values(inventory.cable).filter(v => (v?.현재고 ?? 0) > 0).length
   const nHousingInv = Object.values(inventory.housing).filter(v => {
@@ -26,15 +25,14 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
     return items.some(i => (i?.현재고 ?? 0) > 0 || (i?.기발주 ?? 0) > 0)
   }).length
   const nSales = Object.values(sales).filter(v =>
-    ['23','24','25'].some(yr => (v[yr as '23'|'24'|'25']?.sales ?? 0) > 0)
+    Object.keys(v).filter(k => /^\d{2}$/.test(k)).some(yr => ((v[yr] as { sales: number } | undefined)?.sales ?? 0) > 0)
   ).length
 
   const run = async () => {
-    const file = fileRef.current?.files?.[0]
-    if (!file) return alert('ERP 파일을 선택해주세요.')
+    if (!gaongFile) return alert('가공파일을 선택해주세요.')
     setRunning(true); setDone(false); setLogs([])
     try {
-      const buf = await file.arrayBuffer()
+      const buf = await gaongFile.arrayBuffer()
       const stats = aggregateStats(buf)
       setLogs(stats.logs)
 
@@ -327,9 +325,8 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
         <div className="md:col-span-2">
           <FileUploader
             label="가공파일.xlsx (STEP 1 결과)"
-            fileRef={fileRef}
-            fileName={fileName}
-            onChange={setFileName}
+            fileName={gaongFile?.name ?? ''}
+            onFile={setGaongFile}
           />
         </div>
 
@@ -350,14 +347,14 @@ export default function Step3({ metadata, inventory, sales, settings }: Props) {
       <div className="flex gap-2">
         <button
           onClick={run}
-          disabled={running || !fileName}
+          disabled={running || !gaongFile}
           className="flex-1 bg-[#FF4B4B] hover:bg-[#e03030] disabled:bg-gray-300 text-white font-semibold py-2 px-4 rounded transition text-sm"
         >
           {running ? '⏳ 생성 중...' : '▶ STEP 3 실행 — 발주계획 생성'}
         </button>
         {(done || logs.length > 0) && (
           <button
-            onClick={() => { setDone(false); setLogs([]); setFileName(''); if (fileRef.current) fileRef.current.value = '' }}
+            onClick={() => { setDone(false); setLogs([]); setGaongFile(null) }}
             className="px-4 py-2 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition"
           >
             🗑 초기화

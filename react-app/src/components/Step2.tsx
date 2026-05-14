@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import * as XLSX from 'xlsx'
 import { saveSalesAnalysis } from '../lib/supabase'
 import { classifyOjc } from '../lib/ojcFilter'
@@ -14,10 +14,8 @@ export default function Step2({ sales, setSales }: Props) {
   const [logs, setLogs] = useState<string[]>([])
   const [running, setRunning] = useState(false)
   const [done, setDone] = useState(false)
-  const salesRef = useRef<HTMLInputElement>(null)
-  const purchaseRef = useRef<HTMLInputElement>(null)
-  const [salesName, setSalesName] = useState('')
-  const [purchaseName, setPurchaseName] = useState('')
+  const [salesFile, setSalesFile] = useState<File | null>(null)
+  const [purchaseFile, setPurchaseFile] = useState<File | null>(null)
 
   const salesYears = Array.from(new Set(
     Object.values(sales).flatMap(v => Object.keys(v).filter(k => /^\d{2}$/.test(k)))
@@ -28,7 +26,6 @@ export default function Step2({ sales, setSales }: Props) {
   ).length
 
   const run = async () => {
-    const salesFile = salesRef.current?.files?.[0]
     if (!salesFile) return alert('판매량 파일을 선택해주세요.')
     setRunning(true); setDone(false); setLogs([])
     try {
@@ -61,7 +58,6 @@ export default function Step2({ sales, setSales }: Props) {
       }
       newLogs.push(`OJC 분류 완료 — ${Object.keys(salesBy).length.toLocaleString()}개 품목`)
 
-      const purchaseFile = purchaseRef.current?.files?.[0]
       const prodBy: Record<string, { [yr: string]: number }> = {}
       if (purchaseFile) {
         const purchBuf = await purchaseFile.arrayBuffer()
@@ -124,15 +120,13 @@ export default function Step2({ sales, setSales }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FileUploader
           label="① 전체 판매량.xlsx (ERP 원본)"
-          fileRef={salesRef}
-          fileName={salesName}
-          onChange={setSalesName}
+          fileName={salesFile?.name ?? ''}
+          onFile={setSalesFile}
         />
         <FileUploader
           label="② 구매관리(맥산).xlsx (ERP 원본)"
-          fileRef={purchaseRef}
-          fileName={purchaseName}
-          onChange={setPurchaseName}
+          fileName={purchaseFile?.name ?? ''}
+          onFile={setPurchaseFile}
           optional
         />
       </div>
@@ -143,14 +137,14 @@ export default function Step2({ sales, setSales }: Props) {
       <div className="flex gap-2">
         <button
           onClick={run}
-          disabled={running || !salesName}
+          disabled={running || !salesFile}
           className="flex-1 bg-[#FF4B4B] hover:bg-[#e03030] disabled:bg-gray-300 text-white font-semibold py-2 px-4 rounded transition text-sm"
         >
           {running ? '⏳ 분석 중...' : '▶ STEP 2 실행 — 판매 분석'}
         </button>
         {(done || logs.length > 0) && (
           <button
-            onClick={() => { setDone(false); setLogs([]) }}
+            onClick={() => { setDone(false); setLogs([]); setSalesFile(null); setPurchaseFile(null) }}
             className="px-4 py-2 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition"
           >
             🗑 초기화

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { runStep1 } from '../lib/step1Core'
 import { preprocessERP } from '../lib/convertCore'
 import { saveMetadata } from '../lib/supabase'
@@ -15,19 +15,17 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
   const [logs, setLogs] = useState<string[]>([])
   const [running, setRunning] = useState(false)
   const [done, setDone] = useState(false)
-  const [fileName, setFileName] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [erpFile, setErpFile] = useState<File | null>(null)
 
   const nCable = Object.keys(metadata.cable).length
   const nHousing = Object.keys(metadata.housing).length
   const ltDefault = settings?.lead_time_default ?? 60
 
   const run = async () => {
-    const file = fileRef.current?.files?.[0]
-    if (!file) return alert('ERP 파일을 선택해주세요.')
+    if (!erpFile) return alert('ERP 파일을 선택해주세요.')
     setRunning(true); setDone(false); setLogs([])
     try {
-      const buf = await file.arrayBuffer()
+      const buf = await erpFile.arrayBuffer()
       const convertLogs: string[] = []
 
       // Step 1-A: ERP 원본 → 가공파일 변환
@@ -70,8 +68,7 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
   }
 
   const reset = () => {
-    setDone(false); setLogs([]); setFileName('')
-    if (fileRef.current) fileRef.current.value = ''
+    setDone(false); setLogs([]); setErpFile(null)
   }
 
   return (
@@ -88,9 +85,8 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
         <div className="md:col-span-2">
           <FileUploader
             label="구매조회 / 구매현황 파일 (ERP 원본)"
-            fileRef={fileRef}
-            fileName={fileName}
-            onChange={setFileName}
+            fileName={erpFile?.name ?? ''}
+            onFile={setErpFile}
           />
         </div>
 
@@ -109,7 +105,7 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
       <div className="flex gap-2">
         <button
           onClick={run}
-          disabled={running || !fileName}
+          disabled={running || !erpFile}
           className="flex-1 bg-[#FF4B4B] hover:bg-[#e03030] disabled:bg-gray-300 text-white font-semibold py-2 px-4 rounded transition text-sm"
         >
           {running ? '⏳ 처리 중...' : '▶ STEP 1 실행 — ERP 파일 가공 & 사용내역 생성'}
