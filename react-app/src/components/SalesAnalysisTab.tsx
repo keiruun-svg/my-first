@@ -49,6 +49,8 @@ const num      = (v: number) => v === 0 ? '—' : v.toLocaleString()
 const dec1     = (v: number) => v.toFixed(1)
 const fmtPrice = (v: number) => v === 0 ? '—' : v.toLocaleString() + '원'
 
+const CUSTOMER_TOP3_EXCLUDE = new Set(['칼라 열수축 슬리브', '단심 열수축 슬리브'])
+
 type SubView = 'ojc' | 'customer' | 'full'
 
 // ── 타입 ─────────────────────────────────────────────────────────────
@@ -245,10 +247,11 @@ export default function SalesAnalysisTab() {
     return cats
   }, [etcRows, latestYr])
 
-  // 거래처별 탑3 집계
+  // 거래처별 탑3 집계 (열수축 슬리브 제외)
   const customerTop3 = useMemo(() => {
     const custMap: Record<string, Record<string, { code: string; qty: number; price: number }>> = {}
     for (const row of rawRows) {
+      if (CUSTOMER_TOP3_EXCLUDE.has(row.name)) continue
       const cust = row.customer || '(미상)'
       if (!custMap[cust]) custMap[cust] = {}
       if (!custMap[cust][row.name]) custMap[cust][row.name] = { code: row.code, qty: 0, price: 0 }
