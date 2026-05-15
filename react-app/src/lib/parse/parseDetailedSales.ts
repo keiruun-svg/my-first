@@ -44,8 +44,13 @@ export function parseDetailedSalesFile(
   logs: string[],
 ): DetailedSalesRow[] {
   const wb = XLSX.read(buffer, { type: 'array' })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
+  const raw: Record<string, unknown>[] = []
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName]
+    if (!ws || !ws['!ref']) continue  // 빈 시트 스킵
+    const sheetRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
+    raw.push(...sheetRows)
+  }
 
   const rows: DetailedSalesRow[] = []
   let skipped = 0

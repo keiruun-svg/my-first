@@ -1,688 +1,772 @@
 {
   "cable": {
-    "0.9mm|PIGTAIL": {
-      "품번": "P14-RM-417C",
-      "품명": "OPTICAL CABLE 0.9mm SM (ROSE,연등)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
-    },
-    "2.0mm|A1-12C": {
-      "품번": "P14-RM-4204C",
-      "품명": "DISTRIBUTION\n  CABLE G657A1 (12C)",
-      "구매처": "CFOFC",
-      "리드타임": 60
-    },
-    "2.0mm|A1-16C": {
-      "품번": "P14-RM-4205C",
-      "품명": "DISTRIBUTION\n  CABLE G657A1 (16C)",
-      "구매처": "CFOFC",
-      "리드타임": 60
-    },
-    "2.0mm|A1-20C": {
-      "품번": "P14-RM-4206",
-      "품명": "DISTRIBUTION\n  CABLE G657A1 (20C)",
-      "구매처": "CFOFC",
-      "리드타임": 60
-    },
-    "2.0mm|A1-24C": {
-      "품번": "P14-RM-4207",
-      "품명": "DISTRIBUTION CABLE G657A1 (24C)",
-      "구매처": "CFOFC",
-      "리드타임": 60
-    },
     "2.0mm|A1-8C": {
-      "품번": "P14-RM-4203C",
       "품명": "DISTRIBUTION CABLE G657A1 (8C)",
+      "품번": "P14-RM-4203C",
       "구매처": "CFOFC",
       "리드타임": 60
     },
     "2.0mm|A1-DP": {
-      "품번": "P14-RM-4189R",
       "품명": "OPTICAL\n  CABLE 2.0mm G657A1 DP-SM (YELLOW,황)",
+      "품번": "P14-RM-4189R",
       "구매처": "HUAMAI",
       "리드타임": 60
     },
     "2.0mm|A1-SP": {
-      "품번": "P14-RM-4188",
       "품명": "OPTICAL\n  CABLE 2.0mm G657A1 SP-SM (YELLOW,황)",
+      "품번": "P14-RM-4188",
       "구매처": "HUAMAI",
       "리드타임": 60
-    },
-    "2.0mm|A1_녹-DP": {
-      "품번": "P14-RM-4183",
-      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 DP-SM (GREEN,녹)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
-    },
-    "2.0mm|A1_녹-SP": {
-      "품번": "P14-RM-4184",
-      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 SP-SM (GREEN,녹)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
-    },
-    "2.0mm|A1_자-DP": {
-      "품번": "P14-RM-418F",
-      "품명": "OPTICAL CABLE 2.0mm G657A1 DP-SM (VIOLET, 자)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
-    },
-    "2.0mm|A1_적-DP": {
-      "품번": "P14-RM-418CR",
-      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 DP-SM (RED,적)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
-    },
-    "2.0mm|A1_적-SP": {
-      "품번": "P14-RM-418D",
-      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 SP-SM (RED,적)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
-    },
-    "2.0mm|A1_청-DP": {
-      "품번": "P14-RM-4181R",
-      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 DP-SM (BLUE,청)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
-    },
-    "2.0mm|A1_청-SP": {
-      "품번": "P14-RM-4182",
-      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 SP-SM (BLUE,청)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
-    },
-    "2.0mm|B3-12C": {
-      "품번": "",
-      "품명": "",
-      "구매처": "",
-      "리드타임": null
-    },
-    "2.0mm|B3-16C": {
-      "품번": "",
-      "품명": "",
-      "구매처": "",
-      "리드타임": null
-    },
-    "2.0mm|B3-24C": {
-      "품번": "",
-      "품명": "",
-      "구매처": "",
-      "리드타임": null
     },
     "2.0mm|B3-4C": {
-      "품번": "",
       "품명": "",
+      "품번": "",
       "구매처": "",
       "리드타임": null
     },
     "2.0mm|B3-6C": {
-      "품번": "",
       "품명": "",
+      "품번": "",
       "구매처": "",
       "리드타임": null
     },
     "2.0mm|B3-8C": {
-      "품번": "",
       "품명": "",
+      "품번": "",
       "구매처": "",
       "리드타임": null
     },
     "2.0mm|B3-DP": {
-      "품번": "P14-RM-418R",
       "품명": "OPTICAL\n  CABLE 2.0mm G657 B3 DP-SM (YELLOW,황)",
+      "품번": "P14-RM-418R",
       "구매처": "HUAMAI",
       "리드타임": 60
     },
     "2.0mm|B3-SP": {
-      "품번": "P14-RM-418Q",
       "품명": "OPTICAL\n  CABLE 2.0mm G657 B3 SP-SM (YELLOW,황)",
+      "품번": "P14-RM-418Q",
       "구매처": "HUAMAI",
       "리드타임": 60
-    },
-    "2.0mm|OM1-DP": {
-      "품번": "P14-RM-4185R",
-      "품명": "OPTICAL\n  CABLE 2.0mm DP-MM(OM1) (ORANGE,등)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
-    },
-    "2.0mm|OM1-SP": {
-      "품번": "P14-RM-418E",
-      "품명": "OPTICAL\n  CABLE 2.0mm SP-MM(OM1) (ORANGE,등)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
-    },
-    "2.0mm|OM3-DP": {
-      "품번": "P14-RM-418BR",
-      "품명": "OPTICAL\n  CABLE 2.0mm DP-MM(OM3) (AQUA,연청)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
-    },
-    "2.0mm|Optical cable": {
-      "품번": "P14-RM-419A",
-      "품명": "OPTICAL CABLE 3.0mm SP-SM",
-      "구매처": "",
-      "리드타임": null
     },
     "3.0mm|B3-DP": {
-      "품번": "P14-RM-4196",
       "품명": "OPTICAL\n  CABLE 3.0mm G657 B3 DP-SM (YELLOW,황)",
+      "품번": "P14-RM-4196",
       "구매처": "",
       "리드타임": null
     },
     "3.0mm|B3-SP": {
-      "품번": "P14-RM-4195",
       "품명": "OPTICAL\n  CABLE 3.0mm G657 B3 SP-SM (YELLOW,황)",
+      "품번": "P14-RM-4195",
       "구매처": "",
       "리드타임": null
     },
+    "2.0mm|A1-12C": {
+      "품명": "DISTRIBUTION\n  CABLE G657A1 (12C)",
+      "품번": "P14-RM-4204C",
+      "구매처": "CFOFC",
+      "리드타임": 60
+    },
+    "2.0mm|A1-16C": {
+      "품명": "DISTRIBUTION\n  CABLE G657A1 (16C)",
+      "품번": "P14-RM-4205C",
+      "구매처": "CFOFC",
+      "리드타임": 60
+    },
+    "2.0mm|A1-20C": {
+      "품명": "DISTRIBUTION\n  CABLE G657A1 (20C)",
+      "품번": "P14-RM-4206",
+      "구매처": "CFOFC",
+      "리드타임": 60
+    },
+    "2.0mm|A1-24C": {
+      "품명": "DISTRIBUTION CABLE G657A1 (24C)",
+      "품번": "P14-RM-4207",
+      "구매처": "CFOFC",
+      "리드타임": 60
+    },
+    "2.0mm|B3-12C": {
+      "품명": "",
+      "품번": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "2.0mm|B3-16C": {
+      "품명": "",
+      "품번": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "2.0mm|B3-24C": {
+      "품명": "",
+      "품번": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "2.0mm|OM1-DP": {
+      "품명": "OPTICAL\n  CABLE 2.0mm DP-MM(OM1) (ORANGE,등)",
+      "품번": "P14-RM-4185R",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
+    "2.0mm|OM1-SP": {
+      "품명": "OPTICAL\n  CABLE 2.0mm SP-MM(OM1) (ORANGE,등)",
+      "품번": "P14-RM-418E",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
+    "2.0mm|OM3-DP": {
+      "품명": "OPTICAL\n  CABLE 2.0mm DP-MM(OM3) (AQUA,연청)",
+      "품번": "P14-RM-418BR",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
+    "0.9mm|PIGTAIL": {
+      "품명": "OPTICAL CABLE 0.9mm SM (ROSE,연등)",
+      "품번": "P14-RM-417C",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
     "3.0mm|DROP-DP": {
+      "품명": "",
+      "품번": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "3.0mm|DROP-SP": {
+      "품명": "DROP\n  OPTICAL CABLE 3.0mm SP- SM (BLACK)",
+      "품번": "P14-RM-4191",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
+    "2.0mm|A1_녹-DP": {
+      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 DP-SM (GREEN,녹)",
+      "품번": "P14-RM-4183",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
+    "2.0mm|A1_녹-SP": {
+      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 SP-SM (GREEN,녹)",
+      "품번": "P14-RM-4184",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
+    "2.0mm|A1_자-DP": {
+      "품명": "OPTICAL CABLE 2.0mm G657A1 DP-SM (VIOLET, 자)",
+      "품번": "P14-RM-418F",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
+    "2.0mm|A1_적-DP": {
+      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 DP-SM (RED,적)",
+      "품번": "P14-RM-418CR",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
+    "2.0mm|A1_적-SP": {
+      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 SP-SM (RED,적)",
+      "품번": "P14-RM-418D",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
+    "2.0mm|A1_청-DP": {
+      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 DP-SM (BLUE,청)",
+      "품번": "P14-RM-4181R",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
+    "2.0mm|A1_청-SP": {
+      "품명": "OPTICAL\n  CABLE 2.0mm G657A1 SP-SM (BLUE,청)",
+      "품번": "P14-RM-4182",
+      "구매처": "HUAMAI",
+      "리드타임": 60
+    },
+    "2.0mm|Optical cable": {
+      "품명": "OPTICAL CABLE 3.0mm SP-SM",
+      "품번": "P14-RM-419A",
+      "구매처": "",
+      "리드타임": null
+    },
+    "0.9mm|pigtail-청": {
       "품번": "",
       "품명": "",
       "구매처": "",
       "리드타임": null
     },
-    "3.0mm|DROP-SP": {
-      "품번": "P14-RM-4191",
-      "품명": "DROP\n  OPTICAL CABLE 3.0mm SP- SM (BLACK)",
-      "구매처": "HUAMAI",
-      "리드타임": 60
+    "0.9mm|pigtail-등": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "0.9mm|pigtail-녹": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "0.9mm|pigtail-적": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "0.9mm|pigtail-황": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "0.9mm|pigtail-자": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "0.9mm|pigtail-갈": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "0.9mm|pigtail-흑": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "0.9mm|pigtail-백": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "0.9mm|pigtail-회": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "0.9mm|pigtail-연청": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "0.9mm|pigtail-연등": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "2.0mm|PIGTAIL": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    },
+    "2.0mm|OM3-SP": {
+      "품번": "",
+      "품명": "",
+      "구매처": "",
+      "리드타임": null
+    }
+  },
+  "ferrule": {
+    "FC/PC": {
+      "품명": "FERRULE (W/ FLANGE,SC/PC TYPE)",
+      "품번": "N90-29-1315",
+      "구매처": "CCTC",
+      "리드타임": 40
+    },
+    "LC/PC": {
+      "품명": "FERRULE (W/ FLANGE,LC/PC TYPE)",
+      "품번": "N90-29-1213",
+      "구매처": "CCTC",
+      "리드타임": 40
+    },
+    "SC/PC": {
+      "품명": "FERRULE (W/ FLANGE,SC/PC TYPE)",
+      "품번": "N90-29-1315",
+      "구매처": "CCTC",
+      "리드타임": 40
+    },
+    "FC/APC": {
+      "품명": "FERRULE (W/ FLANGE,SC/APC TYPE)",
+      "품번": "N90-29-1323",
+      "구매처": "CCTC",
+      "리드타임": 40
+    },
+    "LC/APC": {
+      "품명": "FERRULE (W/ FLANGE,LC/PC TYPE)",
+      "품번": "N90-29-1213",
+      "구매처": "CCTC",
+      "리드타임": 40
+    },
+    "SC/APC": {
+      "품명": "FERRULE (W/ FLANGE,SC/APC TYPE)",
+      "품번": "N90-29-1323",
+      "구매처": "CCTC",
+      "리드타임": 40
     }
   },
   "housing": {
-    "0.9mm|FC/APC 녹색": [
-      {
-        "품번": "P14-FS-4221",
-        "품명": "OJC HOUSING KIT(OJC FC/APC 0.9 GREEN)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
     "0.9mm|FC/PC 흑색": [
       {
-        "품번": "P14-FS-422J",
         "품명": "OJC HOUSING KIT(OJC FC/PC 0.9 BLACK)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "0.9mm|LC/APC 녹색": [
-      {
-        "품번": "P14-LS-4221",
-        "품명": "OJC HOUSING KIT(OJC LC/APC 0.9 GREEN)",
+        "품번": "P14-FS-422J",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ],
     "0.9mm|LC/PC 백색": [
       {
-        "품번": "P14-LS-422K",
         "품명": "OJC HOUSING KIT (OJC LC/PC 0.9 WHITE)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "0.9mm|LC/PC 베이지": [
-      {
-        "품번": "P14-LM-4223",
-        "품명": "OJC HOUSING KIT (OJC LC/PC-MM 0.9 BEIGE)",
+        "품번": "P14-LS-422K",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ],
     "0.9mm|LC/PC 청색": [
       {
-        "품번": "P14-LS-4222",
         "품명": "OJC HOUSING KIT (OJC LC/PC 0.9 BLUE)",
+        "품번": "P14-LS-4222",
         "구매처": "FIBERCAN",
         "리드타임": 60
-      }
-    ],
-    "0.9mm|SC/APC 녹색": [
-      {
-        "품번": "P14-RM-4045",
-        "품명": "OJC SC/APC BOOT (0.9 GREEN)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      },
-      {
-        "품번": "N94-1-04075",
-        "품명": "SPRING",
-        "구매처": "상영스프링",
-        "리드타임": 30
-      },
-      {
-        "품번": "P15-FJ-4015",
-        "품명": "SOC CONNECTOR HOUSING (APC,AJW)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      },
-      {
-        "품번": "P15-RM-4021",
-        "품명": "DUST CAP(PC)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      },
-      {
-        "품번": "P14-RM-4211",
-        "품명": "OJC SC STOPPER (OJC, A-TYPE)",
-        "구매처": "웰텍",
-        "리드타임": 30
-      },
-      {
-        "품번": "P14-RM-4243",
-        "품명": "SC PLUG FRAME (OJC,FSOC)",
-        "구매처": "웰텍",
-        "리드타임": 30
       }
     ],
     "0.9mm|SC/PC 청색": [
       {
-        "품번": "P14-RM-4043",
         "품명": "OJC SC/PC BOOT (0.9 BLUE)",
+        "품번": "P14-RM-4043",
         "구매처": "FIBERCAN",
         "리드타임": 60
       },
       {
-        "품번": "N94-1-04075",
         "품명": "SPRING",
+        "품번": "N94-1-04075",
         "구매처": "상영스프링",
         "리드타임": 30
       },
       {
-        "품번": "P15-FJ-4011",
         "품명": "SOC CONNECTOR HOUSING (PC)",
+        "품번": "P15-FJ-4011",
         "구매처": "FIBERCAN",
         "리드타임": 60
       },
       {
-        "품번": "P15-RM-4021",
         "품명": "DUST CAP(PC)",
+        "품번": "P15-RM-4021",
         "구매처": "FIBERCAN",
         "리드타임": 60
       },
       {
-        "품번": "P14-RM-4211",
         "품명": "OJC SC STOPPER (OJC, A-TYPE)",
+        "품번": "P14-RM-4211",
         "구매처": "웰텍",
         "리드타임": 30
       },
       {
-        "품번": "P14-RM-4243",
         "품명": "SC PLUG FRAME (OJC,FSOC)",
+        "품번": "P14-RM-4243",
         "구매처": "웰텍",
         "리드타임": 30
       },
       {
-        "품번": "P14-RM-4043",
         "품명": "OJC SC/PC BOOT (0.9 BLUE)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "2.0mm|FC/APC 녹색": [
-      {
-        "품번": "P14-FS-4227",
-        "품명": "OJC HOUSING KIT (OJC FC/APC 2.0 GREEN)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "2.0mm|FC/APC 적색": [
-      {
-        "품번": "P14-FS-422G",
-        "품명": "OJC HOUSING KIT (OJC FC/PC,APC 2.0 RED)",
+        "품번": "P14-RM-4043",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ],
     "2.0mm|FC/PC 적색": [
       {
-        "품번": "P14-FS-422G",
         "품명": "OJC HOUSING KIT (OJC FC/PC,APC 2.0 RED)",
+        "품번": "P14-FS-422G",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ],
     "2.0mm|FC/PC 흑색": [
       {
-        "품번": "P14-FS-4229",
         "품명": "OJC HOUSING KIT (OJC FC/PC 2.0 BLACK)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "2.0mm|LC/APC 녹색": [
-      {
-        "품번": "P14-LS-4224",
-        "품명": "OJC HOUSING KIT (OJC LC/APC 2.0 GREEN)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "2.0mm|LC/APC 적색": [
-      {
-        "품번": "P14-LS-4224",
-        "품명": "OJC HOUSING KIT (OJC LC/APC 2.0 GREEN)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "2.0mm|LC/PC 베이지MM": [
-      {
-        "품번": "P14-LM-4226",
-        "품명": "OJC HOUSING KIT (OJC LC/PC-MM 2.0 BEIGE)",
+        "품번": "P14-FS-4229",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ],
     "2.0mm|LC/PC 적색": [
       {
-        "품번": "P14-LS-422A",
         "품명": "OJC HOUSING KIT (OJC LC/PC 2.0 RED)",
+        "품번": "P14-LS-422A",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ],
     "2.0mm|LC/PC 청색": [
       {
-        "품번": "P14-LS-4228",
         "품명": "OJC HOUSING KIT (OJC LC/PC 2.0 BLUE)",
+        "품번": "P14-LS-4228",
         "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "2.0mm|SC/APC 녹색": [
-      {
-        "품번": "N94-1-04075",
-        "품명": "SPRING",
-        "구매처": "상영스프링",
-        "리드타임": 30
-      },
-      {
-        "품번": "P15-FJ-4015",
-        "품명": "SOC CONNECTOR HOUSING (APC,AJW)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      },
-      {
-        "품번": "P15-RM-4021",
-        "품명": "DUST CAP(PC)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      },
-      {
-        "품번": "P14-RM-4211",
-        "품명": "OJC SC STOPPER (OJC, A-TYPE)",
-        "구매처": "웰텍",
-        "리드타임": 30
-      },
-      {
-        "품번": "P14-RM-4243",
-        "품명": "SC PLUG FRAME (OJC,FSOC)",
-        "구매처": "웰텍",
-        "리드타임": 30
-      },
-      {
-        "품번": "P14-RM-4047F",
-        "품명": "OJC SC/APC BOOT (2.0 GREEN)",
-        "구매처": "FLC",
-        "리드타임": 60
-      }
-    ],
-    "2.0mm|SC/APC 적색": [
-      {
-        "품번": "N94-1-04075",
-        "품명": "SPRING",
-        "구매처": "상영스프링",
-        "리드타임": 30
-      },
-      {
-        "품번": "P15-FJ-4015",
-        "품명": "SOC CONNECTOR HOUSING (APC,AJW)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      },
-      {
-        "품번": "P15-RM-4021",
-        "품명": "DUST CAP(PC)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      },
-      {
-        "품번": "P14-RM-4211",
-        "품명": "OJC SC STOPPER (OJC, A-TYPE)",
-        "구매처": "웰텍",
-        "리드타임": 30
-      },
-      {
-        "품번": "P14-RM-4243",
-        "품명": "SC PLUG FRAME (OJC,FSOC)",
-        "구매처": "웰텍",
-        "리드타임": 30
-      },
-      {
-        "품번": "P14-RM-4048F",
-        "품명": "OJC SC BOOT (2.0 RED)",
-        "구매처": "FLC",
         "리드타임": 60
       }
     ],
     "2.0mm|SC/PC 적색": [
       {
-        "품번": "N94-1-04075",
         "품명": "SPRING",
+        "품번": "N94-1-04075",
         "구매처": "상영스프링",
         "리드타임": 30
       },
       {
-        "품번": "P15-FJ-4011",
         "품명": "SOC CONNECTOR HOUSING (PC)",
+        "품번": "P15-FJ-4011",
         "구매처": "FIBERCAN",
         "리드타임": 60
       },
       {
-        "품번": "P15-RM-4021",
         "품명": "DUST CAP(PC)",
+        "품번": "P15-RM-4021",
         "구매처": "FIBERCAN",
         "리드타임": 60
       },
       {
-        "품번": "P14-RM-4211",
         "품명": "OJC SC STOPPER (OJC, A-TYPE)",
+        "품번": "P14-RM-4211",
         "구매처": "웰텍",
         "리드타임": 30
       },
       {
-        "품번": "P14-RM-4243",
         "품명": "SC PLUG FRAME (OJC,FSOC)",
+        "품번": "P14-RM-4243",
         "구매처": "웰텍",
         "리드타임": 30
       },
       {
-        "품번": "P14-RM-4048F",
         "품명": "OJC SC BOOT (2.0 RED)",
+        "품번": "P14-RM-4048F",
         "구매처": "FLC",
         "리드타임": 60
       }
     ],
     "2.0mm|SC/PC 청색": [
       {
-        "품번": "N94-1-04075",
         "품명": "SPRING",
+        "품번": "N94-1-04075",
         "구매처": "상영스프링",
         "리드타임": 30
       },
       {
-        "품번": "P15-FJ-4011",
         "품명": "SOC CONNECTOR HOUSING (PC)",
+        "품번": "P15-FJ-4011",
         "구매처": "FIBERCAN",
         "리드타임": 60
       },
       {
-        "품번": "P15-RM-4021",
         "품명": "DUST CAP(PC)",
+        "품번": "P15-RM-4021",
         "구매처": "FIBERCAN",
         "리드타임": 60
       },
       {
-        "품번": "P14-RM-4211",
         "품명": "OJC SC STOPPER (OJC, A-TYPE)",
+        "품번": "P14-RM-4211",
         "구매처": "웰텍",
         "리드타임": 30
       },
       {
-        "품번": "P14-RM-4243",
         "품명": "SC PLUG FRAME (OJC,FSOC)",
+        "품번": "P14-RM-4243",
         "구매처": "웰텍",
         "리드타임": 30
       },
       {
-        "품번": "P14-RM-4046F",
         "품명": "OJC SC BOOT (2.0 BLUE)",
+        "품번": "P14-RM-4046F",
         "구매처": "FLC",
         "리드타임": 60
       }
     ],
     "2.0mm|ST/PC 청색": [
       {
-        "품번": "P14-TS-4228",
         "품명": "OJC HOUSING KIT (OJC ST/PC 2.0 BLUE)",
+        "품번": "P14-TS-4228",
         "구매처": "이룸",
         "리드타임": 7
       }
     ],
-    "3.0mm|FC/APC 녹색": [
-      {
-        "품번": "P14-FS-422H",
-        "품명": "OJC HOUSING KIT (OJC FC/APC 3.0 GREEN)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "3.0mm|FC/APC 적색": [
-      {
-        "품번": "P14-FS-422H",
-        "품명": "OJC HOUSING KIT (OJC FC/APC 3.0 GREEN)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
     "3.0mm|FC/PC 적색": [
       {
-        "품번": "P14-FS-422N",
         "품명": "OJC HOUSING KIT (OJC FC/PC 3.0 RED)",
+        "품번": "P14-FS-422N",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ],
     "3.0mm|FC/PC 흑색": [
       {
-        "품번": "P14-FS-422M",
         "품명": "OJC HOUSING KIT (OJC FC/PC 3.0 BLACK)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "3.0mm|LC/APC 녹색": [
-      {
-        "품번": "P14-LS-422T",
-        "품명": "OJC HOUSING KIT (OJC LC/APC 3.0 GREEN)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "3.0mm|LC/APC 적색": [
-      {
-        "품번": "P14-LS-422S",
-        "품명": "OJC HOUSING KIT (OJC LC/APC 3.0 RED)",
+        "품번": "P14-FS-422M",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ],
     "3.0mm|LC/PC 적색": [
       {
-        "품번": "P14-LS-422R",
         "품명": "OJC HOUSING KIT (OJC LC/PC 3.0 RED) , 숏",
+        "품번": "P14-LS-422R",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ],
     "3.0mm|LC/PC 청색": [
       {
-        "품번": "P14-LS-422Q",
         "품명": "OJC HOUSING KIT (OJC LC/PC 3.0 BLUE) , 숏",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "3.0mm|SC/APC 녹색": [
-      {
-        "품번": "P14-SS-422H",
-        "품명": "OJC HOUSING KIT (OJC SC/APC 3.0 GREEN)",
-        "구매처": "FIBERCAN",
-        "리드타임": 60
-      }
-    ],
-    "3.0mm|SC/APC 적색": [
-      {
-        "품번": "P14-SS-422L",
-        "품명": "OJC HOUSING KIT (OJC SC/APC 3.0 RED)",
+        "품번": "P14-LS-422Q",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ],
     "3.0mm|SC/PC 적색": [
       {
-        "품번": "P14-SS-422N",
         "품명": "OJC HOUSING KIT (OJC SC/PC 3.0 RED)",
+        "품번": "P14-SS-422N",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ],
     "3.0mm|SC/PC 청색": [
       {
-        "품번": "P14-SS-422I",
         "품명": "OJC HOUSING KIT (OJC SC/PC 3.0 BLUE)",
+        "품번": "P14-SS-422I",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "0.9mm|FC/APC 녹색": [
+      {
+        "품명": "OJC HOUSING KIT(OJC FC/APC 0.9 GREEN)",
+        "품번": "P14-FS-4221",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "0.9mm|LC/APC 녹색": [
+      {
+        "품명": "OJC HOUSING KIT(OJC LC/APC 0.9 GREEN)",
+        "품번": "P14-LS-4221",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "0.9mm|SC/APC 녹색": [
+      {
+        "품명": "OJC SC/APC BOOT (0.9 GREEN)",
+        "품번": "P14-RM-4045",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      },
+      {
+        "품명": "SPRING",
+        "품번": "N94-1-04075",
+        "구매처": "상영스프링",
+        "리드타임": 30
+      },
+      {
+        "품명": "SOC CONNECTOR HOUSING (APC,AJW)",
+        "품번": "P15-FJ-4015",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      },
+      {
+        "품명": "DUST CAP(PC)",
+        "품번": "P15-RM-4021",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      },
+      {
+        "품명": "OJC SC STOPPER (OJC, A-TYPE)",
+        "품번": "P14-RM-4211",
+        "구매처": "웰텍",
+        "리드타임": 30
+      },
+      {
+        "품명": "SC PLUG FRAME (OJC,FSOC)",
+        "품번": "P14-RM-4243",
+        "구매처": "웰텍",
+        "리드타임": 30
+      }
+    ],
+    "2.0mm|FC/APC 녹색": [
+      {
+        "품명": "OJC HOUSING KIT (OJC FC/APC 2.0 GREEN)",
+        "품번": "P14-FS-4227",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "2.0mm|FC/APC 적색": [
+      {
+        "품명": "OJC HOUSING KIT (OJC FC/PC,APC 2.0 RED)",
+        "품번": "P14-FS-422G",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "2.0mm|LC/APC 녹색": [
+      {
+        "품명": "OJC HOUSING KIT (OJC LC/APC 2.0 GREEN)",
+        "품번": "P14-LS-4224",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "2.0mm|LC/APC 적색": [
+      {
+        "품명": "OJC HOUSING KIT (OJC LC/APC 2.0 GREEN)",
+        "품번": "P14-LS-4224",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "2.0mm|SC/APC 녹색": [
+      {
+        "품명": "SPRING",
+        "품번": "N94-1-04075",
+        "구매처": "상영스프링",
+        "리드타임": 30
+      },
+      {
+        "품명": "SOC CONNECTOR HOUSING (APC,AJW)",
+        "품번": "P15-FJ-4015",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      },
+      {
+        "품명": "DUST CAP(PC)",
+        "품번": "P15-RM-4021",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      },
+      {
+        "품명": "OJC SC STOPPER (OJC, A-TYPE)",
+        "품번": "P14-RM-4211",
+        "구매처": "웰텍",
+        "리드타임": 30
+      },
+      {
+        "품명": "SC PLUG FRAME (OJC,FSOC)",
+        "품번": "P14-RM-4243",
+        "구매처": "웰텍",
+        "리드타임": 30
+      },
+      {
+        "품명": "OJC SC/APC BOOT (2.0 GREEN)",
+        "품번": "P14-RM-4047F",
+        "구매처": "FLC",
+        "리드타임": 60
+      }
+    ],
+    "2.0mm|SC/APC 적색": [
+      {
+        "품명": "SPRING",
+        "품번": "N94-1-04075",
+        "구매처": "상영스프링",
+        "리드타임": 30
+      },
+      {
+        "품명": "SOC CONNECTOR HOUSING (APC,AJW)",
+        "품번": "P15-FJ-4015",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      },
+      {
+        "품명": "DUST CAP(PC)",
+        "품번": "P15-RM-4021",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      },
+      {
+        "품명": "OJC SC STOPPER (OJC, A-TYPE)",
+        "품번": "P14-RM-4211",
+        "구매처": "웰텍",
+        "리드타임": 30
+      },
+      {
+        "품명": "SC PLUG FRAME (OJC,FSOC)",
+        "품번": "P14-RM-4243",
+        "구매처": "웰텍",
+        "리드타임": 30
+      },
+      {
+        "품명": "OJC SC BOOT (2.0 RED)",
+        "품번": "P14-RM-4048F",
+        "구매처": "FLC",
+        "리드타임": 60
+      }
+    ],
+    "3.0mm|FC/APC 녹색": [
+      {
+        "품명": "OJC HOUSING KIT (OJC FC/APC 3.0 GREEN)",
+        "품번": "P14-FS-422H",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "3.0mm|FC/APC 적색": [
+      {
+        "품명": "OJC HOUSING KIT (OJC FC/APC 3.0 GREEN)",
+        "품번": "P14-FS-422H",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "3.0mm|LC/APC 녹색": [
+      {
+        "품명": "OJC HOUSING KIT (OJC LC/APC 3.0 GREEN)",
+        "품번": "P14-LS-422T",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "3.0mm|LC/APC 적색": [
+      {
+        "품명": "OJC HOUSING KIT (OJC LC/APC 3.0 RED)",
+        "품번": "P14-LS-422S",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "3.0mm|SC/APC 녹색": [
+      {
+        "품명": "OJC HOUSING KIT (OJC SC/APC 3.0 GREEN)",
+        "품번": "P14-SS-422H",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "3.0mm|SC/APC 적색": [
+      {
+        "품명": "OJC HOUSING KIT (OJC SC/APC 3.0 RED)",
+        "품번": "P14-SS-422L",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "0.9mm|LC/PC 베이지": [
+      {
+        "품명": "OJC HOUSING KIT (OJC LC/PC-MM 0.9 BEIGE)",
+        "품번": "P14-LM-4223",
+        "구매처": "FIBERCAN",
+        "리드타임": 60
+      }
+    ],
+    "2.0mm|LC/PC 베이지MM": [
+      {
+        "품명": "OJC HOUSING KIT (OJC LC/PC-MM 2.0 BEIGE)",
+        "품번": "P14-LM-4226",
         "구매처": "FIBERCAN",
         "리드타임": 60
       }
     ]
-  },
-  "ferrule": {
-    "LC/PC": {
-      "품번": "N90-29-1213",
-      "품명": "FERRULE (W/ FLANGE,LC/PC TYPE)",
-      "구매처": "CCTC",
-      "리드타임": 40
-    },
-    "LC/APC": {
-      "품번": "N90-29-1213",
-      "품명": "FERRULE (W/ FLANGE,LC/PC TYPE)",
-      "구매처": "CCTC",
-      "리드타임": 40
-    },
-    "SC/PC": {
-      "품번": "N90-29-1315",
-      "품명": "FERRULE (W/ FLANGE,SC/PC TYPE)",
-      "구매처": "CCTC",
-      "리드타임": 40
-    },
-    "SC/APC": {
-      "품번": "N90-29-1323",
-      "품명": "FERRULE (W/ FLANGE,SC/APC TYPE)",
-      "구매처": "CCTC",
-      "리드타임": 40
-    },
-    "FC/PC": {
-      "품번": "N90-29-1315",
-      "품명": "FERRULE (W/ FLANGE,SC/PC TYPE)",
-      "구매처": "CCTC",
-      "리드타임": 40
-    },
-    "FC/APC": {
-      "품번": "N90-29-1323",
-      "품명": "FERRULE (W/ FLANGE,SC/APC TYPE)",
-      "구매처": "CCTC",
-      "리드타임": 40
-    }
   }
 }
