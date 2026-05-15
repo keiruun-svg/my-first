@@ -12,10 +12,11 @@ export default function Inventory({ inventory, setInventory, metadata }: Props) 
   const [tab, setTab] = useState<'cable' | 'housing'>('cable')
   const [saved, setSaved] = useState(false)
 
-  const updateCable = (key: string, value: string) => {
+  const updateCable = (key: string, field: '현재고' | '기발주', value: string) => {
+    const prev = inventory.cable[key] ?? { 현재고: 0, 기발주: 0 }
     setInventory({
       ...inventory,
-      cable: { ...inventory.cable, [key]: { 현재고: parseInt(value) || 0 } }
+      cable: { ...inventory.cable, [key]: { ...prev, [field]: parseInt(value) || 0 } }
     })
   }
 
@@ -61,7 +62,7 @@ export default function Inventory({ inventory, setInventory, metadata }: Props) 
           <table className="text-sm w-full border-collapse">
             <thead className="bg-[#2E75B6] text-white">
               <tr>
-                {['파이','케이블종류','품번','품명','현재고(m)'].map(h => (
+                {['파이','케이블종류','품번','품명','현재고(m)','기발주(m)'].map(h => (
                   <th key={h} className="px-3 py-2 text-left font-semibold">{h}</th>
                 ))}
               </tr>
@@ -70,7 +71,7 @@ export default function Inventory({ inventory, setInventory, metadata }: Props) 
               {cableKeys.map((key, i) => {
                 const [pai, ct] = key.split('|')
                 const m = metadata.cable[key]
-                const inv = inventory.cable[key] ?? { 현재고: 0 }
+                const inv = inventory.cable[key] ?? { 현재고: 0, 기발주: 0 }
                 return (
                   <tr key={key} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     <td className="px-3 py-1 text-xs font-mono text-gray-500">{pai}</td>
@@ -80,15 +81,22 @@ export default function Inventory({ inventory, setInventory, metadata }: Props) 
                     <td className="px-2 py-1">
                       <input type="number" min="0"
                         value={inv.현재고}
-                        onChange={e => updateCable(key, e.target.value)}
-                        className="w-28 border rounded px-2 py-0.5 text-right text-sm focus:outline-blue-400"
+                        onChange={e => updateCable(key, '현재고', e.target.value)}
+                        className="w-24 border rounded px-2 py-0.5 text-right text-sm focus:outline-blue-400"
+                      />
+                    </td>
+                    <td className="px-2 py-1">
+                      <input type="number" min="0"
+                        value={inv.기발주 ?? 0}
+                        onChange={e => updateCable(key, '기발주', e.target.value)}
+                        className="w-24 border rounded px-2 py-0.5 text-right text-sm focus:outline-blue-400"
                       />
                     </td>
                   </tr>
                 )
               })}
               {cableKeys.length === 0 && (
-                <tr><td colSpan={5} className="text-center text-gray-400 py-8">품번 관리 탭에서 케이블을 먼저 등록하세요.</td></tr>
+                <tr><td colSpan={6} className="text-center text-gray-400 py-8">품번 관리 탭에서 케이블을 먼저 등록하세요.</td></tr>
               )}
             </tbody>
           </table>

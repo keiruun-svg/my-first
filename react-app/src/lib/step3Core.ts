@@ -159,8 +159,8 @@ export function buildStep3Plan(
     row.forecastAnnual = cCagr !== 0 ? Math.round(row.latestAnnual * (1 + cCagr)) : row.latestAnnual
     row.안전재고 = Math.round((row.forecastAnnual / 12) * (row.리드타임 / 30) * safetyK)
     row.현재고   = Number(inv['현재고'] ?? 0)
-    row.기발주   = 0
-    row.발주필요량 = Math.max(0, row.forecastAnnual + row.안전재고 - row.현재고)
+    row.기발주   = Number(inv['기발주'] ?? 0)
+    row.발주필요량 = Math.max(0, row.forecastAnnual + row.안전재고 - row.현재고 - row.기발주)
     allRows.push(row)
   }
 

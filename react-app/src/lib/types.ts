@@ -20,6 +20,7 @@ export interface HousingComp {
 
 export interface InventoryCableItem {
   현재고: number
+  기발주: number
 }
 
 export interface InventoryHousingItem {
