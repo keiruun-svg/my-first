@@ -7,6 +7,7 @@ export interface DetailedSalesRow {
   year:     string   // 'YY' e.g. '23'
   month:    string   // '01'..'12'
   qty:      number
+  price:    number   // 공급가액 (없으면 0)
 }
 
 function toYY(raw: unknown): string {
@@ -59,9 +60,10 @@ export function parseDetailedSalesFile(
     const customer = String(
       findCol(row, '거래처명', '거래처', '고객사', '고객사명', '업체명') ?? ''
     ).trim()
-    const code = String(findCol(row, '품목코드', '코드') ?? '').trim()
-    const name = String(findCol(row, '품목명', '제품명', '상품명') ?? '').trim()
-    const qty  = parseInt(String(findCol(row, '수량', 'qty', '판매수량', '출고수량') ?? '0')) || 0
+    const code  = String(findCol(row, '품목코드', '코드') ?? '').trim()
+    const name  = String(findCol(row, '품목명', '제품명', '상품명') ?? '').trim()
+    const qty   = parseInt(String(findCol(row, '수량', 'qty', '판매수량', '출고수량') ?? '0')) || 0
+    const price = parseFloat(String(findCol(row, '공급가액', '금액', '공급금액', '공급액', '매출금액', '공급가') ?? '0').replace(/,/g, '')) || 0
 
     if (!name || qty <= 0) { skipped++; continue }
 
@@ -76,7 +78,7 @@ export function parseDetailedSalesFile(
 
     if (!year || !month) { skipped++; continue }
 
-    rows.push({ customer, code, name, year, month, qty })
+    rows.push({ customer, code, name, year, month, qty, price })
   }
 
   const years = [...new Set(rows.map(r => r.year))].sort()

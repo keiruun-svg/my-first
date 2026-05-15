@@ -45,19 +45,23 @@ function classifyEtc(name: string): string | null {
   return null
 }
 
-const num   = (v: number) => v === 0 ? '—' : v.toLocaleString()
-const dec1  = (v: number) => v.toFixed(1)
+const num      = (v: number) => v === 0 ? '—' : v.toLocaleString()
+const dec1     = (v: number) => v.toFixed(1)
+const fmtPrice = (v: number) => v === 0 ? '—' : v.toLocaleString() + '원'
 
 type SubView = 'ojc' | 'customer' | 'full'
 
 // ── 타입 ─────────────────────────────────────────────────────────────
 interface ProductData {
+  code:          string
   annuals:       Record<string, number>
+  priceAnnuals:  Record<string, number>
   monthlyLatest: Record<string, number>
 }
 interface CategoryData {
   products:      Record<string, ProductData>
   annuals:       Record<string, number>
+  priceAnnuals:  Record<string, number>
   monthlyLatest: Record<string, number>
   monthlyByYear: Record<string, Record<string, number>>  // year → month → qty
 }
@@ -195,12 +199,14 @@ export default function SalesAnalysisTab() {
     const cats: Record<string, CategoryData> = {}
     for (const row of ojcRows) {
       const cat = classifyOjc(row.name)!
-      if (!cats[cat]) cats[cat] = { products: {}, annuals: {}, monthlyLatest: {}, monthlyByYear: {} }
+      if (!cats[cat]) cats[cat] = { products: {}, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
       const c = cats[cat]
-      if (!c.products[row.name]) c.products[row.name] = { annuals: {}, monthlyLatest: {} }
+      if (!c.products[row.name]) c.products[row.name] = { code: row.code, annuals: {}, priceAnnuals: {}, monthlyLatest: {} }
       const p = c.products[row.name]
       p.annuals[row.year]       = (p.annuals[row.year] ?? 0) + row.qty
+      p.priceAnnuals[row.year]  = (p.priceAnnuals[row.year] ?? 0) + row.price
       c.annuals[row.year]       = (c.annuals[row.year] ?? 0) + row.qty
+      c.priceAnnuals[row.year]  = (c.priceAnnuals[row.year] ?? 0) + row.price
       if (!c.monthlyByYear[row.year]) c.monthlyByYear[row.year] = {}
       c.monthlyByYear[row.year][row.month] = (c.monthlyByYear[row.year][row.month] ?? 0) + row.qty
       if (row.year === latestYr) {
@@ -221,12 +227,14 @@ export default function SalesAnalysisTab() {
     const cats: Record<string, CategoryData> = {}
     for (const row of etcRows) {
       const cat = classifyEtc(row.name)!
-      if (!cats[cat]) cats[cat] = { products: {}, annuals: {}, monthlyLatest: {}, monthlyByYear: {} }
+      if (!cats[cat]) cats[cat] = { products: {}, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
       const c = cats[cat]
-      if (!c.products[row.name]) c.products[row.name] = { annuals: {}, monthlyLatest: {} }
+      if (!c.products[row.name]) c.products[row.name] = { code: row.code, annuals: {}, priceAnnuals: {}, monthlyLatest: {} }
       const p = c.products[row.name]
       p.annuals[row.year]       = (p.annuals[row.year] ?? 0) + row.qty
+      p.priceAnnuals[row.year]  = (p.priceAnnuals[row.year] ?? 0) + row.price
       c.annuals[row.year]       = (c.annuals[row.year] ?? 0) + row.qty
+      c.priceAnnuals[row.year]  = (c.priceAnnuals[row.year] ?? 0) + row.price
       if (!c.monthlyByYear[row.year]) c.monthlyByYear[row.year] = {}
       c.monthlyByYear[row.year][row.month] = (c.monthlyByYear[row.year][row.month] ?? 0) + row.qty
       if (row.year === latestYr) {
@@ -239,18 +247,20 @@ export default function SalesAnalysisTab() {
 
   // 거래처별 탑3 집계
   const customerTop3 = useMemo(() => {
-    const custMap: Record<string, Record<string, number>> = {}
+    const custMap: Record<string, Record<string, { code: string; qty: number; price: number }>> = {}
     for (const row of rawRows) {
       const cust = row.customer || '(미상)'
       if (!custMap[cust]) custMap[cust] = {}
-      custMap[cust][row.name] = (custMap[cust][row.name] ?? 0) + row.qty
+      if (!custMap[cust][row.name]) custMap[cust][row.name] = { code: row.code, qty: 0, price: 0 }
+      custMap[cust][row.name].qty   += row.qty
+      custMap[cust][row.name].price += row.price
     }
-    const result: Record<string, Array<{ name: string; qty: number }>> = {}
+    const result: Record<string, Array<{ name: string; code: string; qty: number; price: number }>> = {}
     for (const [cust, products] of Object.entries(custMap)) {
       result[cust] = Object.entries(products)
-        .sort((a, b) => b[1] - a[1])
+        .sort((a, b) => b[1].qty - a[1].qty)
         .slice(0, 3)
-        .map(([name, qty]) => ({ name, qty }))
+        .map(([name, d]) => ({ name, code: d.code, qty: d.qty, price: d.price }))
     }
     return Object.fromEntries(
       Object.entries(result).sort((a, b) =>
@@ -261,10 +271,11 @@ export default function SalesAnalysisTab() {
 
   // 전체 품목별 집계
   const fullProducts = useMemo(() => {
-    const map: Record<string, { name: string; ojcCat: string | null; annuals: Record<string, number> }> = {}
+    const map: Record<string, { name: string; code: string; ojcCat: string | null; etcCat: string | null; annuals: Record<string, number>; priceAnnuals: Record<string, number> }> = {}
     for (const row of rawRows) {
-      if (!map[row.name]) map[row.name] = { name: row.name, ojcCat: classifyOjc(row.name), annuals: {} }
-      map[row.name].annuals[row.year] = (map[row.name].annuals[row.year] ?? 0) + row.qty
+      if (!map[row.name]) map[row.name] = { name: row.name, code: row.code, ojcCat: classifyOjc(row.name), etcCat: classifyEtc(row.name), annuals: {}, priceAnnuals: {} }
+      map[row.name].annuals[row.year]      = (map[row.name].annuals[row.year] ?? 0) + row.qty
+      map[row.name].priceAnnuals[row.year] = (map[row.name].priceAnnuals[row.year] ?? 0) + row.price
     }
     return Object.values(map).sort((a, b) =>
       (b.annuals[latestYr] ?? 0) - (a.annuals[latestYr] ?? 0)
@@ -461,8 +472,8 @@ export default function SalesAnalysisTab() {
 async function downloadStyledExcel(
   ojcByCategory: Record<string, CategoryData>,
   etcByCategory: Record<string, CategoryData>,
-  customerTop3: Record<string, Array<{ name: string; qty: number }>>,
-  fullProducts: Array<{ name: string; ojcCat: string | null; annuals: Record<string, number> }>,
+  customerTop3: Record<string, Array<{ name: string; code: string; qty: number; price: number }>>,
+  fullProducts: Array<{ name: string; code: string; ojcCat: string | null; etcCat: string | null; annuals: Record<string, number>; priceAnnuals: Record<string, number> }>,
   years: string[],
   latestYr: string,
   ojcStock: Record<string, number>,
@@ -603,9 +614,9 @@ async function downloadStyledExcel(
   // ── Sheet 3: 품목별_상세 (OJC + 기타) ────────────────────────────────
   const ws3 = wb.addWorksheet('③ 품목별_상세')
   ws3.views = [{ state: 'frozen', ySplit: 3 }]
-  const S3 = 2 + years.length + 2
+  const S3 = 3 + years.length * 2 + 2
   addTitle(ws3, '품목별 판매 상세 (OJC + 기타)', `${latestYr}년 판매량 기준 내림차순  |  카테고리별 묶음`, S3)
-  styleHdr(ws3.addRow(['카테고리', '품목명', ...years.map(y => `${y}년\n판매(EA)`), '피크월\n(EA)', '월평균\n(EA)']), C.midBlue, 28)
+  styleHdr(ws3.addRow(['카테고리', '품목코드', '품목명', ...years.flatMap(y => [`${y}년\n판매(EA)`, `${y}년\n공급가액`]), '피크월\n(EA)', '월평균\n(EA)']), C.midBlue, 28)
 
   ri = 0
   function addProdRows(ws: ExcelJS.Worksheet, cat: string, data: CategoryData, isEtc: boolean) {
@@ -614,12 +625,12 @@ async function downloadStyledExcel(
       const pla = prod.annuals[latestYr] ?? 0
       const ppk = Math.max(0, ...MONTHS.map(m => prod.monthlyLatest[m] ?? 0))
       const bg = ri++ % 2 === 0 ? C.white : (isEtc ? C.altPurple : C.altBlue)
-      const row = ws.addRow([cat, name, ...years.map(yr => prod.annuals[yr] || null), ppk || null, pla > 0 ? Math.round(pla / 12) : null])
+      const row = ws.addRow([cat, prod.code || null, name, ...years.flatMap(yr => [prod.annuals[yr] || null, prod.priceAnnuals[yr] || null]), ppk || null, pla > 0 ? Math.round(pla / 12) : null])
       row.height = 16
       row.eachCell({ includeEmpty: true }, (c, ci) => {
         c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
         c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-        if (ci <= 2) { c.alignment = { horizontal: 'left', vertical: 'middle' }; if (ci === 1) c.font = { color: { argb: isEtc ? C.purple : C.midBlue } } }
+        if (ci <= 3) { c.alignment = { horizontal: 'left', vertical: 'middle' }; if (ci === 1) c.font = { color: { argb: isEtc ? C.purple : C.midBlue } } }
         else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
       })
     }
@@ -628,7 +639,7 @@ async function downloadStyledExcel(
   for (const [c, d] of Object.entries(ojcByCategory)) addProdRows(ws3, c, d, false)
   addSep(ws3, '  기타 품목', S3); ri = 0
   for (const [c, d] of Object.entries(etcByCategory)) addProdRows(ws3, c, d, true)
-  ws3.columns = [{ width: 22 }, { width: 42 }, ...years.map(() => ({ width: 13 })), { width: 11 }, { width: 11 }]
+  ws3.columns = [{ width: 22 }, { width: 16 }, { width: 40 }, ...years.flatMap(() => [{ width: 13 }, { width: 16 }]), { width: 11 }, { width: 11 }]
 
   // ── Sheet 4: 월간현황 ─────────────────────────────────────────────────
   const ws4 = wb.addWorksheet(`④ 월간현황_${latestYr}년`)
@@ -668,53 +679,62 @@ async function downloadStyledExcel(
   // ── Sheet 5: 거래처별탑3 ──────────────────────────────────────────────
   const ws5 = wb.addWorksheet('⑤ 거래처별탑3')
   ws5.views = [{ state: 'frozen', ySplit: 3 }]
-  addTitle(ws5, '거래처별 TOP3 구매 품목', `전체 기간(${years.map(y => '20' + y + '년').join('~')}) 누적  |  총구매량 내림차순`, 9)
-  styleHdr(ws5.addRow(['순위', '거래처명', '총구매(EA)', 'TOP1 품목명', 'TOP1\n수량(EA)', 'TOP2 품목명', 'TOP2\n수량(EA)', 'TOP3 품목명', 'TOP3\n수량(EA)']), C.midBlue, 26)
+  addTitle(ws5, '거래처별 TOP3 구매 품목', `전체 기간(${years.map(y => '20' + y + '년').join('~')}) 누적  |  총구매량 내림차순`, 15)
+  styleHdr(ws5.addRow(['순위', '거래처명', '총구매(EA)', 'TOP1 품목코드', 'TOP1 품목명', 'TOP1\n수량(EA)', 'TOP1\n공급가액', 'TOP2 품목코드', 'TOP2 품목명', 'TOP2\n수량(EA)', 'TOP2\n공급가액', 'TOP3 품목코드', 'TOP3 품목명', 'TOP3\n수량(EA)', 'TOP3\n공급가액']), C.midBlue, 26)
   Object.entries(customerTop3).forEach(([cust, top3], i) => {
     const total = top3.reduce((s, x) => s + x.qty, 0)
     const bg = i % 2 === 0 ? C.white : C.altBlue
-    const row = ws5.addRow([i + 1, cust, total, top3[0]?.name ?? null, top3[0]?.qty ?? null, top3[1]?.name ?? null, top3[1]?.qty ?? null, top3[2]?.name ?? null, top3[2]?.qty ?? null])
+    const row = ws5.addRow([
+      i + 1, cust, total,
+      top3[0]?.code ?? null, top3[0]?.name ?? null, top3[0]?.qty ?? null, top3[0]?.price || null,
+      top3[1]?.code ?? null, top3[1]?.name ?? null, top3[1]?.qty ?? null, top3[1]?.price || null,
+      top3[2]?.code ?? null, top3[2]?.name ?? null, top3[2]?.qty ?? null, top3[2]?.price || null,
+    ])
     row.height = 17
     row.eachCell({ includeEmpty: true }, (c, ci) => {
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }; c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
       if (ci === 1) { c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { color: { argb: C.gray3 } } }
       else if (ci === 2) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { bold: true } }
       else if (ci === 3) { c.alignment = { horizontal: 'right', vertical: 'middle' }; c.numFmt = '#,##0'; c.font = { bold: true } }
-      else if (ci % 2 === 0) { c.alignment = { horizontal: 'left', vertical: 'middle' } }
-      else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+      else {
+        const rel = (ci - 4) % 4
+        if (rel === 0) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { size: 9, color: { argb: C.gray3 } } }
+        else if (rel === 1) { c.alignment = { horizontal: 'left', vertical: 'middle' } }
+        else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+      }
     })
     if (i === 0) row.getCell(2).font = { bold: true, color: { argb: 'FFCC0000' } }
     else if (i === 1) row.getCell(2).font = { bold: true, color: { argb: 'FF833C00' } }
   })
-  ws5.columns = [{ width: 6 }, { width: 24 }, { width: 13 }, { width: 38 }, { width: 11 }, { width: 38 }, { width: 11 }, { width: 38 }, { width: 11 }]
+  ws5.columns = [{ width: 6 }, { width: 24 }, { width: 13 }, { width: 16 }, { width: 36 }, { width: 11 }, { width: 14 }, { width: 16 }, { width: 36 }, { width: 11 }, { width: 14 }, { width: 16 }, { width: 36 }, { width: 11 }, { width: 14 }]
 
   // ── Sheet 6: 전체판매량 ───────────────────────────────────────────────
   const ws6 = wb.addWorksheet('⑥ 전체판매량')
   ws6.views = [{ state: 'frozen', ySplit: 3 }]
-  const S6 = 3 + years.length
+  const S6 = 4 + years.length * 2
   addTitle(ws6, '전체 품목 판매량', `${latestYr}년 판매량 기준 내림차순`, S6)
-  styleHdr(ws6.addRow(['품목명', '분류', ...years.map(y => `${y}년\n판매(EA)`), '합계\n(EA)']), C.darkBlue, 28)
+  styleHdr(ws6.addRow(['품목코드', '품목명', '분류', ...years.flatMap(y => [`${y}년\n판매(EA)`, `${y}년\n공급가액`]), '합계\n(EA)']), C.darkBlue, 28)
   fullProducts.forEach((p, i) => {
     const total = years.reduce((s, yr) => s + (p.annuals[yr] ?? 0), 0)
     const bg = i % 2 === 0 ? C.white : C.gray1
-    const row = ws6.addRow([p.name, p.ojcCat ?? '비OJC', ...years.map(yr => p.annuals[yr] || null), total || null])
+    const row = ws6.addRow([p.code || null, p.name, p.ojcCat ?? p.etcCat ?? '기타', ...years.flatMap(yr => [p.annuals[yr] || null, p.priceAnnuals[yr] || null]), total || null])
     row.height = 16
     row.eachCell({ includeEmpty: true }, (c, ci) => {
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }; c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-      if (ci <= 2) { c.alignment = { horizontal: 'left', vertical: 'middle' }; if (ci === 2 && p.ojcCat) c.font = { color: { argb: C.midBlue } } }
+      if (ci <= 3) { c.alignment = { horizontal: 'left', vertical: 'middle' }; if (ci === 3 && p.ojcCat) c.font = { color: { argb: C.midBlue } } }
       else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
     })
   })
   if (fullProducts.length > 0) {
     const tots = years.map(yr => fullProducts.reduce((s, p) => s + (p.annuals[yr] ?? 0), 0))
-    const sr = ws6.addRow(['합계', `${fullProducts.length}종`, ...tots, tots.reduce((a, b) => a + b, 0)]); sr.height = 22
+    const sr = ws6.addRow(['합계', `${fullProducts.length}종`, '', ...tots.flatMap(t => [t, null]), tots.reduce((a, b) => a + b, 0)]); sr.height = 22
     sr.eachCell({ includeEmpty: true }, (c, ci) => {
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.darkBlue } }; c.font = { bold: true, color: { argb: C.white } }
       c.border = { top: { style: 'medium', color: { argb: C.midBlue } } }
-      if (ci > 2) { c.alignment = { horizontal: 'right', vertical: 'middle' }; c.numFmt = '#,##0' } else c.alignment = { horizontal: 'left', vertical: 'middle' }
+      if (ci > 3) { c.alignment = { horizontal: 'right', vertical: 'middle' }; c.numFmt = '#,##0' } else c.alignment = { horizontal: 'left', vertical: 'middle' }
     })
   }
-  ws6.columns = [{ width: 42 }, { width: 18 }, ...years.map(() => ({ width: 13 })), { width: 13 }]
+  ws6.columns = [{ width: 16 }, { width: 40 }, { width: 18 }, ...years.flatMap(() => [{ width: 13 }, { width: 16 }]), { width: 13 }]
 
   const buffer = await wb.xlsx.writeBuffer()
   downloadXlsx(buffer as ArrayBuffer, `판매현황분석_${today()}.xlsx`)
@@ -750,11 +770,14 @@ function OjcSalesView({
               {years.map(yr => (
                 <th key={yr} className={`${thBase} text-right`}>{yr}년 판매(EA)</th>
               ))}
-              <th className={`${thBase} text-right`}>피크월(EA)</th>
+              {years.map(yr => (
+                <th key={`p${yr}`} className={`${thBase} text-right`}>{yr}년 공급가액</th>
+              ))}
+              <th className={`${thBase} text-right`}>{latestYr}년<br/>최다 판매월</th>
               <th className={`${thBase} text-right`}>월평균(EA)</th>
               <th className={`${thBase} text-right`}>현재고(EA)</th>
-              <th className={`${thBase} text-right`}>피크커버</th>
-              <th className={`${thBase} text-right`}>평균커버</th>
+              <th className={`${thBase} text-right`}>최다월<br/>재고커버</th>
+              <th className={`${thBase} text-right`}>평균<br/>재고커버</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -762,6 +785,7 @@ function OjcSalesView({
               const latestAnnual  = data.annuals[latestYr] ?? 0
               const monthlyVals   = MONTHS.map(m => data.monthlyLatest[m] ?? 0)
               const peakMonthly   = Math.max(0, ...monthlyVals)
+              const peakMonth     = peakMonthly > 0 ? MONTHS.find(m => (data.monthlyLatest[m] ?? 0) === peakMonthly) ?? '' : ''
               const avgMonthly    = latestAnnual / 12
               const stock         = ojcStock[cat] ?? 0
               const coverPeak     = peakMonthly > 0 ? stock / peakMonthly : 0
@@ -784,7 +808,12 @@ function OjcSalesView({
                     {years.map(yr => (
                       <td key={yr} className="px-3 py-2 text-right font-mono">{num(data.annuals[yr] ?? 0)}</td>
                     ))}
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-orange-700">{num(peakMonthly)}</td>
+                    {years.map(yr => (
+                      <td key={`p${yr}`} className="px-3 py-2 text-right text-xs text-gray-600">{fmtPrice(data.priceAnnuals[yr] ?? 0)}</td>
+                    ))}
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-orange-700">
+                      {peakMonthly > 0 ? <>{peakMonthly.toLocaleString()}<br/><span className="text-xs font-normal text-orange-500">({parseInt(peakMonth)}월)</span></> : '—'}
+                    </td>
                     <td className="px-3 py-2 text-right font-mono">
                       {latestAnnual > 0 ? Math.round(avgMonthly).toLocaleString() : '—'}
                     </td>
@@ -818,7 +847,7 @@ function OjcSalesView({
                     <Fragment key={`${cat}-detail`}>
                       {/* 월간 현황 행 */}
                       <tr className="bg-blue-50/60">
-                        <td colSpan={3 + years.length + 5} className="px-4 py-2">
+                        <td colSpan={3 + years.length * 2 + 5} className="px-4 py-2">
                           <div className="text-xs font-semibold text-blue-700 mb-1.5">{latestYr}년 월간 판매 현황</div>
                           <div className="flex gap-1 flex-wrap">
                             {MONTHS.map(m => {
@@ -843,13 +872,19 @@ function OjcSalesView({
                           const pPeak     = Math.max(0, ...pMonthly)
                           return (
                             <tr key={name} className="bg-gray-50/80 hover:bg-blue-50/40 transition">
-                              <td className="pl-7 pr-3 py-1.5 text-xs text-gray-600 max-w-xs truncate" title={name}>
-                                ↳ {name}
+                              <td className="pl-7 pr-3 py-1.5 text-xs text-gray-600 max-w-xs" title={name}>
+                                <div className="text-[10px] text-blue-400 font-mono">{prod.code || '—'}</div>
+                                <div className="truncate">↳ {name}</div>
                               </td>
                               <td className="px-3 py-1.5 text-right text-xs text-gray-400">—</td>
                               {years.map(yr => (
                                 <td key={yr} className="px-3 py-1.5 text-right text-xs font-mono text-gray-600">
                                   {num(prod.annuals[yr] ?? 0)}
+                                </td>
+                              ))}
+                              {years.map(yr => (
+                                <td key={`p${yr}`} className="px-3 py-1.5 text-right text-xs text-gray-500">
+                                  {fmtPrice(prod.priceAnnuals[yr] ?? 0)}
                                 </td>
                               ))}
                               <td className="px-3 py-1.5 text-right text-xs font-mono text-orange-600">{num(pPeak)}</td>
@@ -868,7 +903,7 @@ function OjcSalesView({
 
             {Object.keys(ojcByCategory).length === 0 && (
               <tr>
-                <td colSpan={5 + years.length + 3} className="text-center text-gray-400 py-10">
+                <td colSpan={5 + years.length * 2 + 3} className="text-center text-gray-400 py-10">
                   OJC 품목이 감지되지 않았습니다. (품목명 앞부분: OJC-, SOJC-, DOJC-, MOJC-, DROP-CABLE, PIGTAIL- 등)
                 </td>
               </tr>
@@ -878,7 +913,7 @@ function OjcSalesView({
             {Object.keys(etcByCategory).length > 0 && (
               <>
                 <tr>
-                  <td colSpan={5 + years.length + 3}
+                  <td colSpan={5 + years.length * 2 + 3}
                     className="px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 border-t-2 border-purple-200">
                     기타 품목 판매 현황
                   </td>
@@ -887,6 +922,7 @@ function OjcSalesView({
                   const latestAnnual = data.annuals[latestYr] ?? 0
                   const monthlyVals  = MONTHS.map(m => data.monthlyLatest[m] ?? 0)
                   const peakMonthly  = Math.max(0, ...monthlyVals)
+                  const peakMonth    = peakMonthly > 0 ? MONTHS.find(m => (data.monthlyLatest[m] ?? 0) === peakMonthly) ?? '' : ''
                   const avgMonthly   = latestAnnual / 12
                   const stock        = ojcStock[cat] ?? 0
                   const coverPeak    = peakMonthly > 0 ? stock / peakMonthly : 0
@@ -908,7 +944,12 @@ function OjcSalesView({
                         {years.map(yr => (
                           <td key={yr} className="px-3 py-2 text-right font-mono">{num(data.annuals[yr] ?? 0)}</td>
                         ))}
-                        <td className="px-3 py-2 text-right font-mono font-semibold text-orange-700">{num(peakMonthly)}</td>
+                        {years.map(yr => (
+                          <td key={`p${yr}`} className="px-3 py-2 text-right text-xs text-gray-600">{fmtPrice(data.priceAnnuals[yr] ?? 0)}</td>
+                        ))}
+                        <td className="px-3 py-2 text-right font-mono font-semibold text-orange-700">
+                          {peakMonthly > 0 ? <>{peakMonthly.toLocaleString()}<br/><span className="text-xs font-normal text-orange-500">({parseInt(peakMonth)}월)</span></> : '—'}
+                        </td>
                         <td className="px-3 py-2 text-right font-mono">
                           {latestAnnual > 0 ? Math.round(avgMonthly).toLocaleString() : '—'}
                         </td>
@@ -939,7 +980,7 @@ function OjcSalesView({
                       {isExpanded && (
                         <Fragment key={`etc-${cat}-detail`}>
                           <tr className="bg-purple-50/40">
-                            <td colSpan={3 + years.length + 5} className="px-4 py-2">
+                            <td colSpan={3 + years.length * 2 + 5} className="px-4 py-2">
                               <div className="text-xs font-semibold text-purple-700 mb-1.5">{latestYr}년 월간 판매 현황</div>
                               <div className="flex gap-1 flex-wrap">
                                 {MONTHS.map(m => {
@@ -962,13 +1003,19 @@ function OjcSalesView({
                               const pPeak   = Math.max(0, ...MONTHS.map(m => prod.monthlyLatest[m] ?? 0))
                               return (
                                 <tr key={name} className="bg-purple-50/10 hover:bg-purple-50/40 transition">
-                                  <td className="pl-7 pr-3 py-1.5 text-xs text-purple-700 max-w-xs truncate" title={name}>
-                                    ↳ {name}
+                                  <td className="pl-7 pr-3 py-1.5 text-xs text-purple-700 max-w-xs" title={name}>
+                                    <div className="text-[10px] text-purple-400 font-mono">{prod.code || '—'}</div>
+                                    <div className="truncate">↳ {name}</div>
                                   </td>
                                   <td className="px-3 py-1.5 text-right text-xs text-gray-400">—</td>
                                   {years.map(yr => (
                                     <td key={yr} className="px-3 py-1.5 text-right text-xs font-mono text-gray-600">
                                       {num(prod.annuals[yr] ?? 0)}
+                                    </td>
+                                  ))}
+                                  {years.map(yr => (
+                                    <td key={`p${yr}`} className="px-3 py-1.5 text-right text-xs text-gray-500">
+                                      {fmtPrice(prod.priceAnnuals[yr] ?? 0)}
                                     </td>
                                   ))}
                                   <td className="px-3 py-1.5 text-right text-xs font-mono text-orange-600">{num(pPeak)}</td>
@@ -991,7 +1038,7 @@ function OjcSalesView({
             {stockOnlyCats.length > 0 && (
               <>
                 <tr>
-                  <td colSpan={5 + years.length + 3}
+                  <td colSpan={5 + years.length * 2 + 3}
                     className="px-3 py-1.5 text-xs font-semibold text-gray-500 bg-gray-50 border-t border-gray-200">
                     재고만 있음 (판매 데이터 없음)
                   </td>
@@ -1004,6 +1051,9 @@ function OjcSalesView({
                       <td className="px-3 py-2 text-right text-gray-300 text-xs">—</td>
                       {years.map(yr => (
                         <td key={yr} className="px-3 py-2 text-right text-gray-300 text-xs">—</td>
+                      ))}
+                      {years.map(yr => (
+                        <td key={`p${yr}`} className="px-3 py-2 text-right text-gray-300 text-xs">—</td>
                       ))}
                       <td className="px-3 py-2 text-right text-gray-300 text-xs">—</td>
                       <td className="px-3 py-2 text-right text-gray-300 text-xs">—</td>
@@ -1037,18 +1087,18 @@ function OjcSalesView({
 
 // ── ② 거래처별 탑3 ──────────────────────────────────────────────────
 function downloadCustomerTop3(
-  customerTop3: Record<string, Array<{ name: string; qty: number }>>,
+  customerTop3: Record<string, Array<{ name: string; code: string; qty: number; price: number }>>,
   years: string[],
 ) {
-  const header = ['순위', '거래처명', '총구매(EA)', 'TOP1 품목명', 'TOP1 수량(EA)', 'TOP2 품목명', 'TOP2 수량(EA)', 'TOP3 품목명', 'TOP3 수량(EA)']
+  const header = ['순위', '거래처명', '총구매(EA)', 'TOP1 품목코드', 'TOP1 품목명', 'TOP1 수량(EA)', 'TOP1 공급가액', 'TOP2 품목코드', 'TOP2 품목명', 'TOP2 수량(EA)', 'TOP2 공급가액', 'TOP3 품목코드', 'TOP3 품목명', 'TOP3 수량(EA)', 'TOP3 공급가액']
   const rows: unknown[][] = [header]
   Object.entries(customerTop3).forEach(([cust, top3], i) => {
     const total = top3.reduce((s, x) => s + x.qty, 0)
     rows.push([
       i + 1, cust, total,
-      top3[0]?.name ?? null, top3[0]?.qty ?? null,
-      top3[1]?.name ?? null, top3[1]?.qty ?? null,
-      top3[2]?.name ?? null, top3[2]?.qty ?? null,
+      top3[0]?.code ?? null, top3[0]?.name ?? null, top3[0]?.qty ?? null, top3[0]?.price || null,
+      top3[1]?.code ?? null, top3[1]?.name ?? null, top3[1]?.qty ?? null, top3[1]?.price || null,
+      top3[2]?.code ?? null, top3[2]?.name ?? null, top3[2]?.qty ?? null, top3[2]?.price || null,
     ])
   })
   const wb = XLSX.utils.book_new()
@@ -1061,7 +1111,7 @@ function downloadCustomerTop3(
 function CustomerTop3View({
   customerTop3, years,
 }: {
-  customerTop3: Record<string, Array<{ name: string; qty: number }>>
+  customerTop3: Record<string, Array<{ name: string; code: string; qty: number; price: number }>>
   years:        string[]
 }) {
   const [search, setSearch] = useState('')
@@ -1114,6 +1164,7 @@ function CustomerTop3View({
                 <Fragment key={rank}>
                   <th className={`${thBase} text-left`}>TOP{rank} 품목명</th>
                   <th className={`${thBase} text-right`}>수량(EA)</th>
+                  <th className={`${thBase} text-right`}>공급가액</th>
                 </Fragment>
               ))}
             </tr>
@@ -1130,14 +1181,15 @@ function CustomerTop3View({
                   </td>
                   {[0, 1, 2].map(rank => (
                     <Fragment key={rank}>
-                      <td
-                        className="px-3 py-2 max-w-[200px] truncate text-sm text-gray-700"
-                        title={top3[rank]?.name ?? ''}
-                      >
-                        {top3[rank]?.name ?? <span className="text-gray-300">—</span>}
+                      <td className="px-3 py-2 max-w-[200px] text-sm text-gray-700" title={top3[rank]?.name ?? ''}>
+                        <div className="text-[10px] text-gray-400 font-mono">{top3[rank]?.code || '—'}</div>
+                        <div className="truncate">{top3[rank]?.name ?? <span className="text-gray-300">—</span>}</div>
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-sm">
                         {top3[rank] ? top3[rank].qty.toLocaleString() : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs text-gray-600">
+                        {top3[rank] ? fmtPrice(top3[rank].price) : <span className="text-gray-300">—</span>}
                       </td>
                     </Fragment>
                   ))}
@@ -1156,17 +1208,17 @@ function CustomerTop3View({
 
 // ── ③ 전체 판매량 ──────────────────────────────────────────────────
 function downloadFullSales(
-  filtered: Array<{ name: string; ojcCat: string | null; annuals: Record<string, number> }>,
+  filtered: Array<{ name: string; code: string; ojcCat: string | null; etcCat: string | null; annuals: Record<string, number>; priceAnnuals: Record<string, number> }>,
   years: string[],
 ) {
-  const header = ['품목명', '분류', ...years.map(y => `${y}년 판매(EA)`), '합계(EA)']
+  const header = ['품목코드', '품목명', '분류', ...years.flatMap(y => [`${y}년 판매(EA)`, `${y}년 공급가액`]), '합계(EA)']
   const rows: unknown[][] = [header]
   for (const p of filtered) {
     const total = years.reduce((s, yr) => s + (p.annuals[yr] ?? 0), 0)
-    rows.push([p.name, p.ojcCat ?? '비OJC', ...years.map(yr => p.annuals[yr] ?? 0), total])
+    rows.push([p.code, p.name, p.ojcCat ?? p.etcCat ?? '기타', ...years.flatMap(yr => [p.annuals[yr] ?? 0, p.priceAnnuals[yr] ?? 0]), total])
   }
   const totals = years.map(yr => filtered.reduce((s, p) => s + (p.annuals[yr] ?? 0), 0))
-  rows.push(['합계', '', ...totals, totals.reduce((a, b) => a + b, 0)])
+  rows.push(['합계', '', '', ...totals.flatMap(t => [t, null]), totals.reduce((a, b) => a + b, 0)])
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '전체판매량')
   downloadXlsx(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer, `전체판매량_${today()}.xlsx`)
@@ -1175,7 +1227,7 @@ function downloadFullSales(
 function FullSalesView({
   products, years, latestYr,
 }: {
-  products:  Array<{ name: string; ojcCat: string | null; annuals: Record<string, number> }>
+  products:  Array<{ name: string; code: string; ojcCat: string | null; etcCat: string | null; annuals: Record<string, number>; priceAnnuals: Record<string, number> }>
   years:     string[]
   latestYr:  string
 }) {
@@ -1245,23 +1297,32 @@ function FullSalesView({
               <th className={`${thBase} text-left`}>품목명</th>
               <th className={`${thBase} text-center`}>분류</th>
               {years.map(yr => (
-                <th key={yr} className={`${thBase} text-right`}>{yr}년 판매(EA)</th>
+                <Fragment key={yr}>
+                  <th className={`${thBase} text-right`}>{yr}년 판매(EA)</th>
+                  <th className={`${thBase} text-right`}>{yr}년 공급가액</th>
+                </Fragment>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filtered.map((p, i) => (
               <tr key={p.name} className={i % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 hover:bg-gray-100'}>
-                <td className="px-3 py-1.5 max-w-sm truncate text-gray-800 text-sm" title={p.name}>{p.name}</td>
+                <td className="px-3 py-1.5 max-w-sm text-gray-800 text-sm" title={p.name}>
+                  <div className="text-[10px] text-gray-400 font-mono">{p.code || '—'}</div>
+                  <div className="truncate">{p.name}</div>
+                </td>
                 <td className="px-3 py-1.5 text-center">
                   <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                    p.ojcCat ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                    p.ojcCat ? 'bg-blue-100 text-blue-700' : p.etcCat ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'
                   }`}>
-                    {p.ojcCat ?? '비OJC'}
+                    {p.ojcCat ?? p.etcCat ?? '기타'}
                   </span>
                 </td>
                 {years.map(yr => (
-                  <td key={yr} className="px-3 py-1.5 text-right font-mono text-sm">{num(p.annuals[yr] ?? 0)}</td>
+                  <Fragment key={yr}>
+                    <td className="px-3 py-1.5 text-right font-mono text-sm">{num(p.annuals[yr] ?? 0)}</td>
+                    <td className="px-3 py-1.5 text-right text-xs text-gray-500">{fmtPrice(p.priceAnnuals[yr] ?? 0)}</td>
+                  </Fragment>
                 ))}
               </tr>
             ))}
@@ -1272,13 +1333,16 @@ function FullSalesView({
                 <td className="px-3 py-2 text-gray-800">합계</td>
                 <td className="px-3 py-2 text-center text-gray-500 text-xs">{filtered.length}종</td>
                 {years.map(yr => (
-                  <td key={yr} className="px-3 py-2 text-right font-mono">{num(yearTotals[yr] ?? 0)}</td>
+                  <Fragment key={yr}>
+                    <td className="px-3 py-2 text-right font-mono">{num(yearTotals[yr] ?? 0)}</td>
+                    <td className="px-3 py-2 text-right text-xs text-gray-400">—</td>
+                  </Fragment>
                 ))}
               </tr>
             )}
 
             {filtered.length === 0 && (
-              <tr><td colSpan={2 + years.length} className="text-center text-gray-400 py-10">검색 결과 없음</td></tr>
+              <tr><td colSpan={2 + years.length * 2} className="text-center text-gray-400 py-10">검색 결과 없음</td></tr>
             )}
           </tbody>
         </table>
