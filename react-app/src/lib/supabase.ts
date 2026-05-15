@@ -112,6 +112,25 @@ export async function saveOjcRules(rules: OjcRules): Promise<void> {
   await sbSave('ojc_rules', rules)
 }
 
+// ── OJC 생성 품번 이력 ─────────────────────────────────────────
+export interface OjcProduct {
+  name:       string   // 품목명
+  spec:       string   // 규격
+  partNumber: string   // 생성된 품번
+  createdAt:  string   // ISO date
+}
+
+export async function loadOjcProducts(): Promise<OjcProduct[]> {
+  const d = await sbLoad('ojc_products')
+  if (d) return d as OjcProduct[]
+  return lsGet('ajw_ojc_products', [])
+}
+
+export function saveOjcProducts(products: OjcProduct[]): void {
+  lsSet('ajw_ojc_products', products)
+  void sbSave('ojc_products', products)
+}
+
 export async function syncToSupabase(
   settings: AppSettings,
   metadata: Metadata,

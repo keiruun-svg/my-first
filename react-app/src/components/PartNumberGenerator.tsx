@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { OjcRules } from '../lib/types'
 import { DEFAULT_OJC_RULES } from '../lib/types'
 import { loadOjcRules, saveOjcRules } from '../lib/supabase'
+import type { OjcProduct } from '../lib/supabase'
 import type { DetectedFields } from '../lib/ojcAutoDetect'
 import { analyzeProduct } from '../lib/ojcAutoDetect'
 
@@ -51,13 +52,19 @@ const FIELD_LABELS: Record<keyof DetectedFields, string> = {
   marking:    '⑧ 마킹',
 }
 
-export default function PartNumberGenerator() {
+interface Props {
+  ojcProducts:    OjcProduct[]
+  setOjcProducts: (p: OjcProduct[]) => void
+}
+
+export default function PartNumberGenerator({ ojcProducts, setOjcProducts }: Props) {
   const [subTab, setSubTab]         = useState<SubTab>('auto')
   const [rules, setRules]           = useState<OjcRules>(DEFAULT_OJC_RULES)
   const [editRules, setEditRules]   = useState<OjcRules>(DEFAULT_OJC_RULES)
   const [hasChanges, setHasChanges] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [copied, setCopied]         = useState(false)
+  const [savedPN, setSavedPN]       = useState(false)
   const [openSections, setOpenSections] = useState<Partial<Record<Section, boolean>>>({ ojcType: true })
 
   // ── 자동 분석 탭 상태 ─────────────────────────────────────
@@ -83,6 +90,27 @@ export default function PartNumberGenerator() {
   useEffect(() => {
     loadOjcRules().then(r => { setRules(r); setEditRules(r) })
   }, [])
+
+  // ── 기존 품번 조회 ─────────────────────────────────────────
+  const existingProduct = ojcProducts.find(
+    p => p.name.trim() === autoName.trim() && p.spec.trim() === autoSpec.trim()
+  )
+
+  function saveCurrentPartNumber(pn: string) {
+    if (!autoName.trim()) return
+    const next: OjcProduct = {
+      name:       autoName.trim(),
+      spec:       autoSpec.trim(),
+      partNumber: pn,
+      createdAt:  new Date().toISOString().slice(0, 10),
+    }
+    const filtered = ojcProducts.filter(
+      p => !(p.name === next.name && p.spec === next.spec)
+    )
+    setOjcProducts([...filtered, next])
+    setSavedPN(true)
+    setTimeout(() => setSavedPN(false), 2000)
+  }
 
   // ── 자동 분석 ──────────────────────────────────────────────
   function handleAnalyze() {
@@ -244,7 +272,8 @@ export default function PartNumberGenerator() {
           {/* 입력 영역 */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">
-              품목명과 규격을 입력하면 품번을 자동으로 분석합니다.
+              품목명과 규격을 입력하면 품번이 자동 생성됩니다.
+              동일한 품목명·규격으로 이미 저장된 품번이 있으면 먼저 표시됩니다.
             </h2>
             <div className="space-y-3">
               <div className="flex items-center gap-3">
@@ -292,6 +321,27 @@ export default function PartNumberGenerator() {
               </div>
             </div>
           </div>
+
+          {/* 기존 품번 조회 결과 */}
+          {existingProduct && autoName.trim() && (
+            <div className="bg-sky-50 border border-sky-200 rounded-lg px-5 py-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs text-sky-600 font-semibold mb-0.5">기존 등록 품번</div>
+                <div className="font-mono text-lg font-bold text-sky-800 tracking-widest">
+                  {existingProduct.partNumber}
+                </div>
+                <div className="text-xs text-sky-500 mt-0.5">
+                  {existingProduct.name} / {existingProduct.spec} — {existingProduct.createdAt} 저장
+                </div>
+              </div>
+              <button
+                onClick={() => handleCopy(existingProduct.partNumber)}
+                className="flex-shrink-0 px-4 py-1.5 text-sm bg-sky-600 text-white rounded hover:bg-sky-700 transition-colors"
+              >
+                {copied ? '✓ 복사됨' : '복사'}
+              </button>
+            </div>
+          )}
 
           {/* 분석 결과 */}
           {detected && (
@@ -393,16 +443,31 @@ export default function PartNumberGenerator() {
               {/* 품번 결과 */}
               <div className="px-5 py-4 border-t border-gray-200 bg-gray-50">
                 {autoPartNumber ? (
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono text-xl font-bold text-sky-700 tracking-widest flex-1 break-all">
-                      {autoPartNumber}
-                    </span>
-                    <button
-                      onClick={() => handleCopy(autoPartNumber)}
-                      className="px-4 py-1.5 text-sm bg-sky-600 text-white rounded hover:bg-sky-700 transition-colors whitespace-nowrap"
-                    >
-                      {copied ? '✓ 복사됨' : '복사'}
-                    </button>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-xl font-bold text-sky-700 tracking-widest flex-1 break-all">
+                        {autoPartNumber}
+                      </span>
+                      <button
+                        onClick={() => handleCopy(autoPartNumber)}
+                        className="px-4 py-1.5 text-sm bg-sky-600 text-white rounded hover:bg-sky-700 transition-colors whitespace-nowrap"
+                      >
+                        {copied ? '✓ 복사됨' : '복사'}
+                      </button>
+                    </div>
+                    {autoName.trim() && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => saveCurrentPartNumber(autoPartNumber)}
+                          className="text-xs px-3 py-1 border border-sky-300 text-sky-600 rounded hover:bg-sky-50 transition-colors"
+                        >
+                          {savedPN ? '✓ 저장됨' : '💾 품번 저장 (조회용)'}
+                        </button>
+                        {existingProduct?.partNumber === autoPartNumber && (
+                          <span className="text-xs text-gray-400">이미 저장된 품번과 동일</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-orange-500">

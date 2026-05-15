@@ -2,6 +2,8 @@ import { useState, Fragment } from 'react'
 import { parseSalesFile, parseProductionFile } from '../lib/parse/parseSales'
 import { aggregateSales, forecastProduction } from '../lib/aggregate/salesAgg'
 import { saveSalesAgg } from '../lib/supabase'
+import { writeSalesAgg } from '../lib/output/writeSalesAgg'
+import { downloadXlsx, today } from '../lib/download'
 import type { SalesAggResult, SalesProductEntry } from '../lib/aggregate/salesAgg'
 import FileUploader from './FileUploader'
 
@@ -55,6 +57,11 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
     }
   }
 
+  const downloadSalesAgg = () => {
+    if (!salesAgg) return
+    downloadXlsx(writeSalesAgg(salesAgg), `판매분석_${today()}.xlsx`)
+  }
+
   const years      = salesAgg?.years ?? []
   const latestYr   = years[years.length - 1]
   const nextYrLabel = latestYr ? `${Number(latestYr) + 1}년` : ''
@@ -85,7 +92,7 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
 
       <hr className="border-gray-200" />
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <button
           onClick={run}
           disabled={running || !salesFile}
@@ -93,6 +100,14 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
         >
           {running ? '⏳ 분석 중...' : '▶ STEP 2 실행 — 판매 분석'}
         </button>
+        {salesAgg && (
+          <button
+            onClick={downloadSalesAgg}
+            className="px-4 py-2 text-sm bg-[#2E75B6] hover:bg-[#1a5a9e] text-white font-semibold rounded transition"
+          >
+            📥 판매분석 Excel 저장
+          </button>
+        )}
         {(done || logs.length > 0) && (
           <button
             onClick={() => { setDone(false); setLogs([]); setSalesFile(null); setPurchaseFile(null) }}

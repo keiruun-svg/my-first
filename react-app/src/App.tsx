@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import {
-  loadSettings, loadMetadata, loadInventory, loadSalesAnalysis, loadSalesAgg, CAN_WRITE
+  loadSettings, loadMetadata, loadInventory, loadSalesAnalysis, loadSalesAgg,
+  loadOjcProducts, saveOjcProducts, CAN_WRITE,
 } from './lib/supabase'
+import type { OjcProduct } from './lib/supabase'
 import { DEFAULT_SETTINGS } from './lib/types'
 import type { AppSettings, Metadata, Inventory, SalesAnalysis } from './lib/types'
 import type { SalesAggResult } from './lib/aggregate/salesAgg'
@@ -33,8 +35,9 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [metadata, setMetadata] = useState<Metadata>({ cable: {}, housing: {} })
   const [inventory, setInventory] = useState<Inventory>({ cable: {}, housing: {} })
-  const [sales, setSales]         = useState<SalesAnalysis>({})
-  const [salesAgg, setSalesAgg]   = useState<SalesAggResult | null>(null)
+  const [sales, setSales]           = useState<SalesAnalysis>({})
+  const [salesAgg, setSalesAgg]     = useState<SalesAggResult | null>(null)
+  const [ojcProducts, setOjcProducts] = useState<OjcProduct[]>([])
 
   useEffect(() => {
     Promise.all([
@@ -43,12 +46,14 @@ export default function App() {
       loadInventory(),
       loadSalesAnalysis(),
       loadSalesAgg(),
-    ]).then(([s, m, inv, sa, sagg]) => {
+      loadOjcProducts(),
+    ]).then(([s, m, inv, sa, sagg, ojcp]) => {
       setSettings(s)
       setMetadata(m)
       setInventory(inv)
       setSales(sa)
       setSalesAgg(sagg)
+      setOjcProducts(ojcp as OjcProduct[])
       setLoading(false)
     })
   }, [])
@@ -104,7 +109,10 @@ export default function App() {
           <Step3 metadata={metadata} inventory={inventory} settings={settings} />
         )}
         {activeTab === 'partnum' && (
-          <PartNumberGenerator />
+          <PartNumberGenerator
+            ojcProducts={ojcProducts}
+            setOjcProducts={(p) => { setOjcProducts(p); saveOjcProducts(p) }}
+          />
         )}
         {activeTab === 'meta' && CAN_WRITE && (
           <MetaManager metadata={metadata} setMetadata={setMetadata} />

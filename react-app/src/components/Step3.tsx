@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import ExcelJS from 'exceljs'
-import { buildStep3Plan } from '../lib/step3Core'
+import { buildStep3Plan, parseSalesAggExcel } from '../lib/step3Core'
 import type { Step3Row } from '../lib/step3Core'
 import type { Metadata, Inventory, AppSettings } from '../lib/types'
+import { downloadXlsx, today } from '../lib/download'
 import FileUploader from './FileUploader'
 
 interface Props {
@@ -18,19 +19,24 @@ const ALL_BORDERS = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER }
 const num = (v: number, unit = '') => v === 0 ? '—' : v.toLocaleString() + (unit ? ' ' + unit : '')
 
 export default function Step3({ metadata, inventory, settings }: Props) {
-  const [logs, setLogs]         = useState<string[]>([])
-  const [running, setRunning]   = useState(false)
-  const [done, setDone]         = useState(false)
-  const [gaongFile, setGaongFile] = useState<File | null>(null)
-  const [rows, setRows]         = useState<Step3Row[]>([])
-  const [years, setYears]       = useState<string[]>([])
+  const [logs, setLogs]               = useState<string[]>([])
+  const [running, setRunning]         = useState(false)
+  const [done, setDone]               = useState(false)
+  const [gaongFile, setGaongFile]     = useState<File | null>(null)
+  const [salesAggFile, setSalesAggFile] = useState<File | null>(null)
+  const [rows, setRows]               = useState<Step3Row[]>([])
+  const [years, setYears]             = useState<string[]>([])
 
   const run = async () => {
     if (!gaongFile) return alert('가공파일을 선택해주세요.')
     setRunning(true); setDone(false); setLogs([]); setRows([])
     try {
       const buf = await gaongFile.arrayBuffer()
-      const result = buildStep3Plan(buf, metadata, inventory, settings.lead_time_default, settings.safety_stock_k ?? 1.5)
+      let kindCagr: Record<string, number> | undefined
+      if (salesAggFile) {
+        kindCagr = parseSalesAggExcel(await salesAggFile.arrayBuffer())
+      }
+      const result = buildStep3Plan(buf, metadata, inventory, settings.lead_time_default, settings.safety_stock_k ?? 1.5, kindCagr)
       setLogs(result.logs)
       setRows(result.rows)
       setYears(result.years)
@@ -46,20 +52,17 @@ export default function Step3({ metadata, inventory, settings }: Props) {
     if (!rows.length) return
     const wb = new ExcelJS.Workbook()
     wb.creator = 'AJW 발주계획 시스템'
-    writeSheet(wb, '케이블 발주계획',  rows.filter(r => r.type === 'cable'),   years, settings.colors.main_header)
-    writeSheet(wb, '하우징 발주계획',  rows.filter(r => r.type === 'housing'),  years, settings.colors.main_header)
-    const buf  = await wb.xlsx.writeBuffer()
-    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = `발주계획_${new Date().toISOString().slice(0,10)}.xlsx`
-    a.click(); URL.revokeObjectURL(url)
+    writeSheet(wb, '케이블 발주계획', rows.filter(r => r.type === 'cable'),   years, settings.colors.main_header)
+    writeSheet(wb, '하우징 발주계획', rows.filter(r => r.type === 'housing'), years, settings.colors.main_header)
+    const buf = await wb.xlsx.writeBuffer()
+    downloadXlsx(buf as ArrayBuffer, `발주계획_${today()}.xlsx`)
   }
 
   const cableRows   = rows.filter(r => r.type === 'cable')
   const housingRows = rows.filter(r => r.type === 'housing')
   const missingPn   = rows.filter(r => !r.품번).length
   const latestYr    = years[years.length - 1]
+  const hasCagr     = rows.some(r => r.appliedCagr !== 0)
 
   return (
     <div className="space-y-4">
@@ -70,11 +73,17 @@ export default function Step3({ metadata, inventory, settings }: Props) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-        <div className="md:col-span-2">
+        <div className="md:col-span-2 space-y-2">
           <FileUploader
-            label="가공파일.xlsx (STEP 1 결과)"
+            label="① 가공파일.xlsx (STEP 1 결과)"
             fileName={gaongFile?.name ?? ''}
             onFile={setGaongFile}
+          />
+          <FileUploader
+            label="② 판매분석.xlsx (STEP 2 결과, 선택) — 케이블 발주량에 판매CAGR 반영"
+            fileName={salesAggFile?.name ?? ''}
+            onFile={setSalesAggFile}
+            optional
           />
         </div>
         <div className="bg-[#e8f4fd] rounded-lg p-4 text-sm text-gray-700 space-y-1">
@@ -105,7 +114,7 @@ export default function Step3({ metadata, inventory, settings }: Props) {
         )}
         {(done || logs.length > 0) && (
           <button
-            onClick={() => { setDone(false); setLogs([]); setGaongFile(null); setRows([]); setYears([]) }}
+            onClick={() => { setDone(false); setLogs([]); setGaongFile(null); setSalesAggFile(null); setRows([]); setYears([]) }}
             className="px-4 py-2 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition"
           >
             🗑 초기화
@@ -127,21 +136,13 @@ export default function Step3({ metadata, inventory, settings }: Props) {
 
       {done && rows.length > 0 && (
         <div className="space-y-4">
-          {/* 케이블 */}
           <SectionTable
             title={`케이블 자재 (${cableRows.length}타입)`}
-            rows={cableRows}
-            years={years}
-            latestYr={latestYr}
-            unitSuffix="m"
+            rows={cableRows} years={years} latestYr={latestYr} unitSuffix="m" showCagr={hasCagr}
           />
-          {/* 하우징 */}
           <SectionTable
             title={`하우징 자재 (${housingRows.length}타입)`}
-            rows={housingRows}
-            years={years}
-            latestYr={latestYr}
-            unitSuffix="EA"
+            rows={housingRows} years={years} latestYr={latestYr} unitSuffix="EA" showCagr={false}
           />
         </div>
       )}
@@ -151,11 +152,12 @@ export default function Step3({ metadata, inventory, settings }: Props) {
 
 // ── 섹션 테이블 컴포넌트 ─────────────────────────────────────────
 function SectionTable({
-  title, rows, years, latestYr, unitSuffix
+  title, rows, years, latestYr, unitSuffix, showCagr = false,
 }: {
-  title: string; rows: Step3Row[]; years: string[]; latestYr: string; unitSuffix: string
+  title: string; rows: Step3Row[]; years: string[]; latestYr: string; unitSuffix: string; showCagr?: boolean
 }) {
   if (!rows.length) return null
+  const fmtCagr = (v: number) => v === 0 ? '—' : `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`
   return (
     <div>
       <div className="text-sm font-semibold text-gray-700 mb-1.5">{title}</div>
@@ -169,8 +171,10 @@ function SectionTable({
               <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>품명</th>
               <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>구매처</th>
               <th className="px-2 py-1 text-center border-b font-semibold text-gray-600" rowSpan={2}>LT<br/>(일)</th>
-              <th className="px-2 py-1 text-center border-b border-l font-semibold text-blue-700"
-                colSpan={years.length}>연간 사용량({unitSuffix})</th>
+              {showCagr && <th className="px-2 py-1 text-center border-b font-semibold text-blue-700" rowSpan={2}>판매<br/>CAGR</th>}
+              <th className="px-2 py-1 text-center border-b border-l font-semibold text-blue-700" colSpan={years.length}>
+                연간 사용량({unitSuffix})
+              </th>
               <th className="px-2 py-1 text-center border-b font-semibold text-orange-700" rowSpan={2}>월최대<br/>({latestYr}년)</th>
               <th className="px-2 py-1 text-center border-b font-semibold text-red-700" rowSpan={2}>안전재고<br/>({unitSuffix})</th>
               <th className="px-2 py-1 text-center border-b font-semibold text-purple-700" rowSpan={2}>현재고</th>
@@ -185,7 +189,7 @@ function SectionTable({
           </thead>
           <tbody>
             {rows.map((row, i) => {
-              const missingPn = !row.품번
+              const missingPn  = !row.품번
               const needsOrder = row.발주필요량 > 0
               return (
                 <tr key={row.key} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
@@ -197,6 +201,11 @@ function SectionTable({
                   <td className="px-3 py-1.5 max-w-[200px] truncate" title={row.품명}>{row.품명 || '—'}</td>
                   <td className="px-3 py-1.5 text-gray-500">{row.구매처 || '—'}</td>
                   <td className="px-2 py-1.5 text-center">{row.리드타임}</td>
+                  {showCagr && (
+                    <td className={`px-2 py-1.5 text-center font-semibold ${row.appliedCagr > 0 ? 'text-blue-600' : row.appliedCagr < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                      {fmtCagr(row.appliedCagr)}
+                    </td>
+                  )}
                   {years.map(yr => (
                     <td key={yr} className="px-2 py-1.5 text-right border-l">
                       {num(row.byYear[yr]?.annual ?? 0)}
@@ -216,7 +225,9 @@ function SectionTable({
         </table>
       </div>
       <div className="text-xs text-gray-400 mt-1">
-        발주필요량 = 최근년 연간사용량 + 안전재고 − 현재고 − 기발주
+        {showCagr
+          ? '발주필요량 = CAGR 예측량 + 안전재고 − 현재고 − 기발주 (케이블에 판매CAGR 적용, 하우징은 최근년 실적 기준)'
+          : '발주필요량 = 최근년 연간사용량 + 안전재고 − 현재고 − 기발주'}
       </div>
     </div>
   )

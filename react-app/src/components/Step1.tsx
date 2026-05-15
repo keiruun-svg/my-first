@@ -4,6 +4,7 @@ import { buildPivot } from '../lib/aggregate/pivot'
 import { writeGaong } from '../lib/output/writeGaong'
 import { runStep1 } from '../lib/step1Core'
 import { saveMetadata } from '../lib/supabase'
+import { downloadXlsx, today } from '../lib/download'
 import type { Metadata, AppSettings } from '../lib/types'
 import FileUploader from './FileUploader'
 
@@ -60,14 +61,7 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
       const gaongBuf = writeGaong(pivot)
 
       // B: 가공파일 다운로드
-      const today   = new Date()
-      const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`
-      const blob    = new Blob([gaongBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const url     = URL.createObjectURL(blob)
-      const a       = document.createElement('a')
-      a.href = url; a.download = `가공파일_${dateStr}.xlsx`
-      document.body.appendChild(a); a.click()
-      document.body.removeChild(a); URL.revokeObjectURL(url)
+      downloadXlsx(gaongBuf, `가공파일_${today()}.xlsx`)
 
       // C: 신규 품번 타입 감지 → 품번 관리 업데이트
       const result  = runStep1(gaongBuf, metadata)
@@ -183,6 +177,27 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
           {logs.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}
+
+      <hr className="border-gray-200" />
+
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <div className="text-sm font-semibold text-gray-700 mb-3">📋 전체 워크플로우</div>
+        <ol className="text-sm text-gray-600 space-y-1.5 list-none">
+          {[
+            ['STEP 1', '맥산 ERP 구매조회/구매현황 파일 업로드 → 가공파일.xlsx 자동 다운로드'],
+            ['품번 관리', '신규 케이블·하우징 타입에 품번·품명·구매처·리드타임 입력 (로컬 전용)'],
+            ['재고 현황', '현재고·기발주 수량 입력 후 저장'],
+            ['STEP 2', '(선택) 전체 판매량 + 맥산 생산량 업로드 → 판매 분석 Excel 저장'],
+            ['STEP 3', '가공파일 + (선택) 판매분석 파일 업로드 → 발주계획 Excel 다운로드'],
+            ['품번 생성기', 'OJC 품목명·규격 입력 시 품번 자동 생성 (A14-xxx-xxx-xxx-xxxX 형식)'],
+          ].map(([step, desc], i) => (
+            <li key={i} className="flex gap-2">
+              <span className="text-xs font-bold text-[#2E75B6] bg-[#e8f4fd] rounded px-1.5 py-0.5 whitespace-nowrap flex-shrink-0">{step}</span>
+              <span>{desc}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   )
 }

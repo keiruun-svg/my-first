@@ -13,9 +13,9 @@ interface Props {
 }
 
 export default function Settings({ settings, setSettings, metadata, inventory, sales, salesAgg }: Props) {
-  const [saved, setSaved] = useState(false)
+  const [saved, setSaved]           = useState(false)
   const [syncStatus, setSyncStatus] = useState<string | null>(null)
-  const [syncing, setSyncing] = useState(false)
+  const [syncing, setSyncing]       = useState(false)
 
   const save = () => {
     saveSettings(settings)
@@ -31,12 +31,10 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
     setSyncing(true); setSyncStatus(null)
     try {
       const results = await syncToSupabase(settings, metadata, inventory, sales, salesAgg)
-      const failed = Object.entries(results).filter(([, v]) => !v).map(([k]) => k)
-      if (!failed.length) {
-        setSyncStatus('✅ Supabase 동기화 완료! (설정 / 품번 메타 / 재고 / 판매 분석 / 판매 집계)')
-      } else {
-        setSyncStatus(`❌ 동기화 실패 항목: ${failed.join(', ')}`)
-      }
+      const failed  = Object.entries(results).filter(([, v]) => !v).map(([k]) => k)
+      setSyncStatus(failed.length
+        ? `❌ 동기화 실패: ${failed.join(', ')}`
+        : '✅ Supabase 동기화 완료 (설정 / 품번 메타 / 재고 / 판매 분석 / 판매 집계)')
     } catch (e) {
       setSyncStatus(`❌ 오류: ${e}`)
     } finally {
@@ -44,53 +42,72 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
     }
   }
 
+  const isConnected = !!sb
+  const nCable   = Object.keys(metadata.cable).length
+  const nHousing = Object.keys(metadata.housing).length
+
   return (
-    <div className="space-y-6">
-      <div className="bg-[#f0f4fa] border-l-4 border-[#2E75B6] px-5 py-4 rounded-md text-sm">
-        <b>⚙️ 파라미터 & 양식 설정</b>: 변경 후 저장 버튼을 눌러야 반영됩니다.
+    <div className="space-y-6 max-w-2xl">
+
+      {/* 파라미터 */}
+      <div>
+        <div className="text-sm font-semibold text-gray-700 mb-3">⚙️ 발주 파라미터</div>
+        <div className="bg-white border border-gray-200 rounded-lg divide-y divide-gray-100">
+
+          <div className="flex items-center justify-between px-5 py-3">
+            <div>
+              <div className="text-sm font-medium text-gray-700">기본 리드타임</div>
+              <div className="text-xs text-gray-400 mt-0.5">품번별 리드타임이 없을 때 사용</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="number" min="1" max="365"
+                value={settings.lead_time_default}
+                onChange={e => setSettings({ ...settings, lead_time_default: parseInt(e.target.value) || 60 })}
+                className="w-24 border border-gray-300 rounded px-3 py-1.5 text-sm text-right focus:outline-none focus:border-blue-400"
+              />
+              <span className="text-sm text-gray-500">일</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between px-5 py-3">
+            <div>
+              <div className="text-sm font-medium text-gray-700">안전재고 계수 k</div>
+              <div className="text-xs text-gray-400 mt-0.5">안전재고 = 월평균 × (LT/30) × k</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="number" min="0.5" max="3.0" step="0.1"
+                value={settings.safety_stock_k ?? 1.5}
+                onChange={e => setSettings({ ...settings, safety_stock_k: parseFloat(e.target.value) || 1.5 })}
+                className="w-24 border border-gray-300 rounded px-3 py-1.5 text-sm text-right focus:outline-none focus:border-blue-400"
+              />
+              <span className="text-xs text-gray-400">권장 1.5~2.0</span>
+            </div>
+          </div>
+
+        </div>
       </div>
 
-      <div className="bg-white border rounded-lg p-5 space-y-4">
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1">기본 리드타임 (일)</label>
-          <input type="number" min="1" max="365"
-            value={settings.lead_time_default}
-            onChange={e => setSettings({ ...settings, lead_time_default: parseInt(e.target.value) || 60 })}
-            className="w-32 border rounded px-3 py-1.5 text-sm focus:outline-blue-400"
-          />
-          <p className="text-xs text-gray-400 mt-1">품번별 리드타임이 없을 때 사용되는 기본값</p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-1">안전재고 계수 k</label>
-          <input type="number" min="0.5" max="3.0" step="0.1"
-            value={settings.safety_stock_k ?? 1.5}
-            onChange={e => setSettings({ ...settings, safety_stock_k: parseFloat(e.target.value) || 1.5 })}
-            className="w-32 border rounded px-3 py-1.5 text-sm focus:outline-blue-400"
-          />
-          <p className="text-xs text-gray-400 mt-1">
-            안전재고 = 월평균 × (리드타임/30) × k &nbsp;|&nbsp; 권장: 1.5(보통) ~ 2.0(보수적)
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-2">연도별 색상 (HEX, # 제외)</label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* 색상 */}
+      <div>
+        <div className="text-sm font-semibold text-gray-700 mb-3">🎨 연도별 색상 (HEX, # 제외)</div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {([
-              ['main_header','메인 헤더'],
-              ['year_23','2023년'],
-              ['year_24','2024년'],
-              ['year_25','2025년'],
+              ['main_header', '메인 헤더'],
+              ['year_23',     '2023년'],
+              ['year_24',     '2024년'],
+              ['year_25',     '2025년'],
             ] as const).map(([key, label]) => (
               <div key={key}>
-                <label className="text-xs text-gray-500 mb-1 block">{label}</label>
+                <div className="text-xs text-gray-500 mb-1.5">{label}</div>
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded border" style={{ background: '#' + settings.colors[key] }} />
+                  <div className="w-7 h-7 rounded border border-gray-200 flex-shrink-0"
+                       style={{ background: '#' + settings.colors[key] }} />
                   <input
                     value={settings.colors[key]}
                     onChange={e => setSettings({ ...settings, colors: { ...settings.colors, [key]: e.target.value } })}
-                    className="flex-1 border rounded px-2 py-1 text-xs font-mono focus:outline-blue-400"
-                    maxLength={6}
+                    className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-400"
+                    maxLength={6} placeholder="1F3864"
                   />
                 </div>
               </div>
@@ -99,58 +116,69 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
         </div>
       </div>
 
+      {/* 저장 버튼 */}
       <div className="flex items-center gap-3">
         <button onClick={save}
-          className="bg-[#FF4B4B] hover:bg-[#e03030] text-white font-bold px-6 py-2 rounded-lg transition">
-          💾 설정 저장
+          className="bg-[#FF4B4B] hover:bg-[#e03030] text-white font-semibold px-6 py-2 rounded-lg transition text-sm">
+          💾 파라미터 저장
         </button>
-        {saved && <span className="text-green-600 text-sm font-semibold">✅ 저장됐습니다.</span>}
+        {saved && <span className="text-green-600 text-sm font-medium">✅ 저장됐습니다.</span>}
       </div>
 
-      <hr />
+      <hr className="border-gray-200" />
 
-      <div className="bg-[#e8f4fd] rounded-lg p-5 space-y-3">
-        <h4 className="font-bold text-gray-700">☁️ Supabase 동기화</h4>
+      {/* Supabase 동기화 */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="text-sm font-semibold text-gray-700">☁️ Supabase 동기화</div>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isConnected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+            {isConnected ? '● 연결됨' : '○ 미연결'}
+          </span>
+        </div>
+
         {CAN_WRITE ? (
-          <>
-            <p className="text-sm text-gray-600">
-              로컬(localStorage)에 저장된 데이터를 Supabase 클라우드에 수동 업로드합니다.
-              {!sb && <span className="ml-1 text-red-600 font-semibold">⚠ .env.local에 API 키가 없어 비활성화됨</span>}
-            </p>
-            <button
-              onClick={sync}
-              disabled={syncing || !sb}
-              className="bg-[#2E75B6] hover:bg-[#1a5fa0] disabled:bg-gray-300 text-white font-semibold px-6 py-2 rounded-lg transition"
-            >
-              {syncing ? '⏳ 동기화 중...' : '☁️ Supabase에 동기화'}
-            </button>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm text-gray-600">
+                  로컬 데이터를 Supabase에 업로드합니다. Vercel에서 즉시 반영됩니다.
+                </div>
+                <div className="text-xs text-gray-400 mt-1">
+                  케이블 {nCable}타입 · 하우징 {nHousing}타입 · 재고 · 판매 집계
+                </div>
+              </div>
+              <button
+                onClick={sync}
+                disabled={syncing || !isConnected}
+                className="flex-shrink-0 bg-[#2E75B6] hover:bg-[#1a5fa0] disabled:bg-gray-300 text-white font-semibold px-5 py-2 rounded-lg transition text-sm"
+              >
+                {syncing ? '⏳ 동기화 중...' : '☁️ 동기화'}
+              </button>
+            </div>
+            {!isConnected && (
+              <p className="text-xs text-orange-600">
+                ⚠ .env.local에 VITE_SUPABASE_URL / VITE_SUPABASE_KEY를 설정하면 활성화됩니다.
+              </p>
+            )}
             {syncStatus && (
-              <div className={`rounded p-3 text-sm font-medium ${syncStatus.startsWith('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+              <div className={`rounded-md px-3 py-2 text-sm font-medium ${syncStatus.startsWith('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                 {syncStatus}
               </div>
             )}
-          </>
+          </div>
         ) : (
-          <p className="text-sm text-gray-500">
-            🔒 이 환경에서는 Supabase 쓰기가 비활성화됩니다. 품번 수정은 로컬 개발 환경에서만 가능합니다.
-          </p>
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div className="text-sm text-gray-500">
+              🔒 프로덕션 환경 — Supabase 쓰기는 로컬 개발 환경에서만 가능합니다.
+            </div>
+            <div className="text-xs text-gray-400 mt-1">
+              데이터는 Supabase에서 읽기 전용으로 로드됩니다.
+              {isConnected ? ' (현재 Supabase 연결됨 ✓)' : ' (Supabase 미연결 — 로컬 저장소 사용)'}
+            </div>
+          </div>
         )}
       </div>
 
-      <hr />
-
-      <div className="bg-gray-50 border rounded-lg p-4">
-        <h4 className="font-semibold text-gray-700 mb-2">워크플로우 안내</h4>
-        <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-          <li>맥산 ERP에서 구매조회 또는 구매현황 파일 추출</li>
-          <li>STEP 1 실행 → 사용 케이블·하우징 타입 자동 감지</li>
-          <li>품번 관리 탭에서 품번·품명·구매처·리드타임 입력 후 저장</li>
-          <li>재고 현황 탭에서 현재고·기발주 입력 후 저장</li>
-          <li>STEP 2 실행 (선택) → 판매량 파일 분석</li>
-          <li>STEP 3 실행 → 2026_연간발주계획.xlsx 다운로드</li>
-          <li>노란색 셀에 2026 목표 발주량 입력</li>
-        </ol>
-      </div>
     </div>
   )
 }

@@ -4,23 +4,62 @@ import type { Metadata, Inventory } from './types'
 const PAI_ORDER: Record<string, number> = { '2.0mm': 0, '3.0mm': 1, '0.9mm': 2 }
 
 export interface Step3Row {
-  type:         'cable' | 'housing'
-  key:          string   // metadata lookup key e.g. "2.0mm|A1-SP"
-  label:        string   // display label
-  pai:          string
-  unit:         string   // 'm' | '개'
-  byYear:       Record<string, { annual: number; peak: number }>
-  years:        string[] // sorted years that have data
-  latestAnnual: number
-  latestPeak:   number
-  품번:          string
-  품명:          string
-  구매처:        string
-  리드타임:      number  // days
-  안전재고:      number  // round(latestPeak × LT / 30)
-  현재고:        number
-  기발주:        number
-  발주필요량:    number  // latestAnnual + 안전재고 - 현재고 - 기발주, min 0
+  type:           'cable' | 'housing'
+  key:            string
+  label:          string
+  pai:            string
+  unit:           string
+  byYear:         Record<string, { annual: number; peak: number }>
+  years:          string[]
+  latestAnnual:   number
+  latestPeak:     number
+  forecastAnnual: number  // latestAnnual × (1 + CAGR); equals latestAnnual if no CAGR applied
+  appliedCagr:    number  // 0 if not applied
+  품번:            string
+  품명:            string
+  구매처:          string
+  리드타임:        number
+  안전재고:        number
+  현재고:          number
+  기발주:          number
+  발주필요량:      number
+}
+
+// 집계 시트 레이블("A1-SP", "B3-DP", ...) → salesAgg kind 키
+function labelToKind(label: string): string {
+  if (/^A1_청/i.test(label))         return 'a1-청'
+  if (/^A1_녹/i.test(label))         return 'a1-녹'
+  if (/^A1_적/i.test(label))         return 'a1-적'
+  if (/^A1_자/i.test(label))         return 'a1-자'
+  if (/^A1/i.test(label))            return 'a1'
+  if (/^B3/i.test(label))            return 'b3'
+  if (/^OM3/i.test(label))           return 'om3'
+  if (/^OM1/i.test(label))           return 'om1'
+  if (/^DROP/i.test(label))          return 'drop'
+  if (/^PIGTAIL/i.test(label))       return 'pigtail'
+  if (/^Optical cable/i.test(label)) return 'a2'
+  return ''
+}
+
+// STEP 2 Excel(판매분석.xlsx)의 "타입별_분석" 시트에서 kind → 판매CAGR 맵 추출
+export function parseSalesAggExcel(buffer: ArrayBuffer): Record<string, number> {
+  try {
+    const wb = XLSX.read(buffer, { type: 'array' })
+    const ws = wb.Sheets['타입별_분석']
+    if (!ws) return {}
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null }) as unknown[][]
+    if (rows.length < 2) return {}
+    const header  = rows[0] as string[]
+    const cagrIdx = header.indexOf('판매CAGR')
+    if (cagrIdx < 0) return {}
+    const result: Record<string, number> = {}
+    for (const row of rows.slice(1)) {
+      const kind = String(row[0] ?? '').trim()
+      const cagr = Number(row[cagrIdx]) || 0
+      if (kind) result[kind] = cagr
+    }
+    return result
+  } catch { return {} }
 }
 
 function ltDays(lt: unknown, def: number): number {
@@ -29,7 +68,7 @@ function ltDays(lt: unknown, def: number): number {
 }
 
 function mkRow(type: 'cable' | 'housing', key: string, label: string, pai: string, unit: string): Step3Row {
-  return { type, key, label, pai, unit, byYear: {}, years: [], latestAnnual: 0, latestPeak: 0, 품번: '', 품명: '', 구매처: '', 리드타임: 60, 안전재고: 0, 현재고: 0, 기발주: 0, 발주필요량: 0 }
+  return { type, key, label, pai, unit, byYear: {}, years: [], latestAnnual: 0, latestPeak: 0, forecastAnnual: 0, appliedCagr: 0, 품번: '', 품명: '', 구매처: '', 리드타임: 60, 안전재고: 0, 현재고: 0, 기발주: 0, 발주필요량: 0 }
 }
 
 export function buildStep3Plan(
@@ -38,6 +77,7 @@ export function buildStep3Plan(
   inventory: Inventory,
   ltDefault: number,
   safetyK = 1.5,
+  kindCagr?: Record<string, number>,
 ): { rows: Step3Row[]; years: string[]; logs: string[] } {
   const logs: string[] = []
   const wb    = XLSX.read(fileBuffer, { type: 'array' })
@@ -113,10 +153,14 @@ export function buildStep3Plan(
     row.품명     = String(meta['품명'] ?? '')
     row.구매처   = String(meta['구매처'] ?? '')
     row.리드타임 = ltDays(meta['리드타임'], ltDefault)
-    row.안전재고 = Math.round((row.latestAnnual / 12) * (row.리드타임 / 30) * safetyK)
+    const cKind       = labelToKind(row.label)
+    const cCagr       = (kindCagr && cKind) ? (kindCagr[cKind] ?? 0) : 0
+    row.appliedCagr    = cCagr
+    row.forecastAnnual = cCagr !== 0 ? Math.round(row.latestAnnual * (1 + cCagr)) : row.latestAnnual
+    row.안전재고 = Math.round((row.forecastAnnual / 12) * (row.리드타임 / 30) * safetyK)
     row.현재고   = Number(inv['현재고'] ?? 0)
     row.기발주   = 0
-    row.발주필요량 = Math.max(0, row.latestAnnual + row.안전재고 - row.현재고)
+    row.발주필요량 = Math.max(0, row.forecastAnnual + row.안전재고 - row.현재고)
     allRows.push(row)
   }
 
@@ -132,10 +176,12 @@ export function buildStep3Plan(
     row.품명     = String(meta['품명'] ?? '')
     row.구매처   = String(meta['구매처'] ?? '')
     row.리드타임 = ltDays(meta['리드타임'], ltDefault)
-    row.안전재고 = Math.round((row.latestAnnual / 12) * (row.리드타임 / 30) * safetyK)
+    row.appliedCagr    = 0
+    row.forecastAnnual = row.latestAnnual
+    row.안전재고 = Math.round((row.forecastAnnual / 12) * (row.리드타임 / 30) * safetyK)
     row.현재고   = Number(inv['현재고'] ?? 0)
     row.기발주   = Number(inv['기발주'] ?? 0)
-    row.발주필요량 = Math.max(0, row.latestAnnual + row.안전재고 - row.현재고 - row.기발주)
+    row.발주필요량 = Math.max(0, row.forecastAnnual + row.안전재고 - row.현재고 - row.기발주)
     allRows.push(row)
   }
 
@@ -150,6 +196,10 @@ export function buildStep3Plan(
   const nMissing = allRows.filter(r => !r.품번).length
   logs.push(`집계 완료 — 케이블 ${nC}타입 / 하우징 ${nH}타입`)
   logs.push(`안전재고 계수 k=${safetyK} (안전재고 = 월평균 × LT/30 × ${safetyK})`)
+  if (kindCagr && Object.keys(kindCagr).length) {
+    const nApplied = allRows.filter(r => r.appliedCagr !== 0).length
+    logs.push(`판매CAGR 적용: 케이블 ${nApplied}타입에 반영 (하우징은 최근년 실적 기준)`)
+  }
   if (nMissing) logs.push(`⚠ 품번 미등록 ${nMissing}건 — 품번 관리 탭에서 입력 필요`)
 
   return { rows: allRows, years, logs }
