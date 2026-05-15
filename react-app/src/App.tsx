@@ -14,11 +14,13 @@ import MetaManager from './components/MetaManager'
 import InventoryComp from './components/Inventory'
 import Settings from './components/Settings'
 import PartNumberGenerator from './components/PartNumberGenerator'
+import SalesAnalysisTab from './components/SalesAnalysisTab'
 
 const ALL_TABS = [
   { id: 'step1',     label: '📤 STEP 1 — ERP 파일 가공',  devOnly: false },
   { id: 'step2',     label: '📈 STEP 2 — 판매 분석',      devOnly: false },
   { id: 'step3',     label: '📊 STEP 3 — 발주계획 생성',  devOnly: false },
+  { id: 'sales',     label: '🔍 판매 현황 분석',           devOnly: false },
   { id: 'partnum',   label: '🏷 품번 생성기',              devOnly: false },
   { id: 'meta',      label: '📋 품번 관리',                devOnly: true  },  // 로컬 전용
   { id: 'inventory', label: '📦 재고 현황',                devOnly: false },
@@ -107,6 +109,9 @@ export default function App() {
         )}
         {activeTab === 'step3' && (
           <Step3 metadata={metadata} inventory={inventory} settings={settings} />
+        )}
+        {activeTab === 'sales' && (
+          <SalesAnalysisTab />
         )}
         {activeTab === 'partnum' && (
           <PartNumberGenerator
