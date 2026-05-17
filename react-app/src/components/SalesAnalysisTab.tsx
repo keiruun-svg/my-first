@@ -756,11 +756,25 @@ function OjcSalesView({
   const [expanded, setExpanded] = useState<string | null>(null)
 
   const thBase = 'px-3 py-2 text-xs font-bold text-gray-700 border-b-2 border-gray-300 bg-gray-100 whitespace-nowrap'
+  const coverFgClass = (v: number) => v >= 2 ? 'text-green-600' : v >= 1 ? 'text-yellow-600' : 'text-red-500'
 
   // 재고는 있지만 판매 데이터가 전혀 없는 카테고리 (OJC/ETC 모두 아닌 것)
   const ojcCats      = new Set(Object.keys(ojcByCategory))
   const etcCats      = new Set(Object.keys(etcByCategory))
   const stockOnlyCats = Object.keys(ojcStock).filter(k => !ojcCats.has(k) && !etcCats.has(k) && ojcStock[k] > 0)
+
+  // OJC 전체 합계
+  const ojcTotalAnnuals      = years.reduce<Record<string, number>>((acc, yr) => { acc[yr] = Object.values(ojcByCategory).reduce((s, d) => s + (d.annuals[yr] ?? 0), 0); return acc }, {})
+  const ojcTotalPriceAnnuals = years.reduce<Record<string, number>>((acc, yr) => { acc[yr] = Object.values(ojcByCategory).reduce((s, d) => s + (d.priceAnnuals[yr] ?? 0), 0); return acc }, {})
+  const ojcTotalMonthly      = MONTHS.reduce<Record<string, number>>((acc, m) => { acc[m] = Object.values(ojcByCategory).reduce((s, d) => s + (d.monthlyLatest[m] ?? 0), 0); return acc }, {})
+  const ojcTotalPeak         = Math.max(0, ...MONTHS.map(m => ojcTotalMonthly[m]))
+  const ojcTotalPeakMonth    = ojcTotalPeak > 0 ? (MONTHS.find(m => ojcTotalMonthly[m] === ojcTotalPeak) ?? '') : ''
+  const ojcTotalLatest       = ojcTotalAnnuals[latestYr] ?? 0
+  const ojcTotalAvg          = ojcTotalLatest / 12
+  const ojcTotalStock        = Object.keys(ojcByCategory).reduce((s, cat) => s + (ojcStock[cat] ?? 0), 0)
+  const ojcTotalCoverPeak    = ojcTotalPeak > 0 ? ojcTotalStock / ojcTotalPeak : 0
+  const ojcTotalCoverAvg     = ojcTotalAvg  > 0 ? ojcTotalStock / ojcTotalAvg  : 0
+  const ojcTotalProducts     = Object.values(ojcByCategory).reduce((s, d) => s + Object.keys(d.products).length, 0)
 
   return (
     <div className="space-y-3">
@@ -768,14 +782,12 @@ function OjcSalesView({
         <table className="text-sm w-full border-collapse bg-white">
           <thead>
             <tr>
-              <th className={`${thBase} text-left`}>카테고리</th>
+              <th className={`${thBase} text-left sticky left-0 z-20`}>카테고리</th>
               <th className={`${thBase} text-right`}>품목 수</th>
-              {years.map(yr => (
-                <th key={yr} className={`${thBase} text-right`}>{yr}년 판매(EA)</th>
-              ))}
-              {years.map(yr => (
-                <th key={`p${yr}`} className={`${thBase} text-right`}>{yr}년 공급가액</th>
-              ))}
+              {years.flatMap(yr => [
+                <th key={yr}    className={`${thBase} text-right`}>{yr}년 판매(EA)</th>,
+                <th key={`p${yr}`} className={`${thBase} text-right`}>{yr}년 공급가액</th>,
+              ])}
               <th className={`${thBase} text-right`}>{latestYr}년<br/>최다 판매월</th>
               <th className={`${thBase} text-right`}>월평균(EA)</th>
               <th className={`${thBase} text-right`}>현재고(EA)</th>
@@ -796,10 +808,11 @@ function OjcSalesView({
               const isExpanded    = expanded === cat
               const prodEntries   = Object.entries(data.products)
 
+              const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
               return (
                 <Fragment key={cat}>
-                  <tr className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-3 py-2 font-semibold text-gray-800">
+                  <tr className={rowBg}>
+                    <td className={`px-3 py-2 font-semibold text-gray-800 sticky left-0 z-10 ${rowBg}`}>
                       <button
                         onClick={() => setExpanded(isExpanded ? null : cat)}
                         className="text-left hover:text-blue-600 transition flex items-center gap-1"
@@ -808,12 +821,10 @@ function OjcSalesView({
                       </button>
                     </td>
                     <td className="px-3 py-2 text-right text-gray-500">{prodEntries.length}</td>
-                    {years.map(yr => (
-                      <td key={yr} className="px-3 py-2 text-right font-mono">{num(data.annuals[yr] ?? 0)}</td>
-                    ))}
-                    {years.map(yr => (
-                      <td key={`p${yr}`} className="px-3 py-2 text-right text-xs text-gray-600">{fmtPrice(data.priceAnnuals[yr] ?? 0)}</td>
-                    ))}
+                    {years.flatMap(yr => [
+                      <td key={yr}    className="px-3 py-2 text-right font-mono">{num(data.annuals[yr] ?? 0)}</td>,
+                      <td key={`p${yr}`} className="px-3 py-2 text-right text-xs text-gray-600">{fmtPrice(data.priceAnnuals[yr] ?? 0)}</td>,
+                    ])}
                     <td className="px-3 py-2 text-right font-mono font-semibold text-orange-700">
                       {peakMonthly > 0 ? <>{peakMonthly.toLocaleString()}<br/><span className="text-xs font-normal text-orange-500">({parseInt(peakMonth)}월)</span></> : '—'}
                     </td>
@@ -875,21 +886,15 @@ function OjcSalesView({
                           const pPeak     = Math.max(0, ...pMonthly)
                           return (
                             <tr key={name} className="bg-gray-50/80 hover:bg-blue-50/40 transition">
-                              <td className="pl-7 pr-3 py-1.5 text-xs text-gray-600 max-w-xs" title={name}>
+                              <td className="pl-7 pr-3 py-1.5 text-xs text-gray-600 max-w-xs sticky left-0 bg-gray-50" title={name}>
                                 <div className="text-[10px] text-blue-400 font-mono">{prod.code || '—'}</div>
                                 <div className="truncate">↳ {name}</div>
                               </td>
                               <td className="px-3 py-1.5 text-right text-xs text-gray-400">—</td>
-                              {years.map(yr => (
-                                <td key={yr} className="px-3 py-1.5 text-right text-xs font-mono text-gray-600">
-                                  {num(prod.annuals[yr] ?? 0)}
-                                </td>
-                              ))}
-                              {years.map(yr => (
-                                <td key={`p${yr}`} className="px-3 py-1.5 text-right text-xs text-gray-500">
-                                  {fmtPrice(prod.priceAnnuals[yr] ?? 0)}
-                                </td>
-                              ))}
+                              {years.flatMap(yr => [
+                                <td key={yr}    className="px-3 py-1.5 text-right text-xs font-mono text-gray-600">{num(prod.annuals[yr] ?? 0)}</td>,
+                                <td key={`p${yr}`} className="px-3 py-1.5 text-right text-xs text-gray-500">{fmtPrice(prod.priceAnnuals[yr] ?? 0)}</td>,
+                              ])}
                               <td className="px-3 py-1.5 text-right text-xs font-mono text-orange-600">{num(pPeak)}</td>
                               <td className="px-3 py-1.5 text-right text-xs font-mono text-gray-500">
                                 {pLatest > 0 ? Math.round(pLatest / 12).toLocaleString() : '—'}
@@ -903,6 +908,30 @@ function OjcSalesView({
                 </Fragment>
               )
             })}
+
+            {Object.keys(ojcByCategory).length > 0 && (
+              <tr className="bg-[#dce9f5] font-semibold border-t-2 border-[#2E75B6]">
+                <td className="px-3 py-2 text-[#1F3864] sticky left-0 bg-[#dce9f5] text-sm">OJC 합계</td>
+                <td className="px-3 py-2 text-right text-gray-600 text-xs">{ojcTotalProducts}</td>
+                {years.flatMap(yr => [
+                  <td key={yr}    className="px-3 py-2 text-right font-mono text-[#1F3864]">{num(ojcTotalAnnuals[yr] ?? 0)}</td>,
+                  <td key={`p${yr}`} className="px-3 py-2 text-right text-xs text-gray-600">{fmtPrice(ojcTotalPriceAnnuals[yr] ?? 0)}</td>,
+                ])}
+                <td className="px-3 py-2 text-right font-mono font-semibold text-orange-700">
+                  {ojcTotalPeak > 0 ? <>{ojcTotalPeak.toLocaleString()}<br/><span className="text-xs font-normal text-orange-500">({parseInt(ojcTotalPeakMonth)}월)</span></> : '—'}
+                </td>
+                <td className="px-3 py-2 text-right font-mono">
+                  {ojcTotalLatest > 0 ? Math.round(ojcTotalAvg).toLocaleString() : '—'}
+                </td>
+                <td className="px-3 py-2 text-right font-mono text-[#1F3864]">{ojcTotalStock > 0 ? ojcTotalStock.toLocaleString() : '—'}</td>
+                <td className={`px-3 py-2 text-right font-semibold ${ojcTotalStock > 0 && ojcTotalPeak > 0 ? coverFgClass(ojcTotalCoverPeak) : 'text-gray-400'}`}>
+                  {ojcTotalStock > 0 && ojcTotalPeak > 0 ? `${dec1(ojcTotalCoverPeak)}개월` : '—'}
+                </td>
+                <td className={`px-3 py-2 text-right font-semibold ${ojcTotalStock > 0 && ojcTotalAvg > 0 ? coverFgClass(ojcTotalCoverAvg) : 'text-gray-400'}`}>
+                  {ojcTotalStock > 0 && ojcTotalAvg > 0 ? `${dec1(ojcTotalCoverAvg)}개월` : '—'}
+                </td>
+              </tr>
+            )}
 
             {Object.keys(ojcByCategory).length === 0 && (
               <tr>
@@ -932,10 +961,11 @@ function OjcSalesView({
                   const coverAvg     = avgMonthly  > 0 ? stock / avgMonthly  : 0
                   const isExpanded   = expanded === `etc-${cat}`
                   const prodEntries  = Object.entries(data.products)
+                  const etcRowBg = i % 2 === 0 ? 'bg-white' : 'bg-purple-50'
                   return (
                     <Fragment key={`etc-${cat}`}>
-                      <tr className={i % 2 === 0 ? 'bg-white' : 'bg-purple-50/20'}>
-                        <td className="px-3 py-2 font-semibold text-purple-800">
+                      <tr className={etcRowBg}>
+                        <td className={`px-3 py-2 font-semibold text-purple-800 sticky left-0 z-10 ${etcRowBg}`}>
                           <button
                             onClick={() => setExpanded(isExpanded ? null : `etc-${cat}`)}
                             className="text-left hover:text-purple-600 transition flex items-center gap-1"
@@ -944,12 +974,10 @@ function OjcSalesView({
                           </button>
                         </td>
                         <td className="px-3 py-2 text-right text-gray-500">{prodEntries.length}</td>
-                        {years.map(yr => (
-                          <td key={yr} className="px-3 py-2 text-right font-mono">{num(data.annuals[yr] ?? 0)}</td>
-                        ))}
-                        {years.map(yr => (
-                          <td key={`p${yr}`} className="px-3 py-2 text-right text-xs text-gray-600">{fmtPrice(data.priceAnnuals[yr] ?? 0)}</td>
-                        ))}
+                        {years.flatMap(yr => [
+                          <td key={yr}    className="px-3 py-2 text-right font-mono">{num(data.annuals[yr] ?? 0)}</td>,
+                          <td key={`p${yr}`} className="px-3 py-2 text-right text-xs text-gray-600">{fmtPrice(data.priceAnnuals[yr] ?? 0)}</td>,
+                        ])}
                         <td className="px-3 py-2 text-right font-mono font-semibold text-orange-700">
                           {peakMonthly > 0 ? <>{peakMonthly.toLocaleString()}<br/><span className="text-xs font-normal text-orange-500">({parseInt(peakMonth)}월)</span></> : '—'}
                         </td>
@@ -1006,21 +1034,15 @@ function OjcSalesView({
                               const pPeak   = Math.max(0, ...MONTHS.map(m => prod.monthlyLatest[m] ?? 0))
                               return (
                                 <tr key={name} className="bg-purple-50/10 hover:bg-purple-50/40 transition">
-                                  <td className="pl-7 pr-3 py-1.5 text-xs text-purple-700 max-w-xs" title={name}>
+                                  <td className="pl-7 pr-3 py-1.5 text-xs text-purple-700 max-w-xs sticky left-0 bg-white" title={name}>
                                     <div className="text-[10px] text-purple-400 font-mono">{prod.code || '—'}</div>
                                     <div className="truncate">↳ {name}</div>
                                   </td>
                                   <td className="px-3 py-1.5 text-right text-xs text-gray-400">—</td>
-                                  {years.map(yr => (
-                                    <td key={yr} className="px-3 py-1.5 text-right text-xs font-mono text-gray-600">
-                                      {num(prod.annuals[yr] ?? 0)}
-                                    </td>
-                                  ))}
-                                  {years.map(yr => (
-                                    <td key={`p${yr}`} className="px-3 py-1.5 text-right text-xs text-gray-500">
-                                      {fmtPrice(prod.priceAnnuals[yr] ?? 0)}
-                                    </td>
-                                  ))}
+                                  {years.flatMap(yr => [
+                                    <td key={yr}    className="px-3 py-1.5 text-right text-xs font-mono text-gray-600">{num(prod.annuals[yr] ?? 0)}</td>,
+                                    <td key={`p${yr}`} className="px-3 py-1.5 text-right text-xs text-gray-500">{fmtPrice(prod.priceAnnuals[yr] ?? 0)}</td>,
+                                  ])}
                                   <td className="px-3 py-1.5 text-right text-xs font-mono text-orange-600">{num(pPeak)}</td>
                                   <td className="px-3 py-1.5 text-right text-xs font-mono text-gray-500">
                                     {pLatest > 0 ? Math.round(pLatest / 12).toLocaleString() : '—'}
@@ -1049,15 +1071,13 @@ function OjcSalesView({
                 {stockOnlyCats.map(cat => {
                   const stock = ojcStock[cat] ?? 0
                   return (
-                    <tr key={cat} className="bg-gray-50/40 hover:bg-gray-100">
-                      <td className="px-3 py-2 font-semibold text-gray-500 text-sm">{cat}</td>
+                    <tr key={cat} className="bg-gray-50 hover:bg-gray-100">
+                      <td className="px-3 py-2 font-semibold text-gray-500 text-sm sticky left-0 bg-gray-50">{cat}</td>
                       <td className="px-3 py-2 text-right text-gray-300 text-xs">—</td>
-                      {years.map(yr => (
-                        <td key={yr} className="px-3 py-2 text-right text-gray-300 text-xs">—</td>
-                      ))}
-                      {years.map(yr => (
-                        <td key={`p${yr}`} className="px-3 py-2 text-right text-gray-300 text-xs">—</td>
-                      ))}
+                      {years.flatMap(yr => [
+                        <td key={yr}    className="px-3 py-2 text-right text-gray-300 text-xs">—</td>,
+                        <td key={`p${yr}`} className="px-3 py-2 text-right text-gray-300 text-xs">—</td>,
+                      ])}
                       <td className="px-3 py-2 text-right text-gray-300 text-xs">—</td>
                       <td className="px-3 py-2 text-right text-gray-300 text-xs">—</td>
                       <td className="px-2 py-1 text-right">
