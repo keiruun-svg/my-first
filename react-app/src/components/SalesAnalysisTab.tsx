@@ -412,7 +412,7 @@ export default function SalesAnalysisTab() {
       )}
 
       {logs.length > 0 && (
-        <div className="bg-[#1e1e1e] text-[#d4d4d4] rounded p-3 font-mono text-xs leading-5 max-h-24 overflow-y-auto">
+        <div className="bg-[#1e1e1e] text-[#d4d4d4] rounded p-3 font-mono text-xs leading-5 max-h-48 overflow-y-auto">
           {logs.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}
@@ -438,7 +438,7 @@ export default function SalesAnalysisTab() {
           <button
             disabled={downloading}
             onClick={() => { setDownloading(true); downloadStyledExcel(ojcByCategory, etcByCategory, customerTop3, fullProducts, years, latestYr, ojcStock).finally(() => setDownloading(false)) }}
-            className="px-4 py-1.5 text-sm bg-[#1F3864] hover:bg-[#162a4d] disabled:bg-gray-400 text-white font-semibold rounded transition whitespace-nowrap"
+            className="px-4 py-1.5 text-sm bg-[#2E75B6] hover:bg-[#1a5a9e] disabled:bg-gray-400 text-white font-semibold rounded transition whitespace-nowrap"
           >
             {downloading ? '⏳ 생성 중...' : '📥 전체 통합 다운로드 (6시트)'}
           </button>
