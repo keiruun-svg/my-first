@@ -639,12 +639,6 @@ async function downloadStyledExcel(
     c.border = { top: { style: 'medium', color: { argb: fg } } }; row.height = 20
   }
 
-  function numCell(cell: ExcelJS.Cell, bg: string, right = true) {
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
-    cell.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-    cell.alignment = { horizontal: right ? 'right' : 'center', vertical: 'middle' }
-    if (typeof cell.value === 'number') cell.numFmt = '#,##0'
-  }
 
   await prog(1, '① 판매현황_요약')
   // ── Sheet 1: 판매현황_요약 대시보드 ──────────────────────────────────────
@@ -939,7 +933,7 @@ async function downloadStyledExcel(
     if (cav !== null) row.getCell(S2).font = { bold: true, color: { argb: coverFg(cav) } }
   }
 
-  ri = 0
+  let ri = 0
   for (const [c, d] of Object.entries(ojcByCategory)) addPeakRow(ws2, c, d, false, ri++)
   addSep(ws2, '  기타 품목', S2); ri = 0
   for (const [c, d] of Object.entries(etcByCategory)) addPeakRow(ws2, c, d, true, ri++)
@@ -955,7 +949,7 @@ async function downloadStyledExcel(
     })
   const S3 = 18  // 카테고리+코드+품목명+연도+12월+합계+공급가액
   const ws3 = wb.addWorksheet('③ OJC_월간상세')
-  ws3.properties.outlineProperties = { summaryBelow: false }
+  ws3.properties.outlineProperties = { summaryBelow: false, summaryRight: false }
   ws3.views = [{ state: 'frozen', xSplit: 3, ySplit: 3 }]
   addTitle(ws3, 'OJC 품목별 월간 판매 상세', 'KT-SP/DP/다심 · LG-S/D/M · 피그테일-성단용 세분화  |  주황 = 최고월  |  카테고리 클릭으로 접기/펼치기', S3)
   styleHdr(ws3.addRow(['카테고리', '품목코드', '품목명', '연도', ...MONTHS.map(m => `${parseInt(m)}월`), '합계', '공급가액\n(연간)']), C.midBlue, 28)
@@ -1003,7 +997,7 @@ async function downloadStyledExcel(
   // ── Sheet 4: OJC 외 품목별_월간상세 ─────────────────────────────────────
   const etcMonthlyMap = buildMonthlyMap(rawRows, classifyEtc)
   const ws4 = wb.addWorksheet('④ OJC외_월간상세')
-  ws4.properties.outlineProperties = { summaryBelow: false }
+  ws4.properties.outlineProperties = { summaryBelow: false, summaryRight: false }
   ws4.views = [{ state: 'frozen', xSplit: 3, ySplit: 3 }]
   addTitle(ws4, 'OJC 외 품목별 월간 판매 상세', '카테고리별 접기/펼치기  |  주황 = 최고월', S3)
   styleHdr(ws4.addRow(['카테고리', '품목코드', '품목명', '연도', ...MONTHS.map(m => `${parseInt(m)}월`), '합계', '공급가액\n(연간)']), C.midBlue, 28)
