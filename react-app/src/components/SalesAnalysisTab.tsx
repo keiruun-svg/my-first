@@ -578,11 +578,12 @@ async function downloadStyledExcel(
   // ── Sheet 2: 연도별_피크분석 ──────────────────────────────────────────
   const ws2 = wb.addWorksheet('② 연도별_피크분석')
   ws2.views = [{ state: 'frozen', ySplit: 3 }]
-  const S2 = 2 + years.length * 3 + 3
-  addTitle(ws2, '연도별 피크월 분석 (OJC + 기타)', `각 연도의 최대 판매 월·수량  |  커버리지는 ${latestYr}년 기준`, S2)
+  const S2 = 2 + years.length * 5 + 3
+  addTitle(ws2, '연도별 피크월 분석 (OJC + 기타)',
+    `집중도 = 피크(EA) ÷ 월평균  |  전년비 = 전년 피크 대비 증감  |  커버리지는 ${latestYr}년 기준`, S2)
   styleHdr(ws2.addRow(['카테고리', '품목수',
-    ...years.flatMap(y => [`${y}년\n판매(EA)`, `${y}년\n피크월`, `${y}년\n피크(EA)`]),
-    '현재고\n(EA)', '피크커버\n(개월)', '평균커버\n(개월)']), C.darkBlue, 32)
+    ...years.flatMap(y => [`${y}년\n판매(EA)`, `${y}년\n피크월`, `${y}년\n피크(EA)`, `${y}년\n집중도`, `${y}년\n전년비`]),
+    '현재고\n(EA)', '피크커버\n(개월)', '평균커버\n(개월)']), C.darkBlue, 36)
 
   function addPeakRow(ws: ExcelJS.Worksheet, cat: string, data: CategoryData, isEtc: boolean, rn: number) {
     const la = data.annuals[latestYr] ?? 0; const mv = MONTHS.map(m => data.monthlyLatest[m] ?? 0)
@@ -590,7 +591,15 @@ async function downloadStyledExcel(
     const cpk = st > 0 && pk > 0 ? parseFloat((st / pk).toFixed(1)) : null
     const cav = st > 0 && avg > 0 ? parseFloat((st / avg).toFixed(1)) : null
     const bg = rn % 2 === 0 ? C.white : (isEtc ? C.altPurple : C.altBlue)
-    const yearCols = years.flatMap(yr => { const p = peakOfYear(data, yr); return [data.annuals[yr] || null, p.month || null, p.val || null] })
+    const yearCols = years.flatMap((yr, idx) => {
+      const p    = peakOfYear(data, yr)
+      const ann  = data.annuals[yr] ?? 0
+      const mAvg = ann / 12
+      const conc = mAvg > 0 && p.val > 0 ? parseFloat((p.val / mAvg).toFixed(2)) : null
+      const prev = idx > 0 ? peakOfYear(data, years[idx - 1]).val : 0
+      const yoy  = prev > 0 && p.val > 0 ? parseFloat(((p.val - prev) / prev).toFixed(3)) : null
+      return [ann || null, p.month || null, p.val || null, conc, yoy]
+    })
     const row = ws.addRow([cat, Object.keys(data.products).length, ...yearCols, st || null, cpk, cav])
     row.height = 18
     row.eachCell({ includeEmpty: true }, (c, ci) => {
@@ -598,10 +607,30 @@ async function downloadStyledExcel(
       c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
       if (ci === 1) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { bold: true, color: { argb: isEtc ? C.purple : C.midBlue } } }
       else if (ci === 2) { c.alignment = { horizontal: 'center', vertical: 'middle' } }
-      else {
-        const rel = (ci - 3) % 3
-        if (rel === 1) { c.alignment = { horizontal: 'center', vertical: 'middle' }; if (c.value) c.font = { bold: true, color: { argb: C.orange } } }
-        else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+      else if (ci <= 2 + years.length * 5) {
+        const rel = (ci - 3) % 5
+        if (rel === 1) {
+          c.alignment = { horizontal: 'center', vertical: 'middle' }
+          if (c.value) c.font = { bold: true, color: { argb: C.orange } }
+        } else if (rel === 3) {
+          c.alignment = { horizontal: 'right', vertical: 'middle' }
+          if (typeof c.value === 'number') {
+            c.numFmt = '0.0"배"'
+            if (c.value >= 2.5) c.font = { bold: true, color: { argb: C.orange } }
+          }
+        } else if (rel === 4) {
+          c.alignment = { horizontal: 'right', vertical: 'middle' }
+          if (typeof c.value === 'number') {
+            c.numFmt = '+0.0%;-0.0%;"-"'
+            c.font = { color: { argb: c.value > 0 ? C.green : C.red } }
+          }
+        } else {
+          c.alignment = { horizontal: 'right', vertical: 'middle' }
+          if (typeof c.value === 'number') c.numFmt = '#,##0'
+        }
+      } else {
+        c.alignment = { horizontal: 'right', vertical: 'middle' }
+        if (typeof c.value === 'number') c.numFmt = '#,##0'
       }
     })
     if (cpk !== null) row.getCell(S2 - 1).font = { bold: true, color: { argb: coverFg(cpk) } }
@@ -612,7 +641,7 @@ async function downloadStyledExcel(
   for (const [c, d] of Object.entries(ojcByCategory)) addPeakRow(ws2, c, d, false, ri++)
   addSep(ws2, '  기타 품목', S2); ri = 0
   for (const [c, d] of Object.entries(etcByCategory)) addPeakRow(ws2, c, d, true, ri++)
-  ws2.columns = [{ width: 28 }, { width: 7 }, ...years.flatMap(() => [{ width: 13 }, { width: 9 }, { width: 12 }]), { width: 11 }, { width: 11 }, { width: 11 }]
+  ws2.columns = [{ width: 28 }, { width: 7 }, ...years.flatMap(() => [{ width: 13 }, { width: 9 }, { width: 12 }, { width: 9 }, { width: 9 }]), { width: 11 }, { width: 11 }, { width: 11 }]
 
   // ── Sheet 3: 품목별_상세 (OJC + 기타) ────────────────────────────────
   const ws3 = wb.addWorksheet('③ 품목별_상세')
