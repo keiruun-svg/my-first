@@ -1247,6 +1247,31 @@ function downloadCustomerTop3(
 
 const TOP3_DISPLAY_LIMIT = 20
 
+function buildTop3(rawRows: import('../lib/parse/parseDetailedSales').DetailedSalesRow[], yr: string | 'cumul') {
+  const custMap: Record<string, Record<string, { code: string; qty: number; price: number }>> = {}
+  for (const row of rawRows) {
+    if (isTop3Excluded(row.name)) continue
+    if (yr !== 'cumul' && row.year !== yr) continue
+    const cust = row.customer || '(미상)'
+    if (!custMap[cust]) custMap[cust] = {}
+    if (!custMap[cust][row.name]) custMap[cust][row.name] = { code: row.code, qty: 0, price: 0 }
+    custMap[cust][row.name].qty   += row.qty
+    custMap[cust][row.name].price += row.price
+  }
+  const result: Record<string, Array<{ name: string; code: string; qty: number; price: number }>> = {}
+  for (const [cust, products] of Object.entries(custMap)) {
+    result[cust] = Object.entries(products)
+      .sort((a, b) => b[1].qty - a[1].qty)
+      .slice(0, 3)
+      .map(([name, d]) => ({ name, code: d.code, qty: d.qty, price: d.price }))
+  }
+  return Object.fromEntries(
+    Object.entries(result).sort((a, b) =>
+      b[1].reduce((s, x) => s + x.qty, 0) - a[1].reduce((s, x) => s + x.qty, 0)
+    )
+  )
+}
+
 function CustomerTop3View({
   customerTop3, years, rawRows,
 }: {
@@ -1254,35 +1279,15 @@ function CustomerTop3View({
   years:        string[]
   rawRows:      import('../lib/parse/parseDetailedSales').DetailedSalesRow[]
 }) {
-  const [search, setSearch]             = useState('')
-  const [selectedYear, setSelectedYear] = useState<string>('all')
-  const [showAll, setShowAll]           = useState(false)
+  const latestYr = years[years.length - 1] ?? 'cumul'
+  const [activeTab, setActiveTab]   = useState<string>(latestYr)
+  const [search, setSearch]         = useState('')
+  const [showAll, setShowAll]       = useState(false)
 
-  const computedTop3 = useMemo(() => {
-    if (selectedYear === 'all') return customerTop3
-    const custMap: Record<string, Record<string, { code: string; qty: number; price: number }>> = {}
-    for (const row of rawRows) {
-      if (isTop3Excluded(row.name)) continue
-      if (row.year !== selectedYear) continue
-      const cust = row.customer || '(미상)'
-      if (!custMap[cust]) custMap[cust] = {}
-      if (!custMap[cust][row.name]) custMap[cust][row.name] = { code: row.code, qty: 0, price: 0 }
-      custMap[cust][row.name].qty   += row.qty
-      custMap[cust][row.name].price += row.price
-    }
-    const result: Record<string, Array<{ name: string; code: string; qty: number; price: number }>> = {}
-    for (const [cust, products] of Object.entries(custMap)) {
-      result[cust] = Object.entries(products)
-        .sort((a, b) => b[1].qty - a[1].qty)
-        .slice(0, 3)
-        .map(([name, d]) => ({ name, code: d.code, qty: d.qty, price: d.price }))
-    }
-    return Object.fromEntries(
-      Object.entries(result).sort((a, b) =>
-        b[1].reduce((s, x) => s + x.qty, 0) - a[1].reduce((s, x) => s + x.qty, 0)
-      )
-    )
-  }, [selectedYear, customerTop3, rawRows])
+  const computedTop3 = useMemo(
+    () => activeTab === 'cumul' ? customerTop3 : buildTop3(rawRows, activeTab),
+    [activeTab, customerTop3, rawRows]
+  )
 
   const customers = Object.entries(computedTop3)
   const filtered  = customers.filter(([cust]) =>
@@ -1291,6 +1296,12 @@ function CustomerTop3View({
   const displayed = showAll ? filtered : filtered.slice(0, TOP3_DISPLAY_LIMIT)
 
   const thBase = 'px-3 py-2 text-xs font-bold text-gray-700 border-b-2 border-gray-300 bg-gray-100 whitespace-nowrap'
+  const tabCls = (id: string) =>
+    `px-3 py-1.5 text-xs font-semibold rounded-t border-b-2 transition whitespace-nowrap ${
+      activeTab === id
+        ? 'border-[#2E75B6] text-[#2E75B6] bg-white'
+        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+    }`
 
   if (!Object.keys(customerTop3).length) {
     return (
@@ -1302,28 +1313,21 @@ function CustomerTop3View({
 
   return (
     <div className="space-y-3">
-      {/* 상단 컨트롤 */}
-      <div className="flex justify-between items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="text-sm text-gray-600 font-medium">
-            {filtered.length}개 거래처
-          </div>
-          {/* 연도 필터 */}
-          <div className="flex gap-1">
-            <button
-              onClick={() => { setSelectedYear('all'); setShowAll(false) }}
-              className={`text-xs px-2 py-0.5 rounded ${selectedYear === 'all' ? 'bg-[#2E75B6] text-white' : 'bg-white border border-blue-200 text-blue-600 hover:bg-blue-50'}`}
-            >전체</button>
-            {years.map(yr => (
-              <button
-                key={yr}
-                onClick={() => { setSelectedYear(yr); setShowAll(false) }}
-                className={`text-xs px-2 py-0.5 rounded ${selectedYear === yr ? 'bg-[#2E75B6] text-white' : 'bg-white border border-blue-200 text-blue-600 hover:bg-blue-50'}`}
-              >20{yr}년</button>
-            ))}
-          </div>
+      {/* 탭 + 검색/다운로드 */}
+      <div className="flex justify-between items-end gap-2 flex-wrap border-b border-gray-200">
+        <div className="flex gap-0.5 items-end">
+          {years.map(yr => (
+            <button key={yr} className={tabCls(yr)} onClick={() => { setActiveTab(yr); setShowAll(false) }}>
+              20{yr}년
+            </button>
+          ))}
+          <div className="w-px h-5 bg-gray-300 mx-1 self-center" />
+          <button className={tabCls('cumul')} onClick={() => { setActiveTab('cumul'); setShowAll(false) }}>
+            전체 누적
+          </button>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center pb-1">
+          <span className="text-xs text-gray-500">{filtered.length}개 거래처</span>
           <input
             type="text"
             placeholder="거래처 검색..."
@@ -1410,7 +1414,7 @@ function CustomerTop3View({
       )}
 
       <div className="text-xs text-gray-400">
-        ※ {selectedYear === 'all' ? '전체 기간 누적' : `20${selectedYear}년`} 수량 기준 | 거래처당 최다 구매 품목 탑3 | 점유율: 해당 품목이 거래처 총구매량의 비중 (주황 ≥60%, 파랑 ≥30%)
+        ※ {activeTab === 'cumul' ? '전체 기간 누적' : `20${activeTab}년`} 수량 기준 | 거래처당 최다 구매 품목 탑3 | 점유율: 해당 품목이 거래처 총구매량의 비중 (주황 ≥60%, 파랑 ≥30%)
       </div>
     </div>
   )
