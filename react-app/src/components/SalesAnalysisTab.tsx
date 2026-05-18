@@ -4,7 +4,7 @@ import ExcelJS from 'exceljs'
 import { classifyOjc, classifyOjcDetailed, COLOR_MAP_OJC_DETAILED } from '../lib/ojcFilter'
 import { parseDetailedSalesFile } from '../lib/parse/parseDetailedSales'
 import type { DetailedSalesRow } from '../lib/parse/parseDetailedSales'
-import { downloadXlsx, today } from '../lib/download'
+import { downloadXlsx, saveAsXlsx, today } from '../lib/download'
 import FileUploader from './FileUploader'
 
 // ── 상수 ────────────────────────────────────────────────────────────
@@ -78,8 +78,8 @@ export default function SalesAnalysisTab() {
   const [logs, setLogs]         = useState<string[]>([])
   const [file, setFile]         = useState<File | null>(null)
   const [invFile, setInvFile]   = useState<File | null>(null)
-  const [running, setRunning]       = useState(false)
-  const [downloading, setDownloading] = useState(false)
+  const [running, setRunning]   = useState(false)
+  const [dlProgress, setDlProgress] = useState<{ current: number; total: number; label: string } | null>(null)
   const [invLoaded, setInvLoaded] = useState(false)
 
   // ESZ018R 파싱 상태
@@ -463,13 +463,32 @@ export default function SalesAnalysisTab() {
               </button>
             ))}
           </div>
-          <button
-            disabled={downloading}
-            onClick={() => { setDownloading(true); downloadStyledExcel(ojcByCategory, etcByCategory, fullProducts, years, latestYr, ojcStock, rawRows).finally(() => setDownloading(false)) }}
-            className="px-4 py-1.5 text-sm bg-[#2E75B6] hover:bg-[#1a5a9e] disabled:bg-gray-400 text-white font-semibold rounded transition whitespace-nowrap"
-          >
-            {downloading ? '⏳ 생성 중...' : '📥 전체 통합 다운로드 (8시트)'}
-          </button>
+          {dlProgress ? (
+            <div className="flex flex-col gap-1 min-w-[220px]">
+              <div className="flex justify-between text-xs text-gray-600">
+                <span className="font-medium">{dlProgress.label}</span>
+                <span className="text-gray-400">{dlProgress.current} / {dlProgress.total}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-[#2E75B6] h-2 rounded-full transition-all duration-200"
+                  style={{ width: `${Math.round((dlProgress.current / dlProgress.total) * 100)}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                downloadStyledExcel(
+                  ojcByCategory, etcByCategory, fullProducts, years, latestYr, ojcStock, rawRows,
+                  (current, total, label) => setDlProgress({ current, total, label }),
+                ).finally(() => setDlProgress(null))
+              }}
+              className="px-4 py-1.5 text-sm bg-[#2E75B6] hover:bg-[#1a5a9e] text-white font-semibold rounded transition whitespace-nowrap"
+            >
+              📥 전체 통합 다운로드 (8시트)
+            </button>
+          )}
         </div>
       )}
 
@@ -556,7 +575,13 @@ async function downloadStyledExcel(
   latestYr: string,
   ojcStock: Record<string, number>,
   rawRows: Array<{ customer: string; code: string; name: string; year: string; month: string; qty: number; price: number; isForeign: boolean }>,
+  onProgress: (current: number, total: number, label: string) => void,
 ) {
+  const TOTAL = 9  // 시트 8개 + 파일 저장 1단계
+  const prog = async (step: number, label: string) => {
+    onProgress(step, TOTAL, label)
+    await new Promise(r => setTimeout(r, 0))
+  }
   const wb = new ExcelJS.Workbook()
   wb.creator = 'AJW SCM팀'
   wb.created = new Date()
@@ -614,6 +639,7 @@ async function downloadStyledExcel(
     if (typeof cell.value === 'number') cell.numFmt = '#,##0'
   }
 
+  await prog(1, '① 판매현황_요약')
   // ── Sheet 1: 판매현황_요약 대시보드 ──────────────────────────────────────
   const domesticRowsForExcel = rawRows.filter(r => !r.isForeign)
   const foreignRowsForExcel  = rawRows.filter(r => r.isForeign)
@@ -824,6 +850,7 @@ async function downloadStyledExcel(
     { width: 11 }, { width: 11 }, { width: 12 }, { width: 12 },
   ]
 
+  await prog(2, '② 연도별_피크분석')
   // ── Sheet 2: 연도별_피크분석 ──────────────────────────────────────────
   const ws2 = wb.addWorksheet('② 연도별_피크분석')
   ws2.views = [{ state: 'frozen', ySplit: 5 }]
@@ -911,6 +938,7 @@ async function downloadStyledExcel(
   for (const [c, d] of Object.entries(etcByCategory)) addPeakRow(ws2, c, d, true, ri++)
   ws2.columns = [{ width: 28 }, { width: 7 }, ...years.flatMap(() => [{ width: 13 }, { width: 9 }, { width: 12 }, { width: 9 }, { width: 9 }]), { width: 11 }, { width: 11 }, { width: 11 }]
 
+  await prog(3, '③ OJC_월간상세')
   // ── Sheet 3: OJC 품목별_월간상세 (KT-SP/DP/다심 · LG-S/D/M 세분화) ────
   const ojcDetailedMap = buildMonthlyMap(rawRows, classifyOjcDetailed)
   const ojcDetailEntries = Object.entries(ojcDetailedMap)
@@ -964,6 +992,7 @@ async function downloadStyledExcel(
   }
   ws3.columns = [{ width: 22 }, { width: 16 }, { width: 40 }, { width: 9 }, ...MONTHS.map(() => ({ width: 8 })), { width: 9 }, { width: 16 }]
 
+  await prog(4, '④ OJC외_월간상세')
   // ── Sheet 4: OJC 외 품목별_월간상세 ─────────────────────────────────────
   const etcMonthlyMap = buildMonthlyMap(rawRows, classifyEtc)
   const ws4 = wb.addWorksheet('④ OJC외_월간상세')
@@ -1010,6 +1039,7 @@ async function downloadStyledExcel(
   }
   ws4.columns = [{ width: 22 }, { width: 16 }, { width: 40 }, { width: 9 }, ...MONTHS.map(() => ({ width: 8 })), { width: 9 }, { width: 16 }]
 
+  await prog(5, '⑤⑥ 거래처별탑3 내자·외자')
   // ── Sheet 5/6: 거래처별탑3 내자·외자 ─────────────────────────────────
   const s5TopColors = [C.midBlue, 'FF1A5A96', 'FF155480'] as const
   const s5ColWidths = [
@@ -1115,6 +1145,7 @@ async function downloadStyledExcel(
     '외자 거래처 전용 (환율>0)  |  총구매량 내림차순  |  수량점유율·가액점유율: 해당 품목의 거래처 TOP3 내 비중', 22)
   writeCustTop3Body(ws6, buildTop3(foreignRowsForExcel, 'cumul'), foreignRowsForExcel)
 
+  await prog(7, '⑦ 전체판매량')
   // ── Sheet 7: 전체판매량 ───────────────────────────────────────────────
   const ws7 = wb.addWorksheet('⑦ 전체판매량')
   ws7.views = [{ state: 'frozen', ySplit: 3 }]
@@ -1191,6 +1222,7 @@ async function downloadStyledExcel(
     { width: 13 },
   ]
 
+  await prog(8, '⑧ 거래처별OJC탑3')
   // ── Sheet 8: 거래처별 OJC 탑3 (연도 행 구조, 거래처별 머지) ────────────
   const ws8 = wb.addWorksheet('⑧ 거래처별OJC탑3')
   ws8.views = [{ state: 'frozen', xSplit: 2, ySplit: 4 }]
@@ -1296,8 +1328,9 @@ async function downloadStyledExcel(
     { width: 14 }, { width: 32 }, { width: 10 }, { width: 11 }, { width: 9 }, { width: 14 },
   ]
 
+  await prog(9, '파일 저장 중...')
   const buffer = await wb.xlsx.writeBuffer()
-  downloadXlsx(buffer as ArrayBuffer, `판매현황분석_${today()}.xlsx`)
+  await saveAsXlsx(buffer as ArrayBuffer, `판매현황분석_${today()}.xlsx`)
 }
 
 function OjcSalesView({
