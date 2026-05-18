@@ -1,7 +1,7 @@
 import { useState, useMemo, Fragment } from 'react'
 import * as XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
-import { classifyOjc } from '../lib/ojcFilter'
+import { classifyOjc, classifyOjcDetailed, COLOR_MAP_OJC_DETAILED } from '../lib/ojcFilter'
 import { parseDetailedSalesFile } from '../lib/parse/parseDetailedSales'
 import type { DetailedSalesRow } from '../lib/parse/parseDetailedSales'
 import { downloadXlsx, today } from '../lib/download'
@@ -515,6 +515,37 @@ export default function SalesAnalysisTab() {
   )
 }
 
+// ── 월간 카테고리 맵 빌더 (OJC 세분화·기타 공용) ──────────────────────
+function buildMonthlyMap(
+  rows: DetailedSalesRow[],
+  classify: (name: string) => string | null,
+): Record<string, CategoryData> {
+  const cats: Record<string, CategoryData> = {}
+  for (const row of rows) {
+    const cat = classify(row.name)
+    if (!cat) continue
+    if (!cats[cat]) cats[cat] = { products: {}, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
+    const c = cats[cat]
+    if (!c.products[row.name]) c.products[row.name] = { code: row.code, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
+    const p = c.products[row.name]
+    p.annuals[row.year]      = (p.annuals[row.year] ?? 0) + row.qty
+    p.priceAnnuals[row.year] = (p.priceAnnuals[row.year] ?? 0) + row.price
+    if (!p.monthlyByYear[row.year]) p.monthlyByYear[row.year] = {}
+    p.monthlyByYear[row.year][row.month] = (p.monthlyByYear[row.year][row.month] ?? 0) + row.qty
+    c.annuals[row.year]      = (c.annuals[row.year] ?? 0) + row.qty
+    c.priceAnnuals[row.year] = (c.priceAnnuals[row.year] ?? 0) + row.price
+    if (!c.monthlyByYear[row.year]) c.monthlyByYear[row.year] = {}
+    c.monthlyByYear[row.year][row.month] = (c.monthlyByYear[row.year][row.month] ?? 0) + row.qty
+  }
+  return cats
+}
+
+const OJC_DETAIL_ORDER = [
+  'KT OJC-SP', 'KT OJC-DP', 'KT OJC-다심', 'KT OJC',
+  'LG OJC-S', 'LG OJC-D', 'LG OJC-M',
+  'DROP', '피그테일-성단용', '피그테일', 'Optical Cable Parts', 'DX-MM',
+]
+
 // ── 통합 판매현황 다운로드 (ExcelJS 스타일) ───────────────────────────
 async function downloadStyledExcel(
   ojcByCategory: Record<string, CategoryData>,
@@ -707,80 +738,104 @@ async function downloadStyledExcel(
   for (const [c, d] of Object.entries(etcByCategory)) addPeakRow(ws2, c, d, true, ri++)
   ws2.columns = [{ width: 28 }, { width: 7 }, ...years.flatMap(() => [{ width: 13 }, { width: 9 }, { width: 12 }, { width: 9 }, { width: 9 }]), { width: 11 }, { width: 11 }, { width: 11 }]
 
-  // ── Sheet 3: 품목별_상세 (OJC + 기타) ────────────────────────────────
-  const ws3 = wb.addWorksheet('③ 품목별_상세')
-  ws3.views = [{ state: 'frozen', ySplit: 3 }]
-  const S3 = 3 + years.length * 2 + 2
-  addTitle(ws3, '품목별 판매 상세 (OJC + 기타)', `${latestYr}년 판매량 기준 내림차순  |  카테고리별 묶음`, S3)
-  styleHdr(ws3.addRow(['카테고리', '품목코드', '품목명', ...years.flatMap(y => [`${y}년\n판매(EA)`, `${y}년\n공급가액`]), '최고월\n판매량', '월평균\n(EA)']), C.midBlue, 28)
+  // ── Sheet 3: OJC 품목별_월간상세 (KT-SP/DP/다심 · LG-S/D/M 세분화) ────
+  const ojcDetailedMap = buildMonthlyMap(rawRows, classifyOjcDetailed)
+  const ojcDetailEntries = Object.entries(ojcDetailedMap)
+    .sort(([a], [b]) => {
+      const ai = OJC_DETAIL_ORDER.indexOf(a); const bi = OJC_DETAIL_ORDER.indexOf(b)
+      return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi)
+    })
+  const S3 = 18  // 카테고리+코드+품목명+연도+12월+합계+공급가액
+  const ws3 = wb.addWorksheet('③ OJC_월간상세')
+  ws3.properties.outlineProperties = { summaryBelow: false }
+  ws3.views = [{ state: 'frozen', xSplit: 3, ySplit: 3 }]
+  addTitle(ws3, 'OJC 품목별 월간 판매 상세', 'KT-SP/DP/다심 · LG-S/D/M · 피그테일-성단용 세분화  |  주황 = 최고월  |  카테고리 클릭으로 접기/펼치기', S3)
+  styleHdr(ws3.addRow(['카테고리', '품목코드', '품목명', '연도', ...MONTHS.map(m => `${parseInt(m)}월`), '합계', '공급가액\n(연간)']), C.midBlue, 28)
 
-  ri = 0
-  function addProdRows(ws: ExcelJS.Worksheet, cat: string, data: CategoryData, isEtc: boolean) {
-    for (const [name, prod] of Object.entries(data.products)
-        .sort((a, b) => (b[1].annuals[latestYr] ?? 0) - (a[1].annuals[latestYr] ?? 0))) {
-      const pla = prod.annuals[latestYr] ?? 0
-      const ppk = Math.max(0, ...MONTHS.map(m => prod.monthlyLatest[m] ?? 0))
-      const bg = ri++ % 2 === 0 ? C.white : (isEtc ? C.altPurple : C.altBlue)
-      const row = ws.addRow([cat, prod.code || null, name, ...years.flatMap(yr => [prod.annuals[yr] || null, prod.priceAnnuals[yr] || null]), ppk || null, pla > 0 ? Math.round(pla / 12) : null])
-      row.height = 16
-      row.eachCell({ includeEmpty: true }, (c, ci) => {
-        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
+  for (const [cat, catData] of ojcDetailEntries) {
+    const catBg = COLOR_MAP_OJC_DETAILED[cat] ?? 'FFDEEAF1'
+    for (const yr of years) {
+      const byYr  = catData.monthlyByYear[yr] ?? {}
+      const mv    = MONTHS.map(m => byYr[m] ?? 0)
+      const pk    = Math.max(0, ...mv)
+      const total = mv.reduce((s, v) => s + v, 0)
+      const catRow = ws3.addRow([cat, '', '(합계)', `20${yr}년`, ...MONTHS.map(m => byYr[m] || null), total || null, catData.priceAnnuals[yr] || null])
+      catRow.outlineLevel = 0; catRow.height = 20
+      catRow.eachCell({ includeEmpty: true }, (c, ci) => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: catBg } }
         c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-        if (ci <= 3) { c.alignment = { horizontal: 'left', vertical: 'middle' }; if (ci === 1) c.font = { color: { argb: isEtc ? C.purple : C.midBlue } } }
+        c.font = { bold: true }
+        if (ci <= 4) c.alignment = { horizontal: 'left', vertical: 'middle' }
         else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
       })
+      MONTHS.forEach((m, mi) => { if ((byYr[m] ?? 0) === pk && pk > 0) { const pc = catRow.getCell(5 + mi); pc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4D6' } }; pc.font = { bold: true, color: { argb: C.orange } } } })
     }
-  }
-
-  for (const [c, d] of Object.entries(ojcByCategory)) addProdRows(ws3, c, d, false)
-  addSep(ws3, '  기타 품목', S3); ri = 0
-  for (const [c, d] of Object.entries(etcByCategory)) addProdRows(ws3, c, d, true)
-  ws3.columns = [{ width: 22 }, { width: 16 }, { width: 40 }, ...years.flatMap(() => [{ width: 13 }, { width: 16 }]), { width: 11 }, { width: 11 }]
-
-  // ── Sheet 4: 월간현황 (연도별) ──────────────────────────────────────────
-  const ws4 = wb.addWorksheet('④ 월간현황_연도별')
-  ws4.views = [{ state: 'frozen', xSplit: 2, ySplit: 3 }]
-  const S4 = 2 + 1 + 12 + 1  // 카테고리 + 연도 + 12월 + 합계
-  addTitle(ws4, '연도별 월간 판매 현황 (OJC + 기타)', '카테고리 합계 → 품목별 상세  |  주황 = 최고월', S4)
-  styleHdr(ws4.addRow(['카테고리', '품목명', '연도', ...MONTHS.map(m => `${parseInt(m)}월`), '합계']), C.midBlue, 24)
-
-  function addMonthRows(ws: ExcelJS.Worksheet, cat: string, data: CategoryData, isEtc: boolean) {
-    for (const yr of years) {
-      const byYr = data.monthlyByYear[yr] ?? {}
-      const mv   = MONTHS.map(m => byYr[m] ?? 0)
-      const pk   = Math.max(0, ...mv)
-      const total = mv.reduce((s, v) => s + v, 0)
-      const catRow = ws.addRow([cat, '(합계)', `20${yr}년`, ...MONTHS.map(m => byYr[m] || null), total || null])
-      catRow.height = 20
-      catRow.eachCell({ includeEmpty: true }, (c, ci) => {
-        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isEtc ? C.lightPurple : C.lightBlue } }
-        c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-        c.font = { bold: true, color: { argb: isEtc ? C.purple : C.midBlue } }
-        c.alignment = { horizontal: ci > 3 ? 'right' : 'left', vertical: 'middle' }
-        if (ci > 3 && typeof c.value === 'number') c.numFmt = '#,##0'
-      })
-      MONTHS.forEach((m, mi) => { if ((byYr[m] ?? 0) === pk && pk > 0) { const pc = catRow.getCell(4 + mi); pc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4D6' } }; pc.font = { bold: true, color: { argb: C.orange } } } })
-    }
-    for (const [name, prod] of Object.entries(data.products).sort((a, b) => (b[1].annuals[latestYr] ?? 0) - (a[1].annuals[latestYr] ?? 0))) {
+    for (const [name, prod] of Object.entries(catData.products).sort((a, b) => (b[1].annuals[latestYr] ?? 0) - (a[1].annuals[latestYr] ?? 0))) {
       for (const yr of years) {
-        const byYr = prod.monthlyByYear[yr] ?? {}
-        const total = MONTHS.reduce((s, m) => s + (byYr[m] ?? 0), 0)
-        const row = ws.addRow([cat, name, `20${yr}년`, ...MONTHS.map(m => byYr[m] || null), total || null])
-        row.height = 16
+        const byYr  = prod.monthlyByYear[yr] ?? {}
+        const mv    = MONTHS.map(m => byYr[m] ?? 0)
+        const pk    = Math.max(0, ...mv)
+        const total = mv.reduce((s, v) => s + v, 0)
+        const row   = ws3.addRow([cat, prod.code || null, name, `20${yr}년`, ...MONTHS.map(m => byYr[m] || null), total || null, prod.priceAnnuals[yr] || null])
+        row.outlineLevel = 1; row.height = 16
         row.eachCell({ includeEmpty: true }, (c, ci) => {
           c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.white } }
           c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-          c.alignment = { horizontal: ci > 3 ? 'right' : 'left', vertical: 'middle' }
-          if (ci === 1) c.font = { color: { argb: isEtc ? C.purple : C.midBlue } }
-          if (ci > 3 && typeof c.value === 'number') c.numFmt = '#,##0'
+          if (ci === 1) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { color: { argb: C.midBlue } } }
+          else if (ci <= 4) c.alignment = { horizontal: 'left', vertical: 'middle' }
+          else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
         })
+        MONTHS.forEach((m, mi) => { if ((byYr[m] ?? 0) === pk && pk > 0) { const pc = row.getCell(5 + mi); pc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4D6' } }; pc.font = { bold: true, color: { argb: C.orange } } } })
       }
     }
   }
+  ws3.columns = [{ width: 22 }, { width: 16 }, { width: 40 }, { width: 9 }, ...MONTHS.map(() => ({ width: 8 })), { width: 9 }, { width: 16 }]
 
-  for (const [c, d] of Object.entries(ojcByCategory)) addMonthRows(ws4, c, d, false)
-  addSep(ws4, '  기타 품목 판매 현황', S4); for (const [c, d] of Object.entries(etcByCategory)) addMonthRows(ws4, c, d, true)
-  ws4.columns = [{ width: 22 }, { width: 38 }, { width: 9 }, ...MONTHS.map(() => ({ width: 8 })), { width: 9 }]
+  // ── Sheet 4: OJC 외 품목별_월간상세 ─────────────────────────────────────
+  const etcMonthlyMap = buildMonthlyMap(rawRows, classifyEtc)
+  const ws4 = wb.addWorksheet('④ OJC외_월간상세')
+  ws4.properties.outlineProperties = { summaryBelow: false }
+  ws4.views = [{ state: 'frozen', xSplit: 3, ySplit: 3 }]
+  addTitle(ws4, 'OJC 외 품목별 월간 판매 상세', '카테고리별 접기/펼치기  |  주황 = 최고월', S3)
+  styleHdr(ws4.addRow(['카테고리', '품목코드', '품목명', '연도', ...MONTHS.map(m => `${parseInt(m)}월`), '합계', '공급가액\n(연간)']), C.midBlue, 28)
+
+  for (const [cat, catData] of Object.entries(etcMonthlyMap)) {
+    for (const yr of years) {
+      const byYr  = catData.monthlyByYear[yr] ?? {}
+      const mv    = MONTHS.map(m => byYr[m] ?? 0)
+      const pk    = Math.max(0, ...mv)
+      const total = mv.reduce((s, v) => s + v, 0)
+      const catRow = ws4.addRow([cat, '', '(합계)', `20${yr}년`, ...MONTHS.map(m => byYr[m] || null), total || null, catData.priceAnnuals[yr] || null])
+      catRow.outlineLevel = 0; catRow.height = 20
+      catRow.eachCell({ includeEmpty: true }, (c, ci) => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightPurple } }
+        c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
+        c.font = { bold: true, color: { argb: C.purple } }
+        if (ci <= 4) c.alignment = { horizontal: 'left', vertical: 'middle' }
+        else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+      })
+      MONTHS.forEach((m, mi) => { if ((byYr[m] ?? 0) === pk && pk > 0) { const pc = catRow.getCell(5 + mi); pc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4D6' } }; pc.font = { bold: true, color: { argb: C.orange } } } })
+    }
+    for (const [name, prod] of Object.entries(catData.products).sort((a, b) => (b[1].annuals[latestYr] ?? 0) - (a[1].annuals[latestYr] ?? 0))) {
+      for (const yr of years) {
+        const byYr  = prod.monthlyByYear[yr] ?? {}
+        const mv    = MONTHS.map(m => byYr[m] ?? 0)
+        const pk    = Math.max(0, ...mv)
+        const total = mv.reduce((s, v) => s + v, 0)
+        const row   = ws4.addRow([cat, prod.code || null, name, `20${yr}년`, ...MONTHS.map(m => byYr[m] || null), total || null, prod.priceAnnuals[yr] || null])
+        row.outlineLevel = 1; row.height = 16
+        row.eachCell({ includeEmpty: true }, (c, ci) => {
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.white } }
+          c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
+          if (ci === 1) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { color: { argb: C.purple } } }
+          else if (ci <= 4) c.alignment = { horizontal: 'left', vertical: 'middle' }
+          else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+        })
+        MONTHS.forEach((m, mi) => { if ((byYr[m] ?? 0) === pk && pk > 0) { const pc = row.getCell(5 + mi); pc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4D6' } }; pc.font = { bold: true, color: { argb: C.orange } } } })
+      }
+    }
+  }
+  ws4.columns = [{ width: 22 }, { width: 16 }, { width: 40 }, { width: 9 }, ...MONTHS.map(() => ({ width: 8 })), { width: 9 }, { width: 16 }]
 
   // ── Sheet 5: 거래처별탑3 (연도 행 구조, 거래처별 머지) ───────────────
   const ws5 = wb.addWorksheet('⑤ 거래처별탑3')
