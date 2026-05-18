@@ -569,9 +569,9 @@ async function downloadStyledExcel(
   ws1.views = [{ state: 'frozen', ySplit: 3 }]
   const S1 = 2 + years.length + 4
   addTitle(ws1, `AJW 판매현황 분석  ·  ${years.map(y => '20' + y + '년').join(' / ')}`,
-    `피크커버·평균커버 = 현재고 ÷ ${latestYr}년 수요 (개월)  |  생성: ${today()}`, S1)
+    `최고월 재고여유·평균 재고여유 = 현재고 ÷ ${latestYr}년 수요 (개월)  |  생성: ${today()}`, S1)
   styleHdr(ws1.addRow(['카테고리', '품목수', ...years.map(y => `${y}년\n판매(EA)`),
-    `${latestYr}년\n피크월(EA)`, `${latestYr}년\n월평균(EA)`, '현재고\n(EA)', '피크커버\n(개월)', '평균커버\n(개월)']), C.midBlue, 32)
+    `${latestYr}년\n최고월 판매량`, `${latestYr}년\n월평균(EA)`, '현재고\n(EA)', '최고월\n재고여유', '평균\n재고여유']), C.midBlue, 32)
 
   function addSumRow(ws: ExcelJS.Worksheet, cat: string, data: CategoryData, isEtc: boolean, rn: number) {
     const la = data.annuals[latestYr] ?? 0; const mv = MONTHS.map(m => data.monthlyLatest[m] ?? 0)
@@ -605,7 +605,7 @@ async function downloadStyledExcel(
   const ws2 = wb.addWorksheet('② 연도별_피크분석')
   ws2.views = [{ state: 'frozen', ySplit: 5 }]
   const S2 = 2 + years.length * 5 + 3
-  addTitle(ws2, '연도별 피크월 분석 (OJC + 기타)',
+  addTitle(ws2, '연도별 최고월 분석 (OJC + 기타)',
     `각 연도별 최대 판매 월·수량·집중도·전년비  |  커버리지는 ${latestYr}년 기준`, S2)
 
   // ── 지표 설명 행 ──
@@ -627,8 +627,8 @@ async function downloadStyledExcel(
     '= (올해 피크 − 전년 피크) ÷ 전년 피크  |  상승 초록 / 하락 빨강 / 첫 연도는 비교 대상 없으므로 — 표시')
 
   styleHdr(ws2.addRow(['카테고리', '품목수',
-    ...years.flatMap(y => [`${y}년\n판매(EA)`, `${y}년\n피크월`, `${y}년\n피크(EA)`, `${y}년\n집중도`, `${y}년\n전년비`]),
-    '현재고\n(EA)', '피크커버\n(개월)', '평균커버\n(개월)']), C.darkBlue, 36)
+    ...years.flatMap(y => [`${y}년\n판매(EA)`, `${y}년\n최고월`, `${y}년\n최고월판매량`, `${y}년\n집중도`, `${y}년\n전년비`]),
+    '현재고\n(EA)', '최고월\n재고여유', '평균\n재고여유']), C.darkBlue, 36)
 
   function addPeakRow(ws: ExcelJS.Worksheet, cat: string, data: CategoryData, isEtc: boolean, rn: number) {
     const la = data.annuals[latestYr] ?? 0; const mv = MONTHS.map(m => data.monthlyLatest[m] ?? 0)
@@ -693,7 +693,7 @@ async function downloadStyledExcel(
   ws3.views = [{ state: 'frozen', ySplit: 3 }]
   const S3 = 3 + years.length * 2 + 2
   addTitle(ws3, '품목별 판매 상세 (OJC + 기타)', `${latestYr}년 판매량 기준 내림차순  |  카테고리별 묶음`, S3)
-  styleHdr(ws3.addRow(['카테고리', '품목코드', '품목명', ...years.flatMap(y => [`${y}년\n판매(EA)`, `${y}년\n공급가액`]), '피크월\n(EA)', '월평균\n(EA)']), C.midBlue, 28)
+  styleHdr(ws3.addRow(['카테고리', '품목코드', '품목명', ...years.flatMap(y => [`${y}년\n판매(EA)`, `${y}년\n공급가액`]), '최고월\n판매량', '월평균\n(EA)']), C.midBlue, 28)
 
   ri = 0
   function addProdRows(ws: ExcelJS.Worksheet, cat: string, data: CategoryData, isEtc: boolean) {
@@ -722,7 +722,7 @@ async function downloadStyledExcel(
   const ws4 = wb.addWorksheet('④ 월간현황_연도별')
   ws4.views = [{ state: 'frozen', xSplit: 2, ySplit: 3 }]
   const S4 = 2 + 1 + 12 + 1  // 카테고리 + 연도 + 12월 + 합계
-  addTitle(ws4, '연도별 월간 판매 현황 (OJC + 기타)', '카테고리 합계 → 품목별 상세  |  주황 = 피크월', S4)
+  addTitle(ws4, '연도별 월간 판매 현황 (OJC + 기타)', '카테고리 합계 → 품목별 상세  |  주황 = 최고월', S4)
   styleHdr(ws4.addRow(['카테고리', '품목명', '연도', ...MONTHS.map(m => `${parseInt(m)}월`), '합계']), C.midBlue, 24)
 
   function addMonthRows(ws: ExcelJS.Worksheet, cat: string, data: CategoryData, isEtc: boolean) {
@@ -1111,11 +1111,11 @@ function OjcSalesView({
                 <th key={yr}    className={`${thBase} text-right`}>{yr}년 판매(EA)</th>,
                 <th key={`p${yr}`} className={`${thBase} text-right`}>{yr}년 공급가액</th>,
               ])}
-              <th className={`${thBase} text-right`}>{latestYr}년<br/>최다 판매월</th>
+              <th className={`${thBase} text-right`}>{latestYr}년<br/>최고월 판매량</th>
               <th className={`${thBase} text-right`}>월평균(EA)</th>
               <th className={`${thBase} text-right`}>현재고(EA)</th>
-              <th className={`${thBase} text-right`}>최다월<br/>재고커버</th>
-              <th className={`${thBase} text-right`}>평균<br/>재고커버</th>
+              <th className={`${thBase} text-right`}>최고월<br/>재고여유</th>
+              <th className={`${thBase} text-right`}>평균<br/>재고여유</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -1453,7 +1453,7 @@ function OjcSalesView({
         </table>
       </div>
       <div className="text-xs text-gray-400 space-y-0.5">
-        <div>※ 피크월 / 월평균은 <b>{latestYr}년</b> 기준 | 피크커버·평균커버 = 현재고 ÷ 해당 월 수요 (개월)</div>
+        <div>※ 최고월 판매량 / 월평균은 <b>{latestYr}년</b> 기준 | 최고월 재고여유·평균 재고여유 = 현재고 ÷ 해당 월 수요 (개월)</div>
         <div>※ 현재고는 OJC 완제품 재고 기준으로 직접 입력하세요 (입력값은 브라우저에 자동 저장됩니다)</div>
         <div>※ 카테고리 행 클릭 시 월간 분포 및 품목별 상세를 확인할 수 있습니다</div>
       </div>
