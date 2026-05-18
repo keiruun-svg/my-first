@@ -4,7 +4,7 @@ import ExcelJS from 'exceljs'
 import { classifyOjc, classifyOjcDetailed, COLOR_MAP_OJC_DETAILED } from '../lib/ojcFilter'
 import { parseDetailedSalesFile } from '../lib/parse/parseDetailedSales'
 import type { DetailedSalesRow } from '../lib/parse/parseDetailedSales'
-import { downloadXlsx, saveAsXlsx, today } from '../lib/download'
+import { downloadXlsx, pickSaveFile, writeToFileHandle, today } from '../lib/download'
 import FileUploader from './FileUploader'
 
 // ── 상수 ────────────────────────────────────────────────────────────
@@ -478,11 +478,17 @@ export default function SalesAnalysisTab() {
             </div>
           ) : (
             <button
-              onClick={() => {
+              onClick={async () => {
+                const filename = `판매현황분석_${today()}.xlsx`
+                // user gesture 컨텍스트가 살아있는 지금 파일 핸들 먼저 획득
+                const handle = await pickSaveFile(filename)
+                if (handle === 'cancelled') return
                 downloadStyledExcel(
                   ojcByCategory, etcByCategory, fullProducts, years, latestYr, ojcStock, rawRows,
                   (current, total, label) => setDlProgress({ current, total, label }),
-                ).finally(() => setDlProgress(null))
+                  handle,
+                ).catch(e => alert(`다운로드 오류: ${e}`))
+                 .finally(() => setDlProgress(null))
               }}
               className="px-4 py-1.5 text-sm bg-[#2E75B6] hover:bg-[#1a5a9e] text-white font-semibold rounded transition whitespace-nowrap"
             >
@@ -576,6 +582,7 @@ async function downloadStyledExcel(
   ojcStock: Record<string, number>,
   rawRows: Array<{ customer: string; code: string; name: string; year: string; month: string; qty: number; price: number; isForeign: boolean }>,
   onProgress: (current: number, total: number, label: string) => void,
+  fileHandle: unknown = null,
 ) {
   const TOTAL = 9  // 시트 8개 + 파일 저장 1단계
   const prog = async (step: number, label: string) => {
@@ -1330,7 +1337,11 @@ async function downloadStyledExcel(
 
   await prog(9, '파일 저장 중...')
   const buffer = await wb.xlsx.writeBuffer()
-  await saveAsXlsx(buffer as ArrayBuffer, `판매현황분석_${today()}.xlsx`)
+  if (fileHandle) {
+    await writeToFileHandle(fileHandle, buffer as ArrayBuffer)
+  } else {
+    downloadXlsx(buffer as ArrayBuffer, `판매현황분석_${today()}.xlsx`)
+  }
 }
 
 function OjcSalesView({
