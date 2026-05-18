@@ -49,7 +49,7 @@ const num      = (v: number) => v === 0 ? '—' : v.toLocaleString()
 const dec1     = (v: number) => v.toFixed(1)
 const fmtPrice = (v: number) => v === 0 ? '—' : v.toLocaleString() + '원'
 
-const CUSTOMER_TOP3_EXCLUDE = new Set(['칼라 열수축 슬리브', '단심 열수축 슬리브'])
+const CUSTOMER_TOP3_EXCLUDE = new Set(['칼라 열수축 슬리브', '단심 열수축 슬리브', '운송비(택배)'])
 
 type SubView = 'ojc' | 'customer' | 'full'
 
@@ -59,6 +59,7 @@ interface ProductData {
   annuals:       Record<string, number>
   priceAnnuals:  Record<string, number>
   monthlyLatest: Record<string, number>
+  monthlyByYear: Record<string, Record<string, number>>
 }
 interface CategoryData {
   products:      Record<string, ProductData>
@@ -203,7 +204,7 @@ export default function SalesAnalysisTab() {
       const cat = classifyOjc(row.name)!
       if (!cats[cat]) cats[cat] = { products: {}, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
       const c = cats[cat]
-      if (!c.products[row.name]) c.products[row.name] = { code: row.code, annuals: {}, priceAnnuals: {}, monthlyLatest: {} }
+      if (!c.products[row.name]) c.products[row.name] = { code: row.code, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
       const p = c.products[row.name]
       p.annuals[row.year]       = (p.annuals[row.year] ?? 0) + row.qty
       p.priceAnnuals[row.year]  = (p.priceAnnuals[row.year] ?? 0) + row.price
@@ -211,6 +212,8 @@ export default function SalesAnalysisTab() {
       c.priceAnnuals[row.year]  = (c.priceAnnuals[row.year] ?? 0) + row.price
       if (!c.monthlyByYear[row.year]) c.monthlyByYear[row.year] = {}
       c.monthlyByYear[row.year][row.month] = (c.monthlyByYear[row.year][row.month] ?? 0) + row.qty
+      if (!p.monthlyByYear[row.year]) p.monthlyByYear[row.year] = {}
+      p.monthlyByYear[row.year][row.month] = (p.monthlyByYear[row.year][row.month] ?? 0) + row.qty
       if (row.year === latestYr) {
         p.monthlyLatest[row.month] = (p.monthlyLatest[row.month] ?? 0) + row.qty
         c.monthlyLatest[row.month] = (c.monthlyLatest[row.month] ?? 0) + row.qty
@@ -231,7 +234,7 @@ export default function SalesAnalysisTab() {
       const cat = classifyEtc(row.name)!
       if (!cats[cat]) cats[cat] = { products: {}, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
       const c = cats[cat]
-      if (!c.products[row.name]) c.products[row.name] = { code: row.code, annuals: {}, priceAnnuals: {}, monthlyLatest: {} }
+      if (!c.products[row.name]) c.products[row.name] = { code: row.code, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
       const p = c.products[row.name]
       p.annuals[row.year]       = (p.annuals[row.year] ?? 0) + row.qty
       p.priceAnnuals[row.year]  = (p.priceAnnuals[row.year] ?? 0) + row.price
@@ -239,6 +242,8 @@ export default function SalesAnalysisTab() {
       c.priceAnnuals[row.year]  = (c.priceAnnuals[row.year] ?? 0) + row.price
       if (!c.monthlyByYear[row.year]) c.monthlyByYear[row.year] = {}
       c.monthlyByYear[row.year][row.month] = (c.monthlyByYear[row.year][row.month] ?? 0) + row.qty
+      if (!p.monthlyByYear[row.year]) p.monthlyByYear[row.year] = {}
+      p.monthlyByYear[row.year][row.month] = (p.monthlyByYear[row.year][row.month] ?? 0) + row.qty
       if (row.year === latestYr) {
         p.monthlyLatest[row.month] = (p.monthlyLatest[row.month] ?? 0) + row.qty
         c.monthlyLatest[row.month] = (c.monthlyLatest[row.month] ?? 0) + row.qty
@@ -456,7 +461,7 @@ export default function SalesAnalysisTab() {
         />
       )}
       {hasData && subView === 'customer' && (
-        <CustomerTop3View customerTop3={customerTop3} years={years} />
+        <CustomerTop3View customerTop3={customerTop3} years={years} rawRows={rawRows} />
       )}
       {hasData && subView === 'full' && (
         <FullSalesView products={fullProducts} years={years} latestYr={latestYr} />
@@ -692,40 +697,50 @@ async function downloadStyledExcel(
   for (const [c, d] of Object.entries(etcByCategory)) addProdRows(ws3, c, d, true)
   ws3.columns = [{ width: 22 }, { width: 16 }, { width: 40 }, ...years.flatMap(() => [{ width: 13 }, { width: 16 }]), { width: 11 }, { width: 11 }]
 
-  // ── Sheet 4: 월간현황 ─────────────────────────────────────────────────
-  const ws4 = wb.addWorksheet(`④ 월간현황_${latestYr}년`)
-  ws4.views = [{ state: 'frozen', ySplit: 3 }]
-  const S4 = 2 + 12
-  addTitle(ws4, `${latestYr}년 월간 판매 현황 (OJC + 기타)`, '카테고리 합계 → 품목별 상세  |  주황 = 피크월', S4)
-  styleHdr(ws4.addRow(['카테고리', '품목명', ...MONTHS.map(m => `${parseInt(m)}월`)]), C.midBlue, 24)
+  // ── Sheet 4: 월간현황 (연도별) ──────────────────────────────────────────
+  const ws4 = wb.addWorksheet('④ 월간현황_연도별')
+  ws4.views = [{ state: 'frozen', xSplit: 2, ySplit: 3 }]
+  const S4 = 2 + 1 + 12 + 1  // 카테고리 + 연도 + 12월 + 합계
+  addTitle(ws4, '연도별 월간 판매 현황 (OJC + 기타)', '카테고리 합계 → 품목별 상세  |  주황 = 피크월', S4)
+  styleHdr(ws4.addRow(['카테고리', '품목명', '연도', ...MONTHS.map(m => `${parseInt(m)}월`), '합계']), C.midBlue, 24)
 
   function addMonthRows(ws: ExcelJS.Worksheet, cat: string, data: CategoryData, isEtc: boolean) {
-    const mv = MONTHS.map(m => data.monthlyLatest[m] ?? 0); const pk = Math.max(0, ...mv)
-    const catRow = ws.addRow([cat, '(합계)', ...MONTHS.map(m => data.monthlyLatest[m] || null)])
-    catRow.height = 20
-    catRow.eachCell({ includeEmpty: true }, (c, ci) => {
-      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isEtc ? C.lightPurple : C.lightBlue } }
-      c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-      c.font = { bold: true, color: { argb: isEtc ? C.purple : C.midBlue } }
-      c.alignment = { horizontal: ci > 2 ? 'right' : 'left', vertical: 'middle' }
-      if (ci > 2 && typeof c.value === 'number') c.numFmt = '#,##0'
-    })
-    MONTHS.forEach((m, mi) => { if ((data.monthlyLatest[m] ?? 0) === pk && pk > 0) { const pc = catRow.getCell(3 + mi); pc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4D6' } }; pc.font = { bold: true, color: { argb: C.orange } } } })
-    for (const [name, prod] of Object.entries(data.products).sort((a, b) => (b[1].annuals[latestYr] ?? 0) - (a[1].annuals[latestYr] ?? 0))) {
-      const row = ws.addRow([cat, name, ...MONTHS.map(m => prod.monthlyLatest[m] || null)]); row.height = 16
-      row.eachCell({ includeEmpty: true }, (c, ci) => {
-        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.white } }
+    for (const yr of years) {
+      const byYr = data.monthlyByYear[yr] ?? {}
+      const mv   = MONTHS.map(m => byYr[m] ?? 0)
+      const pk   = Math.max(0, ...mv)
+      const total = mv.reduce((s, v) => s + v, 0)
+      const catRow = ws.addRow([cat, '(합계)', `20${yr}년`, ...MONTHS.map(m => byYr[m] || null), total || null])
+      catRow.height = 20
+      catRow.eachCell({ includeEmpty: true }, (c, ci) => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isEtc ? C.lightPurple : C.lightBlue } }
         c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-        c.alignment = { horizontal: ci > 2 ? 'right' : 'left', vertical: 'middle' }
-        if (ci === 1) c.font = { color: { argb: isEtc ? C.purple : C.midBlue } }
-        if (ci > 2 && typeof c.value === 'number') c.numFmt = '#,##0'
+        c.font = { bold: true, color: { argb: isEtc ? C.purple : C.midBlue } }
+        c.alignment = { horizontal: ci > 3 ? 'right' : 'left', vertical: 'middle' }
+        if (ci > 3 && typeof c.value === 'number') c.numFmt = '#,##0'
       })
+      MONTHS.forEach((m, mi) => { if ((byYr[m] ?? 0) === pk && pk > 0) { const pc = catRow.getCell(4 + mi); pc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4D6' } }; pc.font = { bold: true, color: { argb: C.orange } } } })
+    }
+    for (const [name, prod] of Object.entries(data.products).sort((a, b) => (b[1].annuals[latestYr] ?? 0) - (a[1].annuals[latestYr] ?? 0))) {
+      for (const yr of years) {
+        const byYr = prod.monthlyByYear[yr] ?? {}
+        const total = MONTHS.reduce((s, m) => s + (byYr[m] ?? 0), 0)
+        const row = ws.addRow([cat, name, `20${yr}년`, ...MONTHS.map(m => byYr[m] || null), total || null])
+        row.height = 16
+        row.eachCell({ includeEmpty: true }, (c, ci) => {
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.white } }
+          c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
+          c.alignment = { horizontal: ci > 3 ? 'right' : 'left', vertical: 'middle' }
+          if (ci === 1) c.font = { color: { argb: isEtc ? C.purple : C.midBlue } }
+          if (ci > 3 && typeof c.value === 'number') c.numFmt = '#,##0'
+        })
+      }
     }
   }
 
   for (const [c, d] of Object.entries(ojcByCategory)) addMonthRows(ws4, c, d, false)
   addSep(ws4, '  기타 품목 판매 현황', S4); for (const [c, d] of Object.entries(etcByCategory)) addMonthRows(ws4, c, d, true)
-  ws4.columns = [{ width: 22 }, { width: 38 }, ...MONTHS.map(() => ({ width: 8 }))]
+  ws4.columns = [{ width: 22 }, { width: 38 }, { width: 9 }, ...MONTHS.map(() => ({ width: 8 })), { width: 9 }]
 
   // ── Sheet 5: 거래처별탑3 ──────────────────────────────────────────────
   const ws5 = wb.addWorksheet('⑤ 거래처별탑3')
@@ -801,7 +816,16 @@ function OjcSalesView({
   ojcStock:       Record<string, number>
   onStockChange:  (cat: string, val: string) => void
 }) {
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [expanded, setExpanded]         = useState<string | null>(null)
+  const [expandedYear, setExpandedYear] = useState<string>(latestYr)
+
+  const handleExpand = (key: string) => {
+    setExpanded(prev => {
+      if (prev === key) return null
+      setExpandedYear(latestYr)
+      return key
+    })
+  }
 
   const thBase = 'px-3 py-2 text-xs font-bold text-gray-700 border-b-2 border-gray-300 bg-gray-100 whitespace-nowrap'
   const coverFgClass = (v: number) => v >= 2 ? 'text-green-600' : v >= 1 ? 'text-yellow-600' : 'text-red-500'
@@ -862,7 +886,7 @@ function OjcSalesView({
                   <tr className={rowBg}>
                     <td className={`px-3 py-2 font-semibold text-gray-800 sticky left-0 z-10 ${rowBg}`}>
                       <button
-                        onClick={() => setExpanded(isExpanded ? null : cat)}
+                        onClick={() => handleExpand(cat)}
                         className="text-left hover:text-blue-600 transition flex items-center gap-1"
                       >
                         <span className="text-xs">{isExpanded ? '▼' : '▶'}</span> {cat}
@@ -910,18 +934,33 @@ function OjcSalesView({
                       {/* 월간 현황 행 */}
                       <tr className="bg-blue-50/60">
                         <td colSpan={3 + years.length * 2 + 5} className="px-4 py-2">
-                          <div className="text-xs font-semibold text-blue-700 mb-1.5">{latestYr}년 월간 판매 현황</div>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="text-xs font-semibold text-blue-700">월간 판매 현황</div>
+                            <div className="flex gap-1">
+                              {years.map(yr => (
+                                <button
+                                  key={yr}
+                                  onClick={() => setExpandedYear(yr)}
+                                  className={`text-xs px-2 py-0.5 rounded ${expandedYear === yr ? 'bg-blue-600 text-white' : 'bg-white border border-blue-200 text-blue-600 hover:bg-blue-50'}`}
+                                >{yr}년</button>
+                              ))}
+                            </div>
+                          </div>
                           <div className="flex gap-1 flex-wrap">
-                            {MONTHS.map(m => {
-                              const v = data.monthlyLatest[m] ?? 0
-                              const isPeak = v === peakMonthly && v > 0
-                              return (
-                                <div key={m} className={`text-center rounded px-2 py-1 min-w-[52px] ${isPeak ? 'bg-orange-200 font-bold text-orange-800' : 'bg-white border border-gray-200 text-gray-700'}`}>
-                                  <div className="text-[10px] text-gray-400">{parseInt(m)}월</div>
-                                  <div className="text-xs">{v > 0 ? v.toLocaleString() : '—'}</div>
-                                </div>
-                              )
-                            })}
+                            {(() => {
+                              const byYr = data.monthlyByYear[expandedYear] ?? {}
+                              const peakVal = Math.max(0, ...MONTHS.map(m => byYr[m] ?? 0))
+                              return MONTHS.map(m => {
+                                const v = byYr[m] ?? 0
+                                const isPeak = v === peakVal && v > 0
+                                return (
+                                  <div key={m} className={`text-center rounded px-2 py-1 min-w-[52px] ${isPeak ? 'bg-orange-200 font-bold text-orange-800' : 'bg-white border border-gray-200 text-gray-700'}`}>
+                                    <div className="text-[10px] text-gray-400">{parseInt(m)}월</div>
+                                    <div className="text-xs">{v > 0 ? v.toLocaleString() : '—'}</div>
+                                  </div>
+                                )
+                              })
+                            })()}
                           </div>
                         </td>
                       </tr>
@@ -1015,7 +1054,7 @@ function OjcSalesView({
                       <tr className={etcRowBg}>
                         <td className={`px-3 py-2 font-semibold text-purple-800 sticky left-0 z-10 ${etcRowBg}`}>
                           <button
-                            onClick={() => setExpanded(isExpanded ? null : `etc-${cat}`)}
+                            onClick={() => handleExpand(`etc-${cat}`)}
                             className="text-left hover:text-purple-600 transition flex items-center gap-1"
                           >
                             <span className="text-xs">{isExpanded ? '▼' : '▶'}</span> {cat}
@@ -1060,18 +1099,33 @@ function OjcSalesView({
                         <Fragment key={`etc-${cat}-detail`}>
                           <tr className="bg-purple-50/40">
                             <td colSpan={3 + years.length * 2 + 5} className="px-4 py-2">
-                              <div className="text-xs font-semibold text-purple-700 mb-1.5">{latestYr}년 월간 판매 현황</div>
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <div className="text-xs font-semibold text-purple-700">월간 판매 현황</div>
+                                <div className="flex gap-1">
+                                  {years.map(yr => (
+                                    <button
+                                      key={yr}
+                                      onClick={() => setExpandedYear(yr)}
+                                      className={`text-xs px-2 py-0.5 rounded ${expandedYear === yr ? 'bg-purple-600 text-white' : 'bg-white border border-purple-200 text-purple-600 hover:bg-purple-50'}`}
+                                    >{yr}년</button>
+                                  ))}
+                                </div>
+                              </div>
                               <div className="flex gap-1 flex-wrap">
-                                {MONTHS.map(m => {
-                                  const v = data.monthlyLatest[m] ?? 0
-                                  const isPeak = v === peakMonthly && v > 0
-                                  return (
-                                    <div key={m} className={`text-center rounded px-2 py-1 min-w-[52px] ${isPeak ? 'bg-orange-200 font-bold text-orange-800' : 'bg-white border border-gray-200 text-gray-700'}`}>
-                                      <div className="text-[10px] text-gray-400">{parseInt(m)}월</div>
-                                      <div className="text-xs">{v > 0 ? v.toLocaleString() : '—'}</div>
-                                    </div>
-                                  )
-                                })}
+                                {(() => {
+                                  const byYr = data.monthlyByYear[expandedYear] ?? {}
+                                  const peakVal = Math.max(0, ...MONTHS.map(m => byYr[m] ?? 0))
+                                  return MONTHS.map(m => {
+                                    const v = byYr[m] ?? 0
+                                    const isPeak = v === peakVal && v > 0
+                                    return (
+                                      <div key={m} className={`text-center rounded px-2 py-1 min-w-[52px] ${isPeak ? 'bg-orange-200 font-bold text-orange-800' : 'bg-white border border-gray-200 text-gray-700'}`}>
+                                        <div className="text-[10px] text-gray-400">{parseInt(m)}월</div>
+                                        <div className="text-xs">{v > 0 ? v.toLocaleString() : '—'}</div>
+                                      </div>
+                                    )
+                                  })
+                                })()}
                               </div>
                             </td>
                           </tr>
@@ -1179,21 +1233,54 @@ function downloadCustomerTop3(
   downloadXlsx(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer, `거래처별탑3_${today()}.xlsx`)
 }
 
+const TOP3_DISPLAY_LIMIT = 20
+
 function CustomerTop3View({
-  customerTop3, years,
+  customerTop3, years, rawRows,
 }: {
   customerTop3: Record<string, Array<{ name: string; code: string; qty: number; price: number }>>
   years:        string[]
+  rawRows:      import('../lib/parse/parseDetailedSales').DetailedSalesRow[]
 }) {
-  const [search, setSearch] = useState('')
-  const customers = Object.entries(customerTop3)
+  const [search, setSearch]             = useState('')
+  const [selectedYear, setSelectedYear] = useState<string>('all')
+  const [showAll, setShowAll]           = useState(false)
+
+  const computedTop3 = useMemo(() => {
+    if (selectedYear === 'all') return customerTop3
+    const custMap: Record<string, Record<string, { code: string; qty: number; price: number }>> = {}
+    for (const row of rawRows) {
+      if (CUSTOMER_TOP3_EXCLUDE.has(row.name)) continue
+      if (row.year !== selectedYear) continue
+      const cust = row.customer || '(미상)'
+      if (!custMap[cust]) custMap[cust] = {}
+      if (!custMap[cust][row.name]) custMap[cust][row.name] = { code: row.code, qty: 0, price: 0 }
+      custMap[cust][row.name].qty   += row.qty
+      custMap[cust][row.name].price += row.price
+    }
+    const result: Record<string, Array<{ name: string; code: string; qty: number; price: number }>> = {}
+    for (const [cust, products] of Object.entries(custMap)) {
+      result[cust] = Object.entries(products)
+        .sort((a, b) => b[1].qty - a[1].qty)
+        .slice(0, 3)
+        .map(([name, d]) => ({ name, code: d.code, qty: d.qty, price: d.price }))
+    }
+    return Object.fromEntries(
+      Object.entries(result).sort((a, b) =>
+        b[1].reduce((s, x) => s + x.qty, 0) - a[1].reduce((s, x) => s + x.qty, 0)
+      )
+    )
+  }, [selectedYear, customerTop3, rawRows])
+
+  const customers = Object.entries(computedTop3)
   const filtered  = customers.filter(([cust]) =>
     !search || cust.toLowerCase().includes(search.toLowerCase())
   )
+  const displayed = showAll ? filtered : filtered.slice(0, TOP3_DISPLAY_LIMIT)
 
   const thBase = 'px-3 py-2 text-xs font-bold text-gray-700 border-b-2 border-gray-300 bg-gray-100 whitespace-nowrap'
 
-  if (!customers.length) {
+  if (!Object.keys(customerTop3).length) {
     return (
       <div className="text-center text-gray-400 py-10 text-sm">
         거래처 데이터가 없습니다. 파일에 <code className="bg-gray-100 px-1 rounded">거래처명</code> 컬럼이 있어야 합니다.
@@ -1203,9 +1290,26 @@ function CustomerTop3View({
 
   return (
     <div className="space-y-3">
+      {/* 상단 컨트롤 */}
       <div className="flex justify-between items-center gap-2 flex-wrap">
-        <div className="text-sm text-gray-600 font-medium">
-          전체 {customers.length}개 거래처 | 전체 기간({years.map(y => '20' + y + '년').join('~')}) 기준
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="text-sm text-gray-600 font-medium">
+            {filtered.length}개 거래처
+          </div>
+          {/* 연도 필터 */}
+          <div className="flex gap-1">
+            <button
+              onClick={() => { setSelectedYear('all'); setShowAll(false) }}
+              className={`text-xs px-2 py-0.5 rounded ${selectedYear === 'all' ? 'bg-[#2E75B6] text-white' : 'bg-white border border-blue-200 text-blue-600 hover:bg-blue-50'}`}
+            >전체</button>
+            {years.map(yr => (
+              <button
+                key={yr}
+                onClick={() => { setSelectedYear(yr); setShowAll(false) }}
+                className={`text-xs px-2 py-0.5 rounded ${selectedYear === yr ? 'bg-[#2E75B6] text-white' : 'bg-white border border-blue-200 text-blue-600 hover:bg-blue-50'}`}
+              >20{yr}년</button>
+            ))}
+          </div>
         </div>
         <div className="flex gap-2 items-center">
           <input
@@ -1235,13 +1339,14 @@ function CustomerTop3View({
                 <Fragment key={rank}>
                   <th className={`${thBase} text-left`}>TOP{rank} 품목명</th>
                   <th className={`${thBase} text-right`}>수량(EA)</th>
+                  <th className={`${thBase} text-right`}>점유율</th>
                   <th className={`${thBase} text-right`}>공급가액</th>
                 </Fragment>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {filtered.map(([cust, top3], i) => {
+            {displayed.map(([cust, top3], i) => {
               const total = top3.reduce((s, x) => s + x.qty, 0)
               return (
                 <tr key={cust} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
@@ -1250,28 +1355,50 @@ function CustomerTop3View({
                   <td className="px-3 py-2 text-right font-mono font-bold text-gray-900">
                     {total.toLocaleString()}
                   </td>
-                  {[0, 1, 2].map(rank => (
-                    <Fragment key={rank}>
-                      <td className="px-3 py-2 max-w-[200px] text-sm text-gray-700" title={top3[rank]?.name ?? ''}>
-                        <div className="text-[10px] text-gray-400 font-mono">{top3[rank]?.code || '—'}</div>
-                        <div className="truncate">{top3[rank]?.name ?? <span className="text-gray-300">—</span>}</div>
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-sm">
-                        {top3[rank] ? top3[rank].qty.toLocaleString() : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-3 py-2 text-right text-xs text-gray-600">
-                        {top3[rank] ? fmtPrice(top3[rank].price) : <span className="text-gray-300">—</span>}
-                      </td>
-                    </Fragment>
-                  ))}
+                  {[0, 1, 2].map(rank => {
+                    const item = top3[rank]
+                    const pct  = item && total > 0 ? Math.round(item.qty / total * 100) : null
+                    return (
+                      <Fragment key={rank}>
+                        <td className="px-3 py-2 max-w-[200px] text-sm text-gray-700" title={item?.name ?? ''}>
+                          <div className="text-[10px] text-gray-400 font-mono">{item?.code || '—'}</div>
+                          <div className="truncate">{item?.name ?? <span className="text-gray-300">—</span>}</div>
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-sm">
+                          {item ? item.qty.toLocaleString() : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs">
+                          {pct !== null
+                            ? <span className={`font-semibold ${pct >= 60 ? 'text-orange-600' : pct >= 30 ? 'text-blue-600' : 'text-gray-500'}`}>{pct}%</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs text-gray-600">
+                          {item ? fmtPrice(item.price) : <span className="text-gray-300">—</span>}
+                        </td>
+                      </Fragment>
+                    )
+                  })}
                 </tr>
               )
             })}
           </tbody>
         </table>
       </div>
+
+      {/* 더 보기 / 접기 */}
+      {filtered.length > TOP3_DISPLAY_LIMIT && (
+        <button
+          onClick={() => setShowAll(v => !v)}
+          className="w-full text-xs text-blue-600 hover:text-blue-800 py-1.5 border border-dashed border-blue-200 rounded hover:bg-blue-50 transition"
+        >
+          {showAll
+            ? `▲ 상위 ${TOP3_DISPLAY_LIMIT}개만 보기`
+            : `▼ 전체 보기 (${filtered.length - TOP3_DISPLAY_LIMIT}개 더)`}
+        </button>
+      )}
+
       <div className="text-xs text-gray-400">
-        ※ 전체 기간 누적 수량 기준 | 거래처당 최다 구매 품목 탑3
+        ※ {selectedYear === 'all' ? '전체 기간 누적' : `20${selectedYear}년`} 수량 기준 | 거래처당 최다 구매 품목 탑3 | 점유율: 해당 품목이 거래처 총구매량의 비중 (주황 ≥60%, 파랑 ≥30%)
       </div>
     </div>
   )
