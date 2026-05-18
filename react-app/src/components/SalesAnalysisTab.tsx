@@ -448,7 +448,7 @@ export default function SalesAnalysisTab() {
           </div>
           <button
             disabled={downloading}
-            onClick={() => { setDownloading(true); downloadStyledExcel(ojcByCategory, etcByCategory, customerTop3, fullProducts, years, latestYr, ojcStock).finally(() => setDownloading(false)) }}
+            onClick={() => { setDownloading(true); downloadStyledExcel(ojcByCategory, etcByCategory, customerTop3, fullProducts, years, latestYr, ojcStock, rawRows).finally(() => setDownloading(false)) }}
             className="px-4 py-1.5 text-sm bg-[#2E75B6] hover:bg-[#1a5a9e] disabled:bg-gray-400 text-white font-semibold rounded transition whitespace-nowrap"
           >
             {downloading ? '⏳ 생성 중...' : '📥 전체 통합 다운로드 (6시트)'}
@@ -494,6 +494,7 @@ async function downloadStyledExcel(
   years: string[],
   latestYr: string,
   ojcStock: Record<string, number>,
+  rawRows: Array<{ customer: string; code: string; name: string; year: string; month: string; qty: number; price: number }>,
 ) {
   const wb = new ExcelJS.Workbook()
   wb.creator = 'AJW SCM팀'
@@ -795,30 +796,148 @@ async function downloadStyledExcel(
   // ── Sheet 6: 전체판매량 ───────────────────────────────────────────────
   const ws6 = wb.addWorksheet('⑥ 전체판매량')
   ws6.views = [{ state: 'frozen', ySplit: 3 }]
-  const S6 = 4 + years.length * 2
-  addTitle(ws6, '전체 품목 판매량', `${latestYr}년 판매량 기준 내림차순`, S6)
-  styleHdr(ws6.addRow(['품목코드', '품목명', '분류', ...years.flatMap(y => [`${y}년\n판매(EA)`, `${y}년\n공급가액`]), '합계\n(EA)']), C.darkBlue, 28)
+  // col 구조: 코드(1)+품목명(1)+분류(1) + yr0:판매+공급(2) + yr1+:(판매+전년비+공급)*N + 합계(1)
+  const S6 = 3 + 2 + (years.length - 1) * 3 + 1
+  const s6ColTypes = ['code', 'name', 'cat',
+    ...years.flatMap((_, idx) => idx === 0 ? ['annual', 'price'] : ['annual', 'growth', 'price']),
+    'total',
+  ]
+  addTitle(ws6, '전체 품목 판매량', `${latestYr}년 판매량 기준 내림차순  |  전년비: 전년 대비 판매수량 증감률`, S6)
+  styleHdr(ws6.addRow([
+    '품목코드', '품목명', '분류',
+    ...years.flatMap((y, idx) => idx === 0
+      ? [`${y}년\n판매(EA)`, `${y}년\n공급가액`]
+      : [`${y}년\n판매(EA)`, '전년비', `${y}년\n공급가액`]
+    ),
+    '합계\n(EA)',
+  ]), C.darkBlue, 28)
   fullProducts.forEach((p, i) => {
     const total = years.reduce((s, yr) => s + (p.annuals[yr] ?? 0), 0)
     const bg = i % 2 === 0 ? C.white : C.gray1
-    const row = ws6.addRow([p.code || null, p.name, p.ojcCat ?? p.etcCat ?? '기타', ...years.flatMap(yr => [p.annuals[yr] || null, p.priceAnnuals[yr] || null]), total || null])
+    const row = ws6.addRow([
+      p.code || null, p.name, p.ojcCat ?? p.etcCat ?? '기타',
+      ...years.flatMap((yr, idx) => {
+        const curr = p.annuals[yr] ?? 0
+        const prev = idx > 0 ? (p.annuals[years[idx - 1]] ?? 0) : 0
+        const g = idx > 0 && prev > 0 && curr > 0 ? (curr - prev) / prev : null
+        return idx === 0
+          ? [curr || null, p.priceAnnuals[yr] || null]
+          : [curr || null, g, p.priceAnnuals[yr] || null]
+      }),
+      total || null,
+    ])
     row.height = 16
     row.eachCell({ includeEmpty: true }, (c, ci) => {
-      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }; c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-      if (ci <= 3) { c.alignment = { horizontal: 'left', vertical: 'middle' }; if (ci === 3 && p.ojcCat) c.font = { color: { argb: C.midBlue } } }
+      const ct = s6ColTypes[ci - 1]
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
+      c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
+      if (ct === 'code') { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { size: 9, color: { argb: C.gray3 } } }
+      else if (ct === 'name') { c.alignment = { horizontal: 'left', vertical: 'middle' } }
+      else if (ct === 'cat') { c.alignment = { horizontal: 'left', vertical: 'middle' }; if (p.ojcCat) c.font = { color: { argb: C.midBlue } } }
+      else if (ct === 'growth') {
+        c.alignment = { horizontal: 'right', vertical: 'middle' }
+        if (typeof c.value === 'number') {
+          c.numFmt = '+0.0%;-0.0%;"-"'
+          c.font = { color: { argb: c.value > 0 ? 'FF375623' : 'FF9C0006' } }
+        }
+      }
       else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
     })
   })
   if (fullProducts.length > 0) {
     const tots = years.map(yr => fullProducts.reduce((s, p) => s + (p.annuals[yr] ?? 0), 0))
-    const sr = ws6.addRow(['합계', `${fullProducts.length}종`, '', ...tots.flatMap(t => [t, null]), tots.reduce((a, b) => a + b, 0)]); sr.height = 22
+    const srVals = [
+      '합계', `${fullProducts.length}종`, '',
+      ...years.flatMap((_, idx) => idx === 0 ? [tots[0], null] : [tots[idx], null, null]),
+      tots.reduce((a, b) => a + b, 0),
+    ]
+    const sr = ws6.addRow(srVals); sr.height = 22
     sr.eachCell({ includeEmpty: true }, (c, ci) => {
+      const ct = s6ColTypes[ci - 1]
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.darkBlue } }; c.font = { bold: true, color: { argb: C.white } }
       c.border = { top: { style: 'medium', color: { argb: C.midBlue } } }
-      if (ci > 3) { c.alignment = { horizontal: 'right', vertical: 'middle' }; c.numFmt = '#,##0' } else c.alignment = { horizontal: 'left', vertical: 'middle' }
+      c.alignment = { horizontal: ct === 'code' || ct === 'name' || ct === 'cat' ? 'left' : 'right', vertical: 'middle' }
+      if (typeof c.value === 'number') c.numFmt = '#,##0'
     })
   }
-  ws6.columns = [{ width: 16 }, { width: 40 }, { width: 18 }, ...years.flatMap(() => [{ width: 13 }, { width: 16 }]), { width: 13 }]
+  ws6.columns = [
+    { width: 16 }, { width: 40 }, { width: 18 },
+    ...years.flatMap((_, idx) => idx === 0
+      ? [{ width: 13 }, { width: 16 }]
+      : [{ width: 13 }, { width: 10 }, { width: 16 }]
+    ),
+    { width: 13 },
+  ]
+
+  // ── Sheet 7: 거래처별 OJC 탑3 ──────────────────────────────────────────
+  const ws7 = wb.addWorksheet('⑦ 거래처별OJC탑3')
+  ws7.views = [{ state: 'frozen', ySplit: 3 }]
+  const S7 = 3 + years.length * 5 + 2  // 순위+거래처+총구매 + TOP1~3*(품목명+분류+수량+점유율+공급가액)
+  addTitle(ws7, '거래처별 OJC TOP3 구매 품목', `연도별 + 전체 누적  |  점유율: 해당 품목의 거래처 OJC 총구매 비중`, 18)
+  const ojcRowsForExcel = rawRows.filter(r => classifyOjc(r.name) !== null)
+
+  function addOjcTop3Section(ws: ExcelJS.Worksheet, label: string, data: ReturnType<typeof buildTop3>) {
+    const sepRow = ws.addRow([label])
+    sepRow.height = 18
+    sepRow.getCell(1).fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.midBlue } }
+    sepRow.getCell(1).font   = { bold: true, color: { argb: C.white }, size: 11 }
+    sepRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' }
+    ws.mergeCells(sepRow.number, 1, sepRow.number, 18)
+
+    styleHdr(ws.addRow([
+      '순위', '거래처명', 'OJC 총구매(EA)',
+      ...([1,2,3].flatMap(r => [`TOP${r} 품목명`, 'OJC분류', '수량(EA)', '점유율', '공급가액'])),
+    ]), C.midBlue, 22)
+
+    Object.entries(data).forEach(([cust, top3], i) => {
+      const total = top3.reduce((s, x) => s + x.qty, 0)
+      const bg = i % 2 === 0 ? C.white : C.altBlue
+      const row = ws.addRow([
+        i + 1, cust, total,
+        ...([0,1,2].flatMap(rank => {
+          const item = top3[rank]
+          const ojcCat = item ? classifyOjc(item.name) ?? '' : ''
+          const pct = item && total > 0 ? item.qty / total : null
+          return [item?.name ?? null, ojcCat || null, item?.qty ?? null, pct, item?.price || null]
+        })),
+      ])
+      row.height = 17
+      row.eachCell({ includeEmpty: true }, (c, ci) => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
+        c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
+        if (ci === 1) { c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { color: { argb: C.gray3 } } }
+        else if (ci === 2) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { bold: true } }
+        else if (ci === 3) { c.alignment = { horizontal: 'right', vertical: 'middle' }; c.numFmt = '#,##0'; c.font = { bold: true, color: { argb: C.midBlue } } }
+        else {
+          const rel = (ci - 4) % 5
+          if (rel === 0) { c.alignment = { horizontal: 'left', vertical: 'middle' } }
+          else if (rel === 1) { c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { size: 9, color: { argb: C.midBlue } } }
+          else if (rel === 2) { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+          else if (rel === 3) {
+            c.alignment = { horizontal: 'right', vertical: 'middle' }
+            if (typeof c.value === 'number') {
+              c.numFmt = '0%'
+              c.font = { bold: true, color: { argb: c.value >= 0.6 ? 'FFE26B0A' : c.value >= 0.3 ? 'FF2E75B6' : 'FF808080' } }
+            }
+          }
+          else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+        }
+      })
+      if (i === 0) row.getCell(2).font = { bold: true, color: { argb: 'FFCC0000' } }
+      else if (i === 1) row.getCell(2).font = { bold: true, color: { argb: 'FF833C00' } }
+    })
+    ws.addRow([])  // 섹션 구분 빈 행
+  }
+
+  for (const yr of years) {
+    addOjcTop3Section(ws7, `  20${yr}년 거래처별 OJC TOP3`, buildTop3(ojcRowsForExcel, yr))
+  }
+  addOjcTop3Section(ws7, '  전체 누적 거래처별 OJC TOP3', buildTop3(ojcRowsForExcel, 'cumul'))
+
+  ws7.columns = [
+    { width: 6 }, { width: 24 }, { width: 14 },
+    ...([0,1,2].flatMap(() => [{ width: 36 }, { width: 10 }, { width: 11 }, { width: 9 }, { width: 14 }])),
+  ]
 
   const buffer = await wb.xlsx.writeBuffer()
   downloadXlsx(buffer as ArrayBuffer, `판매현황분석_${today()}.xlsx`)
