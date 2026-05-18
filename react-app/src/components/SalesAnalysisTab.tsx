@@ -752,45 +752,73 @@ async function downloadStyledExcel(
   addSep(ws4, '  기타 품목 판매 현황', S4); for (const [c, d] of Object.entries(etcByCategory)) addMonthRows(ws4, c, d, true)
   ws4.columns = [{ width: 22 }, { width: 38 }, { width: 9 }, ...MONTHS.map(() => ({ width: 8 })), { width: 9 }]
 
-  // ── Sheet 5: 거래처별탑3 ──────────────────────────────────────────────
+  // ── Sheet 5: 거래처별탑3 (연도별 + 전체 누적) ────────────────────────
   const ws5 = wb.addWorksheet('⑤ 거래처별탑3')
   ws5.views = [{ state: 'frozen', ySplit: 3 }]
-  addTitle(ws5, '거래처별 TOP3 구매 품목', `전체 기간(${years.map(y => '20' + y + '년').join('~')}) 누적  |  총구매량 내림차순  |  점유율: 해당 품목의 거래처 총구매 비중`, 18)
-  styleHdr(ws5.addRow(['순위', '거래처명', '총구매(EA)', 'TOP1 품목코드', 'TOP1 품목명', 'TOP1\n수량(EA)', 'TOP1\n점유율', 'TOP1\n공급가액', 'TOP2 품목코드', 'TOP2 품목명', 'TOP2\n수량(EA)', 'TOP2\n점유율', 'TOP2\n공급가액', 'TOP3 품목코드', 'TOP3 품목명', 'TOP3\n수량(EA)', 'TOP3\n점유율', 'TOP3\n공급가액']), C.midBlue, 26)
-  Object.entries(customerTop3).forEach(([cust, top3], i) => {
-    const total = top3.reduce((s, x) => s + x.qty, 0)
-    const pct = (idx: number) => top3[idx] && total > 0 ? top3[idx].qty / total : null
-    const bg = i % 2 === 0 ? C.white : C.altBlue
-    const row = ws5.addRow([
-      i + 1, cust, total,
-      top3[0]?.code ?? null, top3[0]?.name ?? null, top3[0]?.qty ?? null, pct(0), top3[0]?.price || null,
-      top3[1]?.code ?? null, top3[1]?.name ?? null, top3[1]?.qty ?? null, pct(1), top3[1]?.price || null,
-      top3[2]?.code ?? null, top3[2]?.name ?? null, top3[2]?.qty ?? null, pct(2), top3[2]?.price || null,
-    ])
-    row.height = 17
-    row.eachCell({ includeEmpty: true }, (c, ci) => {
-      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }; c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-      if (ci === 1) { c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { color: { argb: C.gray3 } } }
-      else if (ci === 2) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { bold: true } }
-      else if (ci === 3) { c.alignment = { horizontal: 'right', vertical: 'middle' }; c.numFmt = '#,##0'; c.font = { bold: true } }
-      else {
-        const rel = (ci - 4) % 5
-        if (rel === 0) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { size: 9, color: { argb: C.gray3 } } }
-        else if (rel === 1) { c.alignment = { horizontal: 'left', vertical: 'middle' } }
-        else if (rel === 2) { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
-        else if (rel === 3) {
-          c.alignment = { horizontal: 'right', vertical: 'middle' }
-          if (typeof c.value === 'number') {
-            c.numFmt = '0%'
-            c.font = { bold: true, color: { argb: c.value >= 0.6 ? 'FFE26B0A' : c.value >= 0.3 ? 'FF2E75B6' : 'FF808080' } }
+  addTitle(ws5, '거래처별 TOP3 구매 품목', `연도별 + 전체 누적  |  총구매량 내림차순  |  점유율: 해당 품목의 거래처 총구매 비중`, 18)
+
+  function addCustomerTop3Section(
+    ws: ExcelJS.Worksheet,
+    label: string,
+    data: Record<string, Array<{ name: string; code: string; qty: number; price: number }>>,
+  ) {
+    const sepRow = ws.addRow([label])
+    sepRow.height = 18
+    sepRow.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.midBlue } }
+    sepRow.getCell(1).font      = { bold: true, color: { argb: C.white }, size: 11 }
+    sepRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' }
+    ws.mergeCells(sepRow.number, 1, sepRow.number, 18)
+
+    styleHdr(ws.addRow([
+      '순위', '거래처명', '총구매(EA)',
+      'TOP1 품목코드', 'TOP1 품목명', 'TOP1\n수량(EA)', 'TOP1\n점유율', 'TOP1\n공급가액',
+      'TOP2 품목코드', 'TOP2 품목명', 'TOP2\n수량(EA)', 'TOP2\n점유율', 'TOP2\n공급가액',
+      'TOP3 품목코드', 'TOP3 품목명', 'TOP3\n수량(EA)', 'TOP3\n점유율', 'TOP3\n공급가액',
+    ]), C.midBlue, 26)
+
+    Object.entries(data).forEach(([cust, top3], i) => {
+      const total = top3.reduce((s, x) => s + x.qty, 0)
+      const pct = (idx: number) => top3[idx] && total > 0 ? top3[idx].qty / total : null
+      const bg = i % 2 === 0 ? C.white : C.altBlue
+      const row = ws.addRow([
+        i + 1, cust, total,
+        top3[0]?.code ?? null, top3[0]?.name ?? null, top3[0]?.qty ?? null, pct(0), top3[0]?.price || null,
+        top3[1]?.code ?? null, top3[1]?.name ?? null, top3[1]?.qty ?? null, pct(1), top3[1]?.price || null,
+        top3[2]?.code ?? null, top3[2]?.name ?? null, top3[2]?.qty ?? null, pct(2), top3[2]?.price || null,
+      ])
+      row.height = 17
+      row.eachCell({ includeEmpty: true }, (c, ci) => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
+        c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
+        if (ci === 1) { c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { color: { argb: C.gray3 } } }
+        else if (ci === 2) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { bold: true } }
+        else if (ci === 3) { c.alignment = { horizontal: 'right', vertical: 'middle' }; c.numFmt = '#,##0'; c.font = { bold: true } }
+        else {
+          const rel = (ci - 4) % 5
+          if (rel === 0) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { size: 9, color: { argb: C.gray3 } } }
+          else if (rel === 1) { c.alignment = { horizontal: 'left', vertical: 'middle' } }
+          else if (rel === 2) { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+          else if (rel === 3) {
+            c.alignment = { horizontal: 'right', vertical: 'middle' }
+            if (typeof c.value === 'number') {
+              c.numFmt = '0%'
+              c.font = { bold: true, color: { argb: c.value >= 0.6 ? 'FFE26B0A' : c.value >= 0.3 ? 'FF2E75B6' : 'FF808080' } }
+            }
           }
+          else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
         }
-        else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
-      }
+      })
+      if (i === 0) row.getCell(2).font = { bold: true, color: { argb: 'FFCC0000' } }
+      else if (i === 1) row.getCell(2).font = { bold: true, color: { argb: 'FF833C00' } }
     })
-    if (i === 0) row.getCell(2).font = { bold: true, color: { argb: 'FFCC0000' } }
-    else if (i === 1) row.getCell(2).font = { bold: true, color: { argb: 'FF833C00' } }
-  })
+    ws.addRow([])
+  }
+
+  for (const yr of years) {
+    addCustomerTop3Section(ws5, `  20${yr}년 거래처별 TOP3`, buildTop3(rawRows, yr))
+  }
+  addCustomerTop3Section(ws5, '  전체 누적 거래처별 TOP3', customerTop3)
+
   ws5.columns = [{ width: 6 }, { width: 24 }, { width: 13 }, { width: 16 }, { width: 36 }, { width: 11 }, { width: 9 }, { width: 14 }, { width: 16 }, { width: 36 }, { width: 11 }, { width: 9 }, { width: 14 }, { width: 16 }, { width: 36 }, { width: 11 }, { width: 9 }, { width: 14 }]
 
   // ── Sheet 6: 전체판매량 ───────────────────────────────────────────────
