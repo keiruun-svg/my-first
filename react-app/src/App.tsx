@@ -15,8 +15,10 @@ import InventoryComp from './components/Inventory'
 import Settings from './components/Settings'
 import PartNumberGenerator from './components/PartNumberGenerator'
 import SalesAnalysisTab from './components/SalesAnalysisTab'
+import Dashboard from './components/Dashboard'
 
 const ALL_TABS = [
+  { id: 'home',      label: '🏠 홈',                       devOnly: false },
   { id: 'step1',     label: '📤 STEP 1 — ERP 파일 가공',  devOnly: false },
   { id: 'step2',     label: '📈 STEP 2 — 판매 분석',      devOnly: false },
   { id: 'step3',     label: '📊 STEP 3 — 발주계획 생성',  devOnly: false },
@@ -32,7 +34,7 @@ const TABS = ALL_TABS.filter(t => !t.devOnly || CAN_WRITE)
 type TabId = typeof ALL_TABS[number]['id']
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabId>('step1')
+  const [activeTab, setActiveTab] = useState<TabId>('home')
   const [loading, setLoading] = useState(true)
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [metadata, setMetadata] = useState<Metadata>({ cable: {}, housing: {} })
@@ -101,6 +103,15 @@ export default function App() {
 
       {/* Content — wide, no card wrapper */}
       <div className="max-w-screen-2xl mx-auto px-6 py-6">
+        {activeTab === 'home' && (
+          <Dashboard
+            metadata={metadata}
+            inventory={inventory}
+            settings={settings}
+            salesAgg={salesAgg}
+            onNavigate={(tab) => setActiveTab(tab as TabId)}
+          />
+        )}
         {activeTab === 'step1' && (
           <Step1 metadata={metadata} setMetadata={setMetadata} settings={settings} />
         )}
