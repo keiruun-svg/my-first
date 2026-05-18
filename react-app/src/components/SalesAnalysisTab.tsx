@@ -49,7 +49,10 @@ const num      = (v: number) => v === 0 ? '—' : v.toLocaleString()
 const dec1     = (v: number) => v.toFixed(1)
 const fmtPrice = (v: number) => v === 0 ? '—' : v.toLocaleString() + '원'
 
-const CUSTOMER_TOP3_EXCLUDE = new Set(['칼라 열수축 슬리브', '단심 열수축 슬리브', '운송비(택배)'])
+function isTop3Excluded(name: string): boolean {
+  const u = name.toUpperCase()
+  return u.includes('PROTECTION SLEEVE') || u.includes('운송비')
+}
 
 type SubView = 'ojc' | 'customer' | 'full'
 
@@ -256,7 +259,7 @@ export default function SalesAnalysisTab() {
   const customerTop3 = useMemo(() => {
     const custMap: Record<string, Record<string, { code: string; qty: number; price: number }>> = {}
     for (const row of rawRows) {
-      if (CUSTOMER_TOP3_EXCLUDE.has(row.name)) continue
+      if (isTop3Excluded(row.name)) continue
       const cust = row.customer || '(미상)'
       if (!custMap[cust]) custMap[cust] = {}
       if (!custMap[cust][row.name]) custMap[cust][row.name] = { code: row.code, qty: 0, price: 0 }
@@ -1259,7 +1262,7 @@ function CustomerTop3View({
     if (selectedYear === 'all') return customerTop3
     const custMap: Record<string, Record<string, { code: string; qty: number; price: number }>> = {}
     for (const row of rawRows) {
-      if (CUSTOMER_TOP3_EXCLUDE.has(row.name)) continue
+      if (isTop3Excluded(row.name)) continue
       if (row.year !== selectedYear) continue
       const cust = row.customer || '(미상)'
       if (!custMap[cust]) custMap[cust] = {}
@@ -1431,6 +1434,8 @@ function downloadFullSales(
   downloadXlsx(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer, `전체판매량_${today()}.xlsx`)
 }
 
+type SortKey = 'name' | 'total' | `annual_${string}` | `price_${string}`
+
 function FullSalesView({
   products, years, latestYr,
 }: {
@@ -1438,28 +1443,63 @@ function FullSalesView({
   years:     string[]
   latestYr:  string
 }) {
-  const [search, setSearch]       = useState('')
-  const [filterOjc, setFilterOjc] = useState<'all' | 'ojc' | 'non'>('all')
+  const [search, setSearch]         = useState('')
+  const [filterOjc, setFilterOjc]   = useState<'all' | 'ojc' | 'non'>('all')
+  const [sortKey, setSortKey]        = useState<SortKey>(`annual_${latestYr}`)
+  const [sortDir, setSortDir]        = useState<'desc' | 'asc'>('desc')
 
   const ojcCount    = products.filter(p => p.ojcCat !== null).length
   const nonOjcCount = products.length - ojcCount
 
-  const filtered = products.filter(p => {
-    const matchOjc =
-      filterOjc === 'all' ||
-      (filterOjc === 'ojc' && p.ojcCat !== null) ||
-      (filterOjc === 'non' && p.ojcCat === null)
-    const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase())
-    return matchOjc && matchSearch
-  })
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
+    else { setSortKey(key); setSortDir('desc') }
+  }
+  const sortIcon = (key: SortKey) => sortKey === key ? (sortDir === 'desc' ? ' ▼' : ' ▲') : ''
 
-  // 연도별 합계
+  const withTotal = products.map(p => ({
+    ...p,
+    total: years.reduce((s, yr) => s + (p.annuals[yr] ?? 0), 0),
+  }))
+
+  const filtered = withTotal
+    .filter(p => {
+      const matchOjc =
+        filterOjc === 'all' ||
+        (filterOjc === 'ojc' && p.ojcCat !== null) ||
+        (filterOjc === 'non' && p.ojcCat === null)
+      const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase())
+      return matchOjc && matchSearch
+    })
+    .sort((a, b) => {
+      let av = 0, bv = 0
+      if (sortKey === 'name')  { av = a.name < b.name ? -1 : 1; bv = 0 }
+      else if (sortKey === 'total') { av = a.total; bv = b.total }
+      else if (sortKey.startsWith('annual_')) { const yr = sortKey.slice(7); av = a.annuals[yr] ?? 0; bv = b.annuals[yr] ?? 0 }
+      else if (sortKey.startsWith('price_'))  { const yr = sortKey.slice(6); av = a.priceAnnuals[yr] ?? 0; bv = b.priceAnnuals[yr] ?? 0 }
+      if (sortKey === 'name') return sortDir === 'asc' ? av : -av
+      return sortDir === 'desc' ? bv - av : av - bv
+    })
+
+  // 연도별 합계 (필터 기준)
   const yearTotals = years.reduce<Record<string, number>>((acc, yr) => {
     acc[yr] = filtered.reduce((s, p) => s + (p.annuals[yr] ?? 0), 0)
     return acc
   }, {})
+  const grandTotal = filtered.reduce((s, p) => s + p.total, 0)
 
-  const thBase = 'px-3 py-2 text-xs font-bold text-gray-700 border-b-2 border-gray-300 bg-gray-100 whitespace-nowrap'
+  const thBase   = 'px-3 py-2 text-xs font-bold text-gray-700 border-b-2 border-gray-300 bg-gray-100 whitespace-nowrap'
+  const thSort   = `${thBase} cursor-pointer hover:bg-gray-200 select-none`
+
+  // 전년비 계산
+  const growth = (p: typeof filtered[0], yr: string) => {
+    const idx = years.indexOf(yr)
+    if (idx <= 0) return null
+    const prev = p.annuals[years[idx - 1]] ?? 0
+    const curr = p.annuals[yr] ?? 0
+    if (prev === 0) return null
+    return (curr - prev) / prev
+  }
 
   return (
     <div className="space-y-3">
@@ -1501,14 +1541,16 @@ function FullSalesView({
         <table className="text-xs w-full border-collapse bg-white">
           <thead>
             <tr>
-              <th className={`${thBase} text-left`}>품목명</th>
+              <th className={`${thSort} text-left`} onClick={() => handleSort('name')}>품목명{sortIcon('name')}</th>
               <th className={`${thBase} text-center`}>분류</th>
-              {years.map(yr => (
+              {years.map((yr, idx) => (
                 <Fragment key={yr}>
-                  <th className={`${thBase} text-right`}>{yr}년 판매(EA)</th>
-                  <th className={`${thBase} text-right`}>{yr}년 공급가액</th>
+                  <th className={`${thSort} text-right`} onClick={() => handleSort(`annual_${yr}`)}>{yr}년 판매(EA){sortIcon(`annual_${yr}`)}</th>
+                  {idx > 0 && <th className={`${thBase} text-right`}>전년비</th>}
+                  <th className={`${thSort} text-right`} onClick={() => handleSort(`price_${yr}`)}>{yr}년 공급가액{sortIcon(`price_${yr}`)}</th>
                 </Fragment>
               ))}
+              <th className={`${thSort} text-right`} onClick={() => handleSort('total')}>합계(EA){sortIcon('total')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -1525,12 +1567,23 @@ function FullSalesView({
                     {p.ojcCat ?? p.etcCat ?? '기타'}
                   </span>
                 </td>
-                {years.map(yr => (
-                  <Fragment key={yr}>
-                    <td className="px-3 py-1.5 text-right font-mono text-sm">{num(p.annuals[yr] ?? 0)}</td>
-                    <td className="px-3 py-1.5 text-right text-xs text-gray-500">{fmtPrice(p.priceAnnuals[yr] ?? 0)}</td>
-                  </Fragment>
-                ))}
+                {years.map((yr, idx) => {
+                  const g = growth(p, yr)
+                  return (
+                    <Fragment key={yr}>
+                      <td className="px-3 py-1.5 text-right font-mono text-sm">{num(p.annuals[yr] ?? 0)}</td>
+                      {idx > 0 && (
+                        <td className={`px-3 py-1.5 text-right text-xs font-semibold ${
+                          g === null ? 'text-gray-300' : g > 0 ? 'text-green-600' : g < 0 ? 'text-red-500' : 'text-gray-400'
+                        }`}>
+                          {g === null ? '—' : `${g > 0 ? '+' : ''}${(g * 100).toFixed(1)}%`}
+                        </td>
+                      )}
+                      <td className="px-3 py-1.5 text-right text-xs text-gray-500">{fmtPrice(p.priceAnnuals[yr] ?? 0)}</td>
+                    </Fragment>
+                  )
+                })}
+                <td className="px-3 py-1.5 text-right font-mono font-bold text-gray-800">{p.total > 0 ? p.total.toLocaleString() : '—'}</td>
               </tr>
             ))}
 
@@ -1539,23 +1592,25 @@ function FullSalesView({
               <tr className="bg-gray-100 font-bold border-t-2 border-gray-300">
                 <td className="px-3 py-2 text-gray-800">합계</td>
                 <td className="px-3 py-2 text-center text-gray-500 text-xs">{filtered.length}종</td>
-                {years.map(yr => (
+                {years.map((yr, idx) => (
                   <Fragment key={yr}>
                     <td className="px-3 py-2 text-right font-mono">{num(yearTotals[yr] ?? 0)}</td>
+                    {idx > 0 && <td className="px-3 py-2 text-right text-gray-400">—</td>}
                     <td className="px-3 py-2 text-right text-xs text-gray-400">—</td>
                   </Fragment>
                 ))}
+                <td className="px-3 py-2 text-right font-mono">{grandTotal > 0 ? grandTotal.toLocaleString() : '—'}</td>
               </tr>
             )}
 
             {filtered.length === 0 && (
-              <tr><td colSpan={2 + years.length * 2} className="text-center text-gray-400 py-10">검색 결과 없음</td></tr>
+              <tr><td colSpan={2 + years.length * 3} className="text-center text-gray-400 py-10">검색 결과 없음</td></tr>
             )}
           </tbody>
         </table>
       </div>
       <div className="text-xs text-gray-400 flex justify-between">
-        <span>※ {latestYr}년 판매량 기준 내림차순 정렬</span>
+        <span>※ 헤더 클릭으로 정렬 전환 | 전년비: 전년 대비 판매수량 증감률</span>
         <span>{filtered.length.toLocaleString()}개 품목</span>
       </div>
     </div>
