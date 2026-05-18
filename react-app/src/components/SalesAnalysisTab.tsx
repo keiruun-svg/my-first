@@ -54,7 +54,7 @@ function isTop3Excluded(name: string): boolean {
   return u.includes('PROTECTION SLEEVE') || u.includes('운송비')
 }
 
-type SubView = 'ojc' | 'customer' | 'ojc_customer' | 'full'
+type SubView = 'summary' | 'ojc' | 'customer' | 'ojc_customer' | 'full'
 
 // ── 타입 ─────────────────────────────────────────────────────────────
 interface ProductData {
@@ -88,7 +88,7 @@ export default function SalesAnalysisTab() {
   const [eszWarehouses, setEszWarehouses] = useState<string[]>([])
   const [eszSelectedWh, setEszSelectedWh] = useState('')
   const [eszSubTab,    setEszSubTab]    = useState<'total' | 'warehouse'>('total')
-  const [subView, setSubView]   = useState<SubView>('ojc')
+  const [subView, setSubView]   = useState<SubView>('summary')
   const [ojcStock, setOjcStock] = useState<Record<string, number>>(() => {
     try { return JSON.parse(localStorage.getItem('ojc_stock') ?? '{}') } catch { return {} }
   })
@@ -429,7 +429,7 @@ export default function SalesAnalysisTab() {
       {hasData && (
         <div className="flex gap-2 flex-wrap items-center justify-between">
           <div className="flex gap-2 flex-wrap">
-            {(['ojc', 'customer', 'ojc_customer', 'full'] as SubView[]).map(v => (
+            {(['summary', 'ojc', 'customer', 'ojc_customer', 'full'] as SubView[]).map(v => (
               <button
                 key={v}
                 onClick={() => setSubView(v)}
@@ -439,7 +439,8 @@ export default function SalesAnalysisTab() {
                     : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                {v === 'ojc' ? '① OJC 판매 현황'
+                {v === 'summary'     ? '⓪ 요약 대시보드'
+                  : v === 'ojc'     ? '① OJC 판매 현황'
                   : v === 'customer' ? '② 거래처별 탑3'
                   : v === 'ojc_customer' ? '③ 거래처별 OJC 탑3'
                   : '④ 전체 판매량'}
@@ -451,11 +452,21 @@ export default function SalesAnalysisTab() {
             onClick={() => { setDownloading(true); downloadStyledExcel(ojcByCategory, etcByCategory, customerTop3, fullProducts, years, latestYr, ojcStock, rawRows).finally(() => setDownloading(false)) }}
             className="px-4 py-1.5 text-sm bg-[#2E75B6] hover:bg-[#1a5a9e] disabled:bg-gray-400 text-white font-semibold rounded transition whitespace-nowrap"
           >
-            {downloading ? '⏳ 생성 중...' : '📥 전체 통합 다운로드 (6시트)'}
+            {downloading ? '⏳ 생성 중...' : '📥 전체 통합 다운로드 (7시트)'}
           </button>
         </div>
       )}
 
+      {hasData && subView === 'summary' && (
+        <SalesSummaryView
+          ojcByCategory={ojcByCategory}
+          etcByCategory={etcByCategory}
+          customerTop3={customerTop3}
+          fullProducts={fullProducts}
+          years={years}
+          latestYr={latestYr}
+        />
+      )}
       {hasData && subView === 'ojc' && (
         <OjcSalesView
           ojcByCategory={ojcByCategory}
@@ -752,74 +763,109 @@ async function downloadStyledExcel(
   addSep(ws4, '  기타 품목 판매 현황', S4); for (const [c, d] of Object.entries(etcByCategory)) addMonthRows(ws4, c, d, true)
   ws4.columns = [{ width: 22 }, { width: 38 }, { width: 9 }, ...MONTHS.map(() => ({ width: 8 })), { width: 9 }]
 
-  // ── Sheet 5: 거래처별탑3 (연도별 + 전체 누적) ────────────────────────
+  // ── Sheet 5: 거래처별탑3 (연도 행 구조, 거래처별 머지) ───────────────
   const ws5 = wb.addWorksheet('⑤ 거래처별탑3')
-  ws5.views = [{ state: 'frozen', ySplit: 3 }]
-  addTitle(ws5, '거래처별 TOP3 구매 품목', `연도별 + 전체 누적  |  총구매량 내림차순  |  점유율: 해당 품목의 거래처 총구매 비중`, 18)
+  ws5.views = [{ state: 'frozen', xSplit: 2, ySplit: 4 }]
+  // 16 cols: 순위(1) 거래처명(2) 연도(3) 총구매(4) TOP1×4(5-8) TOP2×4(9-12) TOP3×4(13-16)
+  addTitle(ws5, '거래처별 TOP3 구매 품목',
+    '거래처별 연도 행 구조  |  총구매량 내림차순  |  점유율: 해당 품목의 거래처 총구매 비중', 16)
 
-  function addCustomerTop3Section(
-    ws: ExcelJS.Worksheet,
-    label: string,
-    data: Record<string, Array<{ name: string; code: string; qty: number; price: number }>>,
-  ) {
-    const sepRow = ws.addRow([label])
-    sepRow.height = 18
-    sepRow.getCell(1).fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.midBlue } }
-    sepRow.getCell(1).font      = { bold: true, color: { argb: C.white }, size: 11 }
-    sepRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' }
-    ws.mergeCells(sepRow.number, 1, sepRow.number, 18)
+  const s5h1 = ws5.addRow(['순위', '거래처명', '연도', '총구매(EA)',
+    'TOP 1', null, null, null, 'TOP 2', null, null, null, 'TOP 3', null, null, null])
+  const s5h2 = ws5.addRow([null, null, null, null,
+    '품목명', '수량(EA)', '점유율', '공급가액',
+    '품목명', '수량(EA)', '점유율', '공급가액',
+    '품목명', '수량(EA)', '점유율', '공급가액'])
+  styleHdr(s5h1, C.darkBlue, 26); styleHdr(s5h2, C.darkBlue, 20)
+  ;[1, 2, 3, 4].forEach(ci => ws5.mergeCells(s5h1.number, ci, s5h2.number, ci))
+  ws5.mergeCells(s5h1.number, 5, s5h1.number, 8)
+  ws5.mergeCells(s5h1.number, 9, s5h1.number, 12)
+  ws5.mergeCells(s5h1.number, 13, s5h1.number, 16)
+  const s5TopColors = [C.midBlue, 'FF1A5A96', 'FF155480'] as const
+  ;[5, 9, 13].forEach((ci, gi) => {
+    ws5.getCell(s5h1.number, ci).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: s5TopColors[gi] } }
+  })
 
-    styleHdr(ws.addRow([
-      '순위', '거래처명', '총구매(EA)',
-      'TOP1 품목코드', 'TOP1 품목명', 'TOP1\n수량(EA)', 'TOP1\n점유율', 'TOP1\n공급가액',
-      'TOP2 품목코드', 'TOP2 품목명', 'TOP2\n수량(EA)', 'TOP2\n점유율', 'TOP2\n공급가액',
-      'TOP3 품목코드', 'TOP3 품목명', 'TOP3\n수량(EA)', 'TOP3\n점유율', 'TOP3\n공급가액',
-    ]), C.midBlue, 26)
-
-    Object.entries(data).forEach(([cust, top3], i) => {
-      const total = top3.reduce((s, x) => s + x.qty, 0)
-      const pct = (idx: number) => top3[idx] && total > 0 ? top3[idx].qty / total : null
-      const bg = i % 2 === 0 ? C.white : C.altBlue
-      const row = ws.addRow([
-        i + 1, cust, total,
-        top3[0]?.code ?? null, top3[0]?.name ?? null, top3[0]?.qty ?? null, pct(0), top3[0]?.price || null,
-        top3[1]?.code ?? null, top3[1]?.name ?? null, top3[1]?.qty ?? null, pct(1), top3[1]?.price || null,
-        top3[2]?.code ?? null, top3[2]?.name ?? null, top3[2]?.qty ?? null, pct(2), top3[2]?.price || null,
-      ])
-      row.height = 17
-      row.eachCell({ includeEmpty: true }, (c, ci) => {
-        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
-        c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-        if (ci === 1) { c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { color: { argb: C.gray3 } } }
-        else if (ci === 2) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { bold: true } }
-        else if (ci === 3) { c.alignment = { horizontal: 'right', vertical: 'middle' }; c.numFmt = '#,##0'; c.font = { bold: true } }
-        else {
-          const rel = (ci - 4) % 5
-          if (rel === 0) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { size: 9, color: { argb: C.gray3 } } }
-          else if (rel === 1) { c.alignment = { horizontal: 'left', vertical: 'middle' } }
-          else if (rel === 2) { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
-          else if (rel === 3) {
-            c.alignment = { horizontal: 'right', vertical: 'middle' }
-            if (typeof c.value === 'number') {
-              c.numFmt = '0%'
-              c.font = { bold: true, color: { argb: c.value >= 0.6 ? 'FFE26B0A' : c.value >= 0.3 ? 'FF2E75B6' : 'FF808080' } }
-            }
+  const applyS5Style = (row: ExcelJS.Row, bg: string, isCumul: boolean) => {
+    row.eachCell({ includeEmpty: true }, (c, ci) => {
+      c.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
+      c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
+      if (ci === 1) {
+        c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { color: { argb: C.gray3 } }
+      } else if (ci === 2) {
+        c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { bold: true }
+      } else if (ci === 3) {
+        c.alignment = { horizontal: 'center', vertical: 'middle' }
+        if (isCumul) c.font = { bold: true, color: { argb: C.darkBlue } }
+      } else if (ci === 4) {
+        c.alignment = { horizontal: 'right', vertical: 'middle' }; c.font = { bold: true }
+        if (typeof c.value === 'number') c.numFmt = '#,##0'
+      } else {
+        const pos = (ci - 5) % 4  // 0=품목명, 1=수량, 2=점유율, 3=공급가액
+        if (pos === 0) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { size: 9 } }
+        else if (pos === 1) { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+        else if (pos === 2) {
+          c.alignment = { horizontal: 'right', vertical: 'middle' }
+          if (typeof c.value === 'number') {
+            c.numFmt = '0%'
+            c.font = { bold: true, color: { argb: c.value >= 0.6 ? 'FFE26B0A' : c.value >= 0.3 ? 'FF2E75B6' : 'FF808080' } }
           }
-          else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
-        }
-      })
-      if (i === 0) row.getCell(2).font = { bold: true, color: { argb: 'FFCC0000' } }
-      else if (i === 1) row.getCell(2).font = { bold: true, color: { argb: 'FF833C00' } }
+        } else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+      }
     })
-    ws.addRow([])
   }
 
-  for (const yr of years) {
-    addCustomerTop3Section(ws5, `  20${yr}년 거래처별 TOP3`, buildTop3(rawRows, yr))
-  }
-  addCustomerTop3Section(ws5, '  전체 누적 거래처별 TOP3', customerTop3)
+  Object.entries(customerTop3).forEach(([cust, cumulTop], custIdx) => {
+    const cumulTotal = cumulTop.reduce((s, x) => s + x.qty, 0)
+    const startRow   = ws5.rowCount + 1
+    const rowBg      = custIdx % 2 === 0 ? C.white : C.altBlue
 
-  ws5.columns = [{ width: 6 }, { width: 24 }, { width: 13 }, { width: 16 }, { width: 36 }, { width: 11 }, { width: 9 }, { width: 14 }, { width: 16 }, { width: 36 }, { width: 11 }, { width: 9 }, { width: 14 }, { width: 16 }, { width: 36 }, { width: 11 }, { width: 9 }, { width: 14 }]
+    years.forEach(yr => {
+      const yrMap = buildTop3(rawRows, yr)
+      const top3  = yrMap[cust] ?? []
+      const total = top3.reduce((s, x) => s + x.qty, 0)
+      const pct   = (i: number) => top3[i] && total > 0 ? top3[i].qty / total : null
+      const row   = ws5.addRow([
+        null, null, `20${yr}년`, total || null,
+        top3[0]?.name ?? null, top3[0]?.qty ?? null, pct(0), top3[0]?.price || null,
+        top3[1]?.name ?? null, top3[1]?.qty ?? null, pct(1), top3[1]?.price || null,
+        top3[2]?.name ?? null, top3[2]?.qty ?? null, pct(2), top3[2]?.price || null,
+      ])
+      row.height = 17; applyS5Style(row, rowBg, false)
+    })
+
+    const cpct = (i: number) => cumulTop[i] && cumulTotal > 0 ? cumulTop[i].qty / cumulTotal : null
+    const cumulRow = ws5.addRow([
+      null, null, '전체 누적', cumulTotal || null,
+      cumulTop[0]?.name ?? null, cumulTop[0]?.qty ?? null, cpct(0), cumulTop[0]?.price || null,
+      cumulTop[1]?.name ?? null, cumulTop[1]?.qty ?? null, cpct(1), cumulTop[1]?.price || null,
+      cumulTop[2]?.name ?? null, cumulTop[2]?.qty ?? null, cpct(2), cumulTop[2]?.price || null,
+    ])
+    cumulRow.height = 17; applyS5Style(cumulRow, C.lightBlue, true)
+
+    const endRow = ws5.rowCount
+    if (endRow > startRow) {
+      ws5.mergeCells(startRow, 1, endRow, 1)
+      ws5.mergeCells(startRow, 2, endRow, 2)
+    }
+    const rkCell = ws5.getCell(startRow, 1)
+    rkCell.value = custIdx + 1
+    rkCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } }
+    rkCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    rkCell.font  = { color: { argb: C.gray3 } }
+    const cnCell = ws5.getCell(startRow, 2)
+    cnCell.value = cust
+    cnCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } }
+    cnCell.alignment = { horizontal: 'left', vertical: 'middle' }
+    cnCell.font  = { bold: true, color: { argb: custIdx === 0 ? 'FFCC0000' : custIdx === 1 ? 'FF833C00' : C.darkBlue } }
+  })
+
+  ws5.columns = [
+    { width: 6 }, { width: 26 }, { width: 10 }, { width: 13 },
+    { width: 36 }, { width: 11 }, { width: 9 }, { width: 14 },
+    { width: 36 }, { width: 11 }, { width: 9 }, { width: 14 },
+    { width: 36 }, { width: 11 }, { width: 9 }, { width: 14 },
+  ]
 
   // ── Sheet 6: 전체판매량 ───────────────────────────────────────────────
   const ws6 = wb.addWorksheet('⑥ 전체판매량')
@@ -897,74 +943,114 @@ async function downloadStyledExcel(
     { width: 13 },
   ]
 
-  // ── Sheet 7: 거래처별 OJC 탑3 ──────────────────────────────────────────
+  // ── Sheet 7: 거래처별 OJC 탑3 (연도 행 구조, 거래처별 머지) ────────────
   const ws7 = wb.addWorksheet('⑦ 거래처별OJC탑3')
-  ws7.views = [{ state: 'frozen', ySplit: 3 }]
-  const S7 = 3 + years.length * 5 + 2  // 순위+거래처+총구매 + TOP1~3*(품목명+분류+수량+점유율+공급가액)
-  addTitle(ws7, '거래처별 OJC TOP3 구매 품목', `연도별 + 전체 누적  |  점유율: 해당 품목의 거래처 OJC 총구매 비중`, 18)
+  ws7.views = [{ state: 'frozen', xSplit: 2, ySplit: 4 }]
+  // 19 cols: 순위(1) 거래처명(2) 연도(3) OJC총구매(4) TOP1×5(5-9) TOP2×5(10-14) TOP3×5(15-19)
+  addTitle(ws7, '거래처별 OJC TOP3 구매 품목',
+    '거래처별 연도 행 구조  |  OJC 총구매량 내림차순  |  점유율: 해당 품목의 거래처 OJC 총구매 비중', 19)
   const ojcRowsForExcel = rawRows.filter(r => classifyOjc(r.name) !== null)
+  const ojcCumulTop3   = buildTop3(ojcRowsForExcel, 'cumul')
 
-  function addOjcTop3Section(ws: ExcelJS.Worksheet, label: string, data: ReturnType<typeof buildTop3>) {
-    const sepRow = ws.addRow([label])
-    sepRow.height = 18
-    sepRow.getCell(1).fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.midBlue } }
-    sepRow.getCell(1).font   = { bold: true, color: { argb: C.white }, size: 11 }
-    sepRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' }
-    ws.mergeCells(sepRow.number, 1, sepRow.number, 18)
+  const s7h1 = ws7.addRow(['순위', '거래처명', '연도', 'OJC 총구매(EA)',
+    'TOP 1', null, null, null, null,
+    'TOP 2', null, null, null, null,
+    'TOP 3', null, null, null, null])
+  const s7h2 = ws7.addRow([null, null, null, null,
+    '품목명', 'OJC분류', '수량(EA)', '점유율', '공급가액',
+    '품목명', 'OJC분류', '수량(EA)', '점유율', '공급가액',
+    '품목명', 'OJC분류', '수량(EA)', '점유율', '공급가액'])
+  styleHdr(s7h1, C.darkBlue, 26); styleHdr(s7h2, C.darkBlue, 20)
+  ;[1, 2, 3, 4].forEach(ci => ws7.mergeCells(s7h1.number, ci, s7h2.number, ci))
+  ws7.mergeCells(s7h1.number, 5,  s7h1.number, 9)
+  ws7.mergeCells(s7h1.number, 10, s7h1.number, 14)
+  ws7.mergeCells(s7h1.number, 15, s7h1.number, 19)
+  ;[5, 10, 15].forEach((ci, gi) => {
+    ws7.getCell(s7h1.number, ci).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: s5TopColors[gi] } }
+  })
 
-    styleHdr(ws.addRow([
-      '순위', '거래처명', 'OJC 총구매(EA)',
-      ...([1,2,3].flatMap(r => [`TOP${r} 품목명`, 'OJC분류', '수량(EA)', '점유율', '공급가액'])),
-    ]), C.midBlue, 22)
-
-    Object.entries(data).forEach(([cust, top3], i) => {
-      const total = top3.reduce((s, x) => s + x.qty, 0)
-      const bg = i % 2 === 0 ? C.white : C.altBlue
-      const row = ws.addRow([
-        i + 1, cust, total,
-        ...([0,1,2].flatMap(rank => {
-          const item = top3[rank]
-          const ojcCat = item ? classifyOjc(item.name) ?? '' : ''
-          const pct = item && total > 0 ? item.qty / total : null
-          return [item?.name ?? null, ojcCat || null, item?.qty ?? null, pct, item?.price || null]
-        })),
-      ])
-      row.height = 17
-      row.eachCell({ includeEmpty: true }, (c, ci) => {
-        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
-        c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
-        if (ci === 1) { c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { color: { argb: C.gray3 } } }
-        else if (ci === 2) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { bold: true } }
-        else if (ci === 3) { c.alignment = { horizontal: 'right', vertical: 'middle' }; c.numFmt = '#,##0'; c.font = { bold: true, color: { argb: C.midBlue } } }
-        else {
-          const rel = (ci - 4) % 5
-          if (rel === 0) { c.alignment = { horizontal: 'left', vertical: 'middle' } }
-          else if (rel === 1) { c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { size: 9, color: { argb: C.midBlue } } }
-          else if (rel === 2) { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
-          else if (rel === 3) {
-            c.alignment = { horizontal: 'right', vertical: 'middle' }
-            if (typeof c.value === 'number') {
-              c.numFmt = '0%'
-              c.font = { bold: true, color: { argb: c.value >= 0.6 ? 'FFE26B0A' : c.value >= 0.3 ? 'FF2E75B6' : 'FF808080' } }
-            }
+  const applyS7Style = (row: ExcelJS.Row, bg: string, isCumul: boolean) => {
+    row.eachCell({ includeEmpty: true }, (c, ci) => {
+      c.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
+      c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
+      if (ci === 1) {
+        c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { color: { argb: C.gray3 } }
+      } else if (ci === 2) {
+        c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { bold: true }
+      } else if (ci === 3) {
+        c.alignment = { horizontal: 'center', vertical: 'middle' }
+        if (isCumul) c.font = { bold: true, color: { argb: C.darkBlue } }
+      } else if (ci === 4) {
+        c.alignment = { horizontal: 'right', vertical: 'middle' }; c.font = { bold: true, color: { argb: C.midBlue } }
+        if (typeof c.value === 'number') c.numFmt = '#,##0'
+      } else {
+        const pos = (ci - 5) % 5  // 0=품목명, 1=OJC분류, 2=수량, 3=점유율, 4=공급가액
+        if (pos === 0) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { size: 9 } }
+        else if (pos === 1) { c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { size: 9, color: { argb: C.midBlue } } }
+        else if (pos === 2) { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+        else if (pos === 3) {
+          c.alignment = { horizontal: 'right', vertical: 'middle' }
+          if (typeof c.value === 'number') {
+            c.numFmt = '0%'
+            c.font = { bold: true, color: { argb: c.value >= 0.6 ? 'FFE26B0A' : c.value >= 0.3 ? 'FF2E75B6' : 'FF808080' } }
           }
-          else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
-        }
-      })
-      if (i === 0) row.getCell(2).font = { bold: true, color: { argb: 'FFCC0000' } }
-      else if (i === 1) row.getCell(2).font = { bold: true, color: { argb: 'FF833C00' } }
+        } else { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
+      }
     })
-    ws.addRow([])  // 섹션 구분 빈 행
   }
 
-  for (const yr of years) {
-    addOjcTop3Section(ws7, `  20${yr}년 거래처별 OJC TOP3`, buildTop3(ojcRowsForExcel, yr))
-  }
-  addOjcTop3Section(ws7, '  전체 누적 거래처별 OJC TOP3', buildTop3(ojcRowsForExcel, 'cumul'))
+  Object.entries(ojcCumulTop3).forEach(([cust, cumulTop], custIdx) => {
+    const cumulTotal = cumulTop.reduce((s, x) => s + x.qty, 0)
+    const startRow   = ws7.rowCount + 1
+    const rowBg      = custIdx % 2 === 0 ? C.white : C.altBlue
+
+    years.forEach(yr => {
+      const yrMap = buildTop3(ojcRowsForExcel, yr)
+      const top3  = yrMap[cust] ?? []
+      const total = top3.reduce((s, x) => s + x.qty, 0)
+      const pct   = (i: number) => top3[i] && total > 0 ? top3[i].qty / total : null
+      const ojcC  = (i: number) => top3[i] ? classifyOjc(top3[i].name) ?? null : null
+      const row   = ws7.addRow([
+        null, null, `20${yr}년`, total || null,
+        top3[0]?.name ?? null, ojcC(0), top3[0]?.qty ?? null, pct(0), top3[0]?.price || null,
+        top3[1]?.name ?? null, ojcC(1), top3[1]?.qty ?? null, pct(1), top3[1]?.price || null,
+        top3[2]?.name ?? null, ojcC(2), top3[2]?.qty ?? null, pct(2), top3[2]?.price || null,
+      ])
+      row.height = 17; applyS7Style(row, rowBg, false)
+    })
+
+    const cpct  = (i: number) => cumulTop[i] && cumulTotal > 0 ? cumulTop[i].qty / cumulTotal : null
+    const cojcC = (i: number) => cumulTop[i] ? classifyOjc(cumulTop[i].name) ?? null : null
+    const cumulRow = ws7.addRow([
+      null, null, '전체 누적', cumulTotal || null,
+      cumulTop[0]?.name ?? null, cojcC(0), cumulTop[0]?.qty ?? null, cpct(0), cumulTop[0]?.price || null,
+      cumulTop[1]?.name ?? null, cojcC(1), cumulTop[1]?.qty ?? null, cpct(1), cumulTop[1]?.price || null,
+      cumulTop[2]?.name ?? null, cojcC(2), cumulTop[2]?.qty ?? null, cpct(2), cumulTop[2]?.price || null,
+    ])
+    cumulRow.height = 17; applyS7Style(cumulRow, C.lightBlue, true)
+
+    const endRow = ws7.rowCount
+    if (endRow > startRow) {
+      ws7.mergeCells(startRow, 1, endRow, 1)
+      ws7.mergeCells(startRow, 2, endRow, 2)
+    }
+    const rkCell7 = ws7.getCell(startRow, 1)
+    rkCell7.value = custIdx + 1
+    rkCell7.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } }
+    rkCell7.alignment = { horizontal: 'center', vertical: 'middle' }
+    rkCell7.font  = { color: { argb: C.gray3 } }
+    const cnCell7 = ws7.getCell(startRow, 2)
+    cnCell7.value = cust
+    cnCell7.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } }
+    cnCell7.alignment = { horizontal: 'left', vertical: 'middle' }
+    cnCell7.font  = { bold: true, color: { argb: custIdx === 0 ? 'FFCC0000' : custIdx === 1 ? 'FF833C00' : C.darkBlue } }
+  })
 
   ws7.columns = [
-    { width: 6 }, { width: 24 }, { width: 14 },
-    ...([0,1,2].flatMap(() => [{ width: 36 }, { width: 10 }, { width: 11 }, { width: 9 }, { width: 14 }])),
+    { width: 6 }, { width: 26 }, { width: 10 }, { width: 14 },
+    { width: 36 }, { width: 10 }, { width: 11 }, { width: 9 }, { width: 14 },
+    { width: 36 }, { width: 10 }, { width: 11 }, { width: 9 }, { width: 14 },
+    { width: 36 }, { width: 10 }, { width: 11 }, { width: 9 }, { width: 14 },
   ]
 
   const buffer = await wb.xlsx.writeBuffer()
@@ -1712,6 +1798,203 @@ function OjcCustomerTop3View({
 
       <div className="text-xs text-gray-400">
         ※ {activeTab === 'cumul' ? '전체 기간 누적' : `20${activeTab}년`} OJC 수량 기준 | 거래처당 OJC 품목 최다 구매 탑3 | 점유율: 해당 품목이 거래처 OJC 총구매량의 비중
+      </div>
+    </div>
+  )
+}
+
+// ── ⓪ 요약 대시보드 ────────────────────────────────────────────────────
+function SalesSummaryView({
+  ojcByCategory, etcByCategory, customerTop3, fullProducts, years, latestYr,
+}: {
+  ojcByCategory:  Record<string, CategoryData>
+  etcByCategory:  Record<string, CategoryData>
+  customerTop3:   Record<string, Array<{ name: string; code: string; qty: number; price: number }>>
+  fullProducts:   Array<{ name: string; code: string; ojcCat: string | null; etcCat: string | null; annuals: Record<string, number>; priceAnnuals: Record<string, number> }>
+  years:          string[]
+  latestYr:       string
+}) {
+  const prevYr = years.length >= 2 ? years[years.length - 2] : null
+
+  const ojcTotal     = Object.values(ojcByCategory).reduce((s, d) => s + (d.annuals[latestYr] ?? 0), 0)
+  const ojcTotalPrev = prevYr ? Object.values(ojcByCategory).reduce((s, d) => s + (d.annuals[prevYr] ?? 0), 0) : 0
+  const ojcYoY       = prevYr && ojcTotalPrev > 0 ? (ojcTotal - ojcTotalPrev) / ojcTotalPrev : null
+  const etcTotal     = Object.values(etcByCategory).reduce((s, d) => s + (d.annuals[latestYr] ?? 0), 0)
+  const custCount    = Object.keys(customerTop3).length
+  const productCount = fullProducts.length
+
+  const thB = 'px-3 py-1.5 text-xs font-bold text-gray-700 border-b-2 border-gray-300 bg-gray-50 whitespace-nowrap text-right'
+  const ojcCatsSorted = Object.entries(ojcByCategory).sort((a, b) => (b[1].annuals[latestYr] ?? 0) - (a[1].annuals[latestYr] ?? 0))
+  const top5Customers = Object.entries(customerTop3).slice(0, 5)
+
+  const KpiCard = ({ label, value, sub, valueClass }: { label: string; value: string; sub?: string; valueClass?: string }) => (
+    <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 flex flex-col gap-0.5">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className={`text-xl font-bold ${valueClass ?? 'text-[#1F3864]'}`}>{value}</div>
+      {sub && <div className="text-xs text-gray-400">{sub}</div>}
+    </div>
+  )
+
+  const yoyColor = ojcYoY === null ? 'text-gray-400' : ojcYoY >= 0 ? 'text-green-600' : 'text-red-500'
+  const yoyText  = ojcYoY === null ? '—' : `${ojcYoY >= 0 ? '+' : ''}${(ojcYoY * 100).toFixed(1)}%`
+
+  return (
+    <div className="space-y-4">
+      {/* KPI 카드 */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard label={`20${latestYr}년 OJC 총판매`} value={`${ojcTotal.toLocaleString()} EA`} sub="OJC 전체 카테고리 합산" valueClass="text-[#2E75B6]" />
+        <KpiCard label="전년 대비 (OJC)" value={yoyText} sub={prevYr ? `vs 20${prevYr}년` : '비교 연도 없음'} valueClass={yoyColor} />
+        <KpiCard label="거래처 수 (누적)" value={`${custCount}개`} sub="전체 기간 구매 이력" />
+        <KpiCard label="전체 품목 수" value={`${productCount}종`} sub={`OJC ${Object.values(ojcByCategory).reduce((s, d) => s + Object.keys(d.products).length, 0)}종 + 기타`} />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+        {/* OJC 카테고리 × 연도 */}
+        <div className="xl:col-span-3 overflow-x-auto border border-gray-200 rounded-lg">
+          <div className="bg-[#1F3864] text-white text-xs font-bold px-3 py-2">OJC 카테고리별 연간 판매 추이</div>
+          <table className="text-sm w-full border-collapse bg-white">
+            <thead>
+              <tr>
+                <th className={`${thB} text-left sticky left-0 bg-gray-50`}>카테고리</th>
+                {years.map(yr => (
+                  <th key={yr} className={thB}>{yr}년 (EA)</th>
+                ))}
+                {prevYr && <th className={thB}>전년비</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {ojcCatsSorted.map(([cat, data], i) => {
+                const curr = data.annuals[latestYr] ?? 0
+                const prev = prevYr ? (data.annuals[prevYr] ?? 0) : 0
+                const yoy  = prevYr && prev > 0 ? (curr - prev) / prev : null
+                return (
+                  <tr key={cat} className={i % 2 === 0 ? 'bg-white' : 'bg-blue-50/30'}>
+                    <td className="px-3 py-1.5 text-xs font-semibold text-[#2E75B6] sticky left-0 bg-inherit whitespace-nowrap">{cat}</td>
+                    {years.map(yr => (
+                      <td key={yr} className={`px-3 py-1.5 text-right text-xs tabular-nums ${yr === latestYr ? 'font-bold text-[#1F3864]' : 'text-gray-500'}`}>
+                        {(data.annuals[yr] ?? 0) > 0 ? (data.annuals[yr]!).toLocaleString() : '—'}
+                      </td>
+                    ))}
+                    {prevYr && (
+                      <td className={`px-3 py-1.5 text-right text-xs font-bold ${yoy === null ? 'text-gray-300' : yoy >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        {yoy !== null ? `${yoy >= 0 ? '+' : ''}${(yoy * 100).toFixed(1)}%` : '—'}
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
+              {/* OJC 합계 */}
+              <tr className="bg-[#1F3864] text-white font-bold">
+                <td className="px-3 py-1.5 text-xs sticky left-0 bg-[#1F3864]">OJC 합계</td>
+                {years.map(yr => {
+                  const tot = Object.values(ojcByCategory).reduce((s, d) => s + (d.annuals[yr] ?? 0), 0)
+                  return <td key={yr} className="px-3 py-1.5 text-right text-xs tabular-nums">{tot > 0 ? tot.toLocaleString() : '—'}</td>
+                })}
+                {prevYr && (
+                  <td className={`px-3 py-1.5 text-right text-xs ${ojcYoY === null ? '' : ojcYoY >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                    {ojcYoY !== null ? `${ojcYoY >= 0 ? '+' : ''}${(ojcYoY * 100).toFixed(1)}%` : '—'}
+                  </td>
+                )}
+              </tr>
+              {/* ETC 합계 */}
+              {etcTotal > 0 && (
+                <tr className="bg-[#7030A0]/10">
+                  <td className="px-3 py-1.5 text-xs font-semibold text-[#7030A0] sticky left-0 bg-[#F3EEF8]">기타 품목 합계</td>
+                  {years.map(yr => {
+                    const tot = Object.values(etcByCategory).reduce((s, d) => s + (d.annuals[yr] ?? 0), 0)
+                    return <td key={yr} className={`px-3 py-1.5 text-right text-xs tabular-nums ${yr === latestYr ? 'font-bold text-[#7030A0]' : 'text-gray-500'}`}>{tot > 0 ? tot.toLocaleString() : '—'}</td>
+                  })}
+                  {prevYr && <td className="px-3 py-1.5 text-right text-xs text-gray-400">—</td>}
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 거래처 TOP5 */}
+        <div className="xl:col-span-2 space-y-4">
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="bg-[#2E75B6] text-white text-xs font-bold px-3 py-2">거래처 TOP5 (전체 누적)</div>
+            <table className="text-sm w-full border-collapse bg-white">
+              <thead>
+                <tr>
+                  <th className={`${thB} text-center`}>#</th>
+                  <th className={`${thB} text-left`}>거래처명</th>
+                  <th className={thB}>총구매 (EA)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {top5Customers.map(([cust, top3], i) => {
+                  const total = top3.reduce((s, x) => s + x.qty, 0)
+                  return (
+                    <tr key={cust} className={i % 2 === 0 ? 'bg-white' : 'bg-blue-50/30'}>
+                      <td className="px-3 py-1.5 text-center text-xs font-bold text-gray-400">{i + 1}</td>
+                      <td className={`px-3 py-1.5 text-xs font-semibold ${i === 0 ? 'text-red-700' : i === 1 ? 'text-orange-800' : 'text-[#1F3864]'}`}>{cust}</td>
+                      <td className="px-3 py-1.5 text-right text-xs font-bold text-[#1F3864] tabular-nums">{total.toLocaleString()}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 최신년 OJC 구성 비중 */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="bg-[#7030A0] text-white text-xs font-bold px-3 py-2">20{latestYr}년 OJC 카테고리 비중</div>
+            <div className="p-3 space-y-1.5">
+              {ojcCatsSorted.slice(0, 6).map(([cat, data]) => {
+                const v   = data.annuals[latestYr] ?? 0
+                const pct = ojcTotal > 0 ? v / ojcTotal : 0
+                return (
+                  <div key={cat}>
+                    <div className="flex justify-between text-xs mb-0.5">
+                      <span className="text-[#2E75B6] font-medium truncate max-w-[60%]">{cat}</span>
+                      <span className="text-gray-600 tabular-nums">{(pct * 100).toFixed(1)}%  ({v.toLocaleString()} EA)</span>
+                    </div>
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#2E75B6] rounded-full" style={{ width: `${(pct * 100).toFixed(1)}%` }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 판매량 TOP10 */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-[#2E75B6] text-white text-xs font-bold px-3 py-2">전체 판매량 TOP 10 (20{latestYr}년 기준)</div>
+        <div className="overflow-x-auto">
+          <table className="text-sm w-full border-collapse bg-white">
+            <thead>
+              <tr>
+                <th className={`${thB} text-center`}>#</th>
+                <th className={`${thB} text-left`}>품목명</th>
+                <th className={`${thB} text-left`}>분류</th>
+                {years.map(yr => <th key={yr} className={thB}>{yr}년 (EA)</th>)}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {fullProducts.slice(0, 10).map((p, i) => (
+                <tr key={p.name} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-3 py-1.5 text-center text-xs font-bold text-gray-400">{i + 1}</td>
+                  <td className="px-3 py-1.5 text-xs font-medium max-w-xs truncate" title={p.name}>{p.name}</td>
+                  <td className="px-3 py-1.5">
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                      p.ojcCat ? 'bg-blue-100 text-blue-700' : p.etcCat ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'
+                    }`}>{p.ojcCat ?? p.etcCat ?? '기타'}</span>
+                  </td>
+                  {years.map(yr => (
+                    <td key={yr} className={`px-3 py-1.5 text-right text-xs tabular-nums ${yr === latestYr ? 'font-bold text-[#1F3864]' : 'text-gray-500'}`}>
+                      {(p.annuals[yr] ?? 0) > 0 ? (p.annuals[yr]!).toLocaleString() : '—'}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

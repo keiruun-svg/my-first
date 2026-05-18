@@ -2,7 +2,7 @@ export const OJC_PREFIXES: Record<string, string[]> = {
   'KT OJC': ['OJC-A1-', 'OJC-C2-'],
   'LG OJC': ['SOJC-', 'DOJC-', 'MOJC-'],
   'DROP': ['DROP-CABLE'],
-  'PIGTAIL': ['PIGTAIL-'],
+  '피그테일': ['PIGTAIL-'],
   'Optical Cable Parts': ['Optical Cable Parts'],
   'DX-MM': ['DX-MM'],
 }
@@ -13,7 +13,7 @@ export const COLOR_MAP_OJC: Record<string, string> = {
   'KT OJC': 'DEEAF1',
   'LG OJC': 'E2EFDA',
   'DROP': 'FFF2CC',
-  'PIGTAIL': 'FCE4D6',
+  '피그테일': 'FCE4D6',
   'Optical Cable Parts': 'F4E6FF',
   'DX-MM': 'EDEDED',
 }
