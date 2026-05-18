@@ -577,10 +577,29 @@ async function downloadStyledExcel(
 
   // ── Sheet 2: 연도별_피크분석 ──────────────────────────────────────────
   const ws2 = wb.addWorksheet('② 연도별_피크분석')
-  ws2.views = [{ state: 'frozen', ySplit: 3 }]
+  ws2.views = [{ state: 'frozen', ySplit: 5 }]
   const S2 = 2 + years.length * 5 + 3
   addTitle(ws2, '연도별 피크월 분석 (OJC + 기타)',
-    `집중도 = 피크(EA) ÷ 월평균  |  전년비 = 전년 피크 대비 증감  |  커버리지는 ${latestYr}년 기준`, S2)
+    `각 연도별 최대 판매 월·수량·집중도·전년비  |  커버리지는 ${latestYr}년 기준`, S2)
+
+  // ── 지표 설명 행 ──
+  const noteStyle = (row: ExcelJS.Row, label: string, desc: string) => {
+    row.height = 15
+    const c1 = row.getCell(1); c1.value = label
+    c1.font = { bold: true, size: 9, color: { argb: C.darkBlue } }
+    c1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF1FA' } }
+    c1.alignment = { horizontal: 'left', vertical: 'middle' }
+    ws2.mergeCells(row.number, 1, row.number, S2)
+    const mc = ws2.getCell(row.number, 1); mc.value = `${label}  ${desc}`
+    mc.font = { size: 9, color: { argb: C.gray3 } }
+    mc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF1FA' } }
+    mc.alignment = { horizontal: 'left', vertical: 'middle' }
+  }
+  noteStyle(ws2.addRow([]), '📌 집중도',
+    '= 피크(EA) ÷ 월평균  |  1.0배 = 완전 균등 분포 / 2.5배 이상(주황) = 특정 월 집중 → 재고 추가 확보 필요')
+  noteStyle(ws2.addRow([]), '📌 전년비',
+    '= (올해 피크 − 전년 피크) ÷ 전년 피크  |  상승 초록 / 하락 빨강 / 첫 연도는 비교 대상 없으므로 — 표시')
+
   styleHdr(ws2.addRow(['카테고리', '품목수',
     ...years.flatMap(y => [`${y}년\n판매(EA)`, `${y}년\n피크월`, `${y}년\n피크(EA)`, `${y}년\n집중도`, `${y}년\n전년비`]),
     '현재고\n(EA)', '피크커버\n(개월)', '평균커버\n(개월)']), C.darkBlue, 36)
