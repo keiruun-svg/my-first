@@ -197,63 +197,83 @@ export default function SalesAnalysisTab() {
   const years    = useMemo(() => [...new Set(rawRows.map(r => r.year))].sort(), [rawRows])
   const latestYr = years[years.length - 1] ?? ''
 
-  // OJC 행만 필터링
-  const ojcRows = useMemo(() => rawRows.filter(r => classifyOjc(r.name) !== null), [rawRows])
-
-  // OJC 카테고리별 집계
-  const ojcByCategory = useMemo<Record<string, CategoryData>>(() => {
-    const cats: Record<string, CategoryData> = {}
-    for (const row of ojcRows) {
-      const cat = classifyOjc(row.name)!
-      if (!cats[cat]) cats[cat] = { products: {}, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
-      const c = cats[cat]
-      if (!c.products[row.name]) c.products[row.name] = { code: row.code, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
-      const p = c.products[row.name]
-      p.annuals[row.year]       = (p.annuals[row.year] ?? 0) + row.qty
-      p.priceAnnuals[row.year]  = (p.priceAnnuals[row.year] ?? 0) + row.price
-      c.annuals[row.year]       = (c.annuals[row.year] ?? 0) + row.qty
-      c.priceAnnuals[row.year]  = (c.priceAnnuals[row.year] ?? 0) + row.price
-      if (!c.monthlyByYear[row.year]) c.monthlyByYear[row.year] = {}
-      c.monthlyByYear[row.year][row.month] = (c.monthlyByYear[row.year][row.month] ?? 0) + row.qty
+  // ── 전체 품목별 집계 (단일 소스) ──────────────────────────────
+  // rawRows를 한 번만 순회해 품목별 연간·월별 데이터를 모두 담음
+  const fullProducts = useMemo(() => {
+    const map: Record<string, {
+      name: string; code: string
+      ojcCat: string | null; etcCat: string | null
+      annuals: Record<string, number>
+      priceAnnuals: Record<string, number>
+      monthlyByYear: Record<string, Record<string, number>>
+    }> = {}
+    for (const row of rawRows) {
+      if (!map[row.name]) map[row.name] = {
+        name: row.name, code: row.code,
+        ojcCat: classifyOjc(row.name), etcCat: classifyEtc(row.name),
+        annuals: {}, priceAnnuals: {}, monthlyByYear: {},
+      }
+      const p = map[row.name]
+      p.annuals[row.year]      = (p.annuals[row.year] ?? 0) + row.qty
+      p.priceAnnuals[row.year] = (p.priceAnnuals[row.year] ?? 0) + row.price
       if (!p.monthlyByYear[row.year]) p.monthlyByYear[row.year] = {}
       p.monthlyByYear[row.year][row.month] = (p.monthlyByYear[row.year][row.month] ?? 0) + row.qty
-      if (row.year === latestYr) {
-        p.monthlyLatest[row.month] = (p.monthlyLatest[row.month] ?? 0) + row.qty
-        c.monthlyLatest[row.month] = (c.monthlyLatest[row.month] ?? 0) + row.qty
+    }
+    return Object.values(map).sort((a, b) =>
+      (b.annuals[latestYr] ?? 0) - (a.annuals[latestYr] ?? 0)
+    )
+  }, [rawRows, latestYr])
+
+  // ── 카테고리별 집계 (fullProducts에서 파생) ─────────────────
+  function buildCategoryMap(
+    products: typeof fullProducts,
+    getCat: (p: typeof fullProducts[number]) => string | null,
+    latestYr: string,
+  ): Record<string, CategoryData> {
+    const cats: Record<string, CategoryData> = {}
+    for (const p of products) {
+      const cat = getCat(p)
+      if (!cat) continue
+      if (!cats[cat]) cats[cat] = { products: {}, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
+      const c = cats[cat]
+      const monthlyLatest = p.monthlyByYear[latestYr] ?? {}
+      c.products[p.name] = {
+        code: p.code,
+        annuals: p.annuals,
+        priceAnnuals: p.priceAnnuals,
+        monthlyLatest,
+        monthlyByYear: p.monthlyByYear,
+      }
+      for (const [yr, qty] of Object.entries(p.annuals)) {
+        c.annuals[yr] = (c.annuals[yr] ?? 0) + qty
+      }
+      for (const [yr, price] of Object.entries(p.priceAnnuals)) {
+        c.priceAnnuals[yr] = (c.priceAnnuals[yr] ?? 0) + price
+      }
+      for (const [yr, months] of Object.entries(p.monthlyByYear)) {
+        if (!c.monthlyByYear[yr]) c.monthlyByYear[yr] = {}
+        for (const [mo, qty] of Object.entries(months)) {
+          c.monthlyByYear[yr][mo] = (c.monthlyByYear[yr][mo] ?? 0) + qty
+        }
+      }
+      for (const [mo, qty] of Object.entries(monthlyLatest)) {
+        c.monthlyLatest[mo] = (c.monthlyLatest[mo] ?? 0) + qty
       }
     }
     return cats
-  }, [ojcRows, latestYr])
+  }
 
-  // 기타(비OJC) 행 필터링 및 카테고리별 집계
-  const etcRows = useMemo(() =>
-    rawRows.filter(r => classifyOjc(r.name) === null && classifyEtc(r.name) !== null),
-    [rawRows]
+  const ojcByCategory = useMemo(
+    () => buildCategoryMap(fullProducts, p => p.ojcCat, latestYr),
+    [fullProducts, latestYr],
+  )
+  const etcByCategory = useMemo(
+    () => buildCategoryMap(fullProducts, p => p.etcCat, latestYr),
+    [fullProducts, latestYr],
   )
 
-  const etcByCategory = useMemo<Record<string, CategoryData>>(() => {
-    const cats: Record<string, CategoryData> = {}
-    for (const row of etcRows) {
-      const cat = classifyEtc(row.name)!
-      if (!cats[cat]) cats[cat] = { products: {}, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
-      const c = cats[cat]
-      if (!c.products[row.name]) c.products[row.name] = { code: row.code, annuals: {}, priceAnnuals: {}, monthlyLatest: {}, monthlyByYear: {} }
-      const p = c.products[row.name]
-      p.annuals[row.year]       = (p.annuals[row.year] ?? 0) + row.qty
-      p.priceAnnuals[row.year]  = (p.priceAnnuals[row.year] ?? 0) + row.price
-      c.annuals[row.year]       = (c.annuals[row.year] ?? 0) + row.qty
-      c.priceAnnuals[row.year]  = (c.priceAnnuals[row.year] ?? 0) + row.price
-      if (!c.monthlyByYear[row.year]) c.monthlyByYear[row.year] = {}
-      c.monthlyByYear[row.year][row.month] = (c.monthlyByYear[row.year][row.month] ?? 0) + row.qty
-      if (!p.monthlyByYear[row.year]) p.monthlyByYear[row.year] = {}
-      p.monthlyByYear[row.year][row.month] = (p.monthlyByYear[row.year][row.month] ?? 0) + row.qty
-      if (row.year === latestYr) {
-        p.monthlyLatest[row.month] = (p.monthlyLatest[row.month] ?? 0) + row.qty
-        c.monthlyLatest[row.month] = (c.monthlyLatest[row.month] ?? 0) + row.qty
-      }
-    }
-    return cats
-  }, [etcRows, latestYr])
+  // OJC 행 (거래처 탑3용으로만 사용)
+  const ojcRows = useMemo(() => rawRows.filter(r => classifyOjc(r.name) !== null), [rawRows])
 
   // 거래처별 탑3 집계 (열수축 슬리브 제외)
   const customerTop3 = useMemo(() => {
@@ -279,19 +299,6 @@ export default function SalesAnalysisTab() {
       )
     )
   }, [rawRows])
-
-  // 전체 품목별 집계
-  const fullProducts = useMemo(() => {
-    const map: Record<string, { name: string; code: string; ojcCat: string | null; etcCat: string | null; annuals: Record<string, number>; priceAnnuals: Record<string, number> }> = {}
-    for (const row of rawRows) {
-      if (!map[row.name]) map[row.name] = { name: row.name, code: row.code, ojcCat: classifyOjc(row.name), etcCat: classifyEtc(row.name), annuals: {}, priceAnnuals: {} }
-      map[row.name].annuals[row.year]      = (map[row.name].annuals[row.year] ?? 0) + row.qty
-      map[row.name].priceAnnuals[row.year] = (map[row.name].priceAnnuals[row.year] ?? 0) + row.price
-    }
-    return Object.values(map).sort((a, b) =>
-      (b.annuals[latestYr] ?? 0) - (a.annuals[latestYr] ?? 0)
-    )
-  }, [rawRows, latestYr])
 
   const hasData = rawRows.length > 0
 
