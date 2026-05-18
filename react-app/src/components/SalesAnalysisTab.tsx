@@ -54,7 +54,7 @@ function isTop3Excluded(name: string): boolean {
   return u.includes('PROTECTION SLEEVE') || u.includes('운송비')
 }
 
-type SubView = 'summary' | 'ojc' | 'customer' | 'ojc_customer' | 'full'
+type SubView = 'summary' | 'ojc' | 'customer_domestic' | 'customer_foreign' | 'ojc_customer' | 'full'
 
 // ── 타입 ─────────────────────────────────────────────────────────────
 interface ProductData {
@@ -275,10 +275,10 @@ export default function SalesAnalysisTab() {
   // OJC 행 (거래처 탑3용으로만 사용)
   const ojcRows = useMemo(() => rawRows.filter(r => classifyOjc(r.name) !== null), [rawRows])
 
-  // 거래처별 탑3 집계 (열수축 슬리브 제외)
-  const customerTop3 = useMemo(() => {
+  // 거래처별 탑3 집계 헬퍼 (내자/외자 공통)
+  function buildCustomerTop3(rows: typeof rawRows) {
     const custMap: Record<string, Record<string, { code: string; qty: number; price: number }>> = {}
-    for (const row of rawRows) {
+    for (const row of rows) {
       if (isTop3Excluded(row.name)) continue
       const cust = row.customer || '(미상)'
       if (!custMap[cust]) custMap[cust] = {}
@@ -298,7 +298,15 @@ export default function SalesAnalysisTab() {
         b[1].reduce((s, x) => s + x.qty, 0) - a[1].reduce((s, x) => s + x.qty, 0)
       )
     )
-  }, [rawRows])
+  }
+
+  // 내자/외자 분리 집계
+  const domesticRows = useMemo(() => rawRows.filter(r => !r.isForeign), [rawRows])
+  const foreignRows  = useMemo(() => rawRows.filter(r => r.isForeign),  [rawRows])
+
+  const customerTop3          = useMemo(() => buildCustomerTop3(rawRows),     [rawRows])
+  const customerTop3Domestic  = useMemo(() => buildCustomerTop3(domesticRows), [domesticRows])
+  const customerTop3Foreign   = useMemo(() => buildCustomerTop3(foreignRows),  [foreignRows])
 
   const hasData = rawRows.length > 0
 
@@ -436,7 +444,7 @@ export default function SalesAnalysisTab() {
       {hasData && (
         <div className="flex gap-2 flex-wrap items-center justify-between">
           <div className="flex gap-2 flex-wrap">
-            {(['summary', 'ojc', 'customer', 'ojc_customer', 'full'] as SubView[]).map(v => (
+            {(['summary', 'ojc', 'customer_domestic', 'customer_foreign', 'ojc_customer', 'full'] as SubView[]).map(v => (
               <button
                 key={v}
                 onClick={() => setSubView(v)}
@@ -446,11 +454,12 @@ export default function SalesAnalysisTab() {
                     : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                {v === 'summary'     ? '⓪ 요약 대시보드'
-                  : v === 'ojc'     ? '① OJC 판매 현황'
-                  : v === 'customer' ? '② 거래처별 탑3'
-                  : v === 'ojc_customer' ? '③ 거래처별 OJC 탑3'
-                  : '④ 전체 판매량'}
+                {v === 'summary'           ? '⓪ 요약 대시보드'
+                  : v === 'ojc'            ? '① OJC 판매 현황'
+                  : v === 'customer_domestic' ? '② 거래처별 탑3 (내자)'
+                  : v === 'customer_foreign'  ? '③ 거래처별 탑3 (외자)'
+                  : v === 'ojc_customer'   ? '④ 거래처별 OJC 탑3'
+                  : '⑤ 전체 판매량'}
               </button>
             ))}
           </div>
@@ -484,8 +493,11 @@ export default function SalesAnalysisTab() {
           onStockChange={updateStock}
         />
       )}
-      {hasData && subView === 'customer' && (
-        <CustomerTop3View customerTop3={customerTop3} years={years} rawRows={rawRows} />
+      {hasData && subView === 'customer_domestic' && (
+        <CustomerTop3View customerTop3={customerTop3Domestic} years={years} rawRows={domesticRows} label="내자" />
+      )}
+      {hasData && subView === 'customer_foreign' && (
+        <CustomerTop3View customerTop3={customerTop3Foreign} years={years} rawRows={foreignRows} label="외자" />
       )}
       {hasData && subView === 'ojc_customer' && (
         <OjcCustomerTop3View ojcRows={ojcRows} years={years} />
@@ -512,7 +524,7 @@ async function downloadStyledExcel(
   years: string[],
   latestYr: string,
   ojcStock: Record<string, number>,
-  rawRows: Array<{ customer: string; code: string; name: string; year: string; month: string; qty: number; price: number }>,
+  rawRows: Array<{ customer: string; code: string; name: string; year: string; month: string; qty: number; price: number; isForeign: boolean }>,
 ) {
   const wb = new ExcelJS.Workbook()
   wb.creator = 'AJW SCM팀'
@@ -1531,11 +1543,12 @@ function buildTop3(rawRows: import('../lib/parse/parseDetailedSales').DetailedSa
 }
 
 function CustomerTop3View({
-  customerTop3, years, rawRows,
+  customerTop3, years, rawRows, label,
 }: {
   customerTop3: Record<string, Array<{ name: string; code: string; qty: number; price: number }>>
   years:        string[]
   rawRows:      import('../lib/parse/parseDetailedSales').DetailedSalesRow[]
+  label?:       string
 }) {
   const latestYr = years[years.length - 1] ?? 'cumul'
   const [activeTab, setActiveTab]   = useState<string>(latestYr)
@@ -1572,6 +1585,11 @@ function CustomerTop3View({
 
   return (
     <div className="space-y-3">
+      {label && (
+        <div className="text-xs font-semibold text-white bg-[#2E75B6] rounded px-3 py-1 w-fit">
+          {label === '내자' ? '🏠 내자 거래처' : '✈️ 외자 거래처'}
+        </div>
+      )}
       {/* 탭 + 검색/다운로드 */}
       <div className="flex justify-between items-end gap-2 flex-wrap border-b border-gray-200">
         <div className="flex gap-0.5 items-end">

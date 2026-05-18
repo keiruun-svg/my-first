@@ -1,13 +1,14 @@
 import * as XLSX from 'xlsx'
 
 export interface DetailedSalesRow {
-  customer: string   // 거래처명
-  code:     string   // 품목코드
-  name:     string   // 품목명
-  year:     string   // 'YY' e.g. '23'
-  month:    string   // '01'..'12'
-  qty:      number
-  price:    number   // 공급가액 (없으면 0)
+  customer:  string   // 거래처명
+  code:      string   // 품목코드
+  name:      string   // 품목명
+  year:      string   // 'YY' e.g. '23'
+  month:     string   // '01'..'12'
+  qty:       number
+  price:     number   // 공급가액 (없으면 0)
+  isForeign: boolean  // 환율 > 0 이면 외자, 0 이면 내자
 }
 
 function toYY(raw: unknown): string {
@@ -62,8 +63,10 @@ export function parseDetailedSalesFile(
     ).trim()
     const code  = String(findCol(row, '품목코드', '코드') ?? '').trim()
     const name  = String(findCol(row, '품목명', '제품명', '상품명') ?? '').trim()
-    const qty   = parseInt(String(findCol(row, '수량', 'qty', '판매수량', '출고수량') ?? '0')) || 0
-    const price = parseFloat(String(findCol(row, '공급가액', '금액', '공급금액', '공급액', '매출금액', '공급가') ?? '0').replace(/,/g, '')) || 0
+    const qty        = parseInt(String(findCol(row, '수량', 'qty', '판매수량', '출고수량') ?? '0')) || 0
+    const price      = parseFloat(String(findCol(row, '공급가액', '금액', '공급금액', '공급액', '매출금액', '공급가') ?? '0').replace(/,/g, '')) || 0
+    const exchRate   = parseFloat(String(findCol(row, '환율', '환율적용', 'exchange_rate') ?? '0').replace(/,/g, '')) || 0
+    const isForeign  = exchRate > 0
 
     if (!name || qty <= 0) { skipped++; continue }
 
@@ -78,7 +81,7 @@ export function parseDetailedSalesFile(
 
     if (!year || !month) { skipped++; continue }
 
-    rows.push({ customer, code, name, year, month, qty, price })
+    rows.push({ customer, code, name, year, month, qty, price, isForeign })
   }
 
   const years = [...new Set(rows.map(r => r.year))].sort()
