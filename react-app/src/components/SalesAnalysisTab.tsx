@@ -766,23 +766,23 @@ async function downloadStyledExcel(
   // ── Sheet 5: 거래처별탑3 (연도 행 구조, 거래처별 머지) ───────────────
   const ws5 = wb.addWorksheet('⑤ 거래처별탑3')
   ws5.views = [{ state: 'frozen', xSplit: 2, ySplit: 4 }]
-  // 19 cols: 순위(1) 거래처명(2) 연도(3) 총구매(4) TOP1×5(5-9) TOP2×5(10-14) TOP3×5(15-19)
+  // 22 cols: 순위(1) 거래처명(2) 연도(3) 총구매(4) TOP1×6(5-10) TOP2×6(11-16) TOP3×6(17-22)
   addTitle(ws5, '거래처별 TOP3 구매 품목',
-    '거래처별 연도 행 구조  |  총구매량 내림차순  |  점유율: 해당 품목의 거래처 총구매 비중', 19)
+    '거래처별 연도 행 구조  |  총구매량 내림차순  |  수량점유율·가액점유율: 해당 품목의 거래처 TOP3 내 비중', 22)
 
   const s5h1 = ws5.addRow(['순위', '거래처명', '연도', '총구매(EA)',
-    'TOP 1', null, null, null, null, 'TOP 2', null, null, null, null, 'TOP 3', null, null, null, null])
+    'TOP 1', null, null, null, null, null, 'TOP 2', null, null, null, null, null, 'TOP 3', null, null, null, null, null])
   const s5h2 = ws5.addRow([null, null, null, null,
-    '품목코드', '품목명', '수량(EA)', '점유율', '공급가액',
-    '품목코드', '품목명', '수량(EA)', '점유율', '공급가액',
-    '품목코드', '품목명', '수량(EA)', '점유율', '공급가액'])
+    '품목코드', '품목명', '수량(EA)', '수량점유율', '공급가액', '가액점유율',
+    '품목코드', '품목명', '수량(EA)', '수량점유율', '공급가액', '가액점유율',
+    '품목코드', '품목명', '수량(EA)', '수량점유율', '공급가액', '가액점유율'])
   styleHdr(s5h1, C.darkBlue, 26); styleHdr(s5h2, C.darkBlue, 20)
   ;[1, 2, 3, 4].forEach(ci => ws5.mergeCells(s5h1.number, ci, s5h2.number, ci))
-  ws5.mergeCells(s5h1.number, 5,  s5h1.number, 9)
-  ws5.mergeCells(s5h1.number, 10, s5h1.number, 14)
-  ws5.mergeCells(s5h1.number, 15, s5h1.number, 19)
+  ws5.mergeCells(s5h1.number, 5,  s5h1.number, 10)
+  ws5.mergeCells(s5h1.number, 11, s5h1.number, 16)
+  ws5.mergeCells(s5h1.number, 17, s5h1.number, 22)
   const s5TopColors = [C.midBlue, 'FF1A5A96', 'FF155480'] as const
-  ;[5, 10, 15].forEach((ci, gi) => {
+  ;[5, 11, 17].forEach((ci, gi) => {
     ws5.getCell(s5h1.number, ci).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: s5TopColors[gi] } }
   })
 
@@ -801,11 +801,11 @@ async function downloadStyledExcel(
         c.alignment = { horizontal: 'right', vertical: 'middle' }; c.font = { bold: true }
         if (typeof c.value === 'number') c.numFmt = '#,##0'
       } else {
-        const pos = (ci - 5) % 5  // 0=품목코드, 1=품목명, 2=수량, 3=점유율, 4=공급가액
+        const pos = (ci - 5) % 6  // 0=품목코드, 1=품목명, 2=수량, 3=수량점유율, 4=공급가액, 5=가액점유율
         if (pos === 0) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { size: 9, color: { argb: C.gray3 } } }
         else if (pos === 1) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { size: 9 } }
         else if (pos === 2) { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
-        else if (pos === 3) {
+        else if (pos === 3 || pos === 5) {
           c.alignment = { horizontal: 'right', vertical: 'middle' }
           if (typeof c.value === 'number') {
             c.numFmt = '0%'
@@ -817,30 +817,34 @@ async function downloadStyledExcel(
   }
 
   Object.entries(customerTop3).forEach(([cust, cumulTop], custIdx) => {
-    const cumulTotal = cumulTop.reduce((s, x) => s + x.qty, 0)
-    const startRow   = ws5.rowCount + 1
-    const rowBg      = custIdx % 2 === 0 ? C.white : C.altBlue
+    const cumulTotal      = cumulTop.reduce((s, x) => s + x.qty, 0)
+    const cumulPriceTotal = cumulTop.reduce((s, x) => s + x.price, 0)
+    const startRow        = ws5.rowCount + 1
+    const rowBg           = custIdx % 2 === 0 ? C.white : C.altBlue
 
     years.forEach(yr => {
-      const yrMap = buildTop3(rawRows, yr)
-      const top3  = yrMap[cust] ?? []
-      const total = top3.reduce((s, x) => s + x.qty, 0)
-      const pct   = (i: number) => top3[i] && total > 0 ? top3[i].qty / total : null
-      const row   = ws5.addRow([
+      const yrMap      = buildTop3(rawRows, yr)
+      const top3       = yrMap[cust] ?? []
+      const total      = top3.reduce((s, x) => s + x.qty, 0)
+      const priceTotal = top3.reduce((s, x) => s + x.price, 0)
+      const qp  = (i: number) => top3[i] && total      > 0 ? top3[i].qty   / total      : null
+      const pp  = (i: number) => top3[i] && priceTotal > 0 ? top3[i].price / priceTotal : null
+      const row = ws5.addRow([
         null, null, `20${yr}년`, total || null,
-        top3[0]?.code || null, top3[0]?.name ?? null, top3[0]?.qty ?? null, pct(0), top3[0]?.price || null,
-        top3[1]?.code || null, top3[1]?.name ?? null, top3[1]?.qty ?? null, pct(1), top3[1]?.price || null,
-        top3[2]?.code || null, top3[2]?.name ?? null, top3[2]?.qty ?? null, pct(2), top3[2]?.price || null,
+        top3[0]?.code || null, top3[0]?.name ?? null, top3[0]?.qty ?? null, qp(0), top3[0]?.price || null, pp(0),
+        top3[1]?.code || null, top3[1]?.name ?? null, top3[1]?.qty ?? null, qp(1), top3[1]?.price || null, pp(1),
+        top3[2]?.code || null, top3[2]?.name ?? null, top3[2]?.qty ?? null, qp(2), top3[2]?.price || null, pp(2),
       ])
       row.height = 17; applyS5Style(row, rowBg, false)
     })
 
-    const cpct = (i: number) => cumulTop[i] && cumulTotal > 0 ? cumulTop[i].qty / cumulTotal : null
+    const cqp = (i: number) => cumulTop[i] && cumulTotal      > 0 ? cumulTop[i].qty   / cumulTotal      : null
+    const cpp = (i: number) => cumulTop[i] && cumulPriceTotal > 0 ? cumulTop[i].price / cumulPriceTotal : null
     const cumulRow = ws5.addRow([
       null, null, '전체 누적', cumulTotal || null,
-      cumulTop[0]?.code || null, cumulTop[0]?.name ?? null, cumulTop[0]?.qty ?? null, cpct(0), cumulTop[0]?.price || null,
-      cumulTop[1]?.code || null, cumulTop[1]?.name ?? null, cumulTop[1]?.qty ?? null, cpct(1), cumulTop[1]?.price || null,
-      cumulTop[2]?.code || null, cumulTop[2]?.name ?? null, cumulTop[2]?.qty ?? null, cpct(2), cumulTop[2]?.price || null,
+      cumulTop[0]?.code || null, cumulTop[0]?.name ?? null, cumulTop[0]?.qty ?? null, cqp(0), cumulTop[0]?.price || null, cpp(0),
+      cumulTop[1]?.code || null, cumulTop[1]?.name ?? null, cumulTop[1]?.qty ?? null, cqp(1), cumulTop[1]?.price || null, cpp(1),
+      cumulTop[2]?.code || null, cumulTop[2]?.name ?? null, cumulTop[2]?.qty ?? null, cqp(2), cumulTop[2]?.price || null, cpp(2),
     ])
     cumulRow.height = 17; applyS5Style(cumulRow, C.lightBlue, true)
 
@@ -863,9 +867,9 @@ async function downloadStyledExcel(
 
   ws5.columns = [
     { width: 6 }, { width: 26 }, { width: 10 }, { width: 13 },
-    { width: 14 }, { width: 34 }, { width: 11 }, { width: 9 }, { width: 14 },
-    { width: 14 }, { width: 34 }, { width: 11 }, { width: 9 }, { width: 14 },
-    { width: 14 }, { width: 34 }, { width: 11 }, { width: 9 }, { width: 14 },
+    { width: 14 }, { width: 34 }, { width: 11 }, { width: 9 }, { width: 14 }, { width: 9 },
+    { width: 14 }, { width: 34 }, { width: 11 }, { width: 9 }, { width: 14 }, { width: 9 },
+    { width: 14 }, { width: 34 }, { width: 11 }, { width: 9 }, { width: 14 }, { width: 9 },
   ]
 
   // ── Sheet 6: 전체판매량 ───────────────────────────────────────────────
@@ -947,26 +951,26 @@ async function downloadStyledExcel(
   // ── Sheet 7: 거래처별 OJC 탑3 (연도 행 구조, 거래처별 머지) ────────────
   const ws7 = wb.addWorksheet('⑦ 거래처별OJC탑3')
   ws7.views = [{ state: 'frozen', xSplit: 2, ySplit: 4 }]
-  // 22 cols: 순위(1) 거래처명(2) 연도(3) OJC총구매(4) TOP1×6(5-10) TOP2×6(11-16) TOP3×6(17-22)
+  // 25 cols: 순위(1) 거래처명(2) 연도(3) OJC총구매(4) TOP1×7(5-11) TOP2×7(12-18) TOP3×7(19-25)
   addTitle(ws7, '거래처별 OJC TOP3 구매 품목',
-    '거래처별 연도 행 구조  |  OJC 총구매량 내림차순  |  점유율: 해당 품목의 거래처 OJC 총구매 비중', 22)
+    '거래처별 연도 행 구조  |  OJC 총구매량 내림차순  |  수량점유율·가액점유율: 해당 품목의 거래처 TOP3 내 비중', 25)
   const ojcRowsForExcel = rawRows.filter(r => classifyOjc(r.name) !== null)
   const ojcCumulTop3   = buildTop3(ojcRowsForExcel, 'cumul')
 
   const s7h1 = ws7.addRow(['순위', '거래처명', '연도', 'OJC 총구매(EA)',
-    'TOP 1', null, null, null, null, null,
-    'TOP 2', null, null, null, null, null,
-    'TOP 3', null, null, null, null, null])
+    'TOP 1', null, null, null, null, null, null,
+    'TOP 2', null, null, null, null, null, null,
+    'TOP 3', null, null, null, null, null, null])
   const s7h2 = ws7.addRow([null, null, null, null,
-    '품목코드', '품목명', 'OJC분류', '수량(EA)', '점유율', '공급가액',
-    '품목코드', '품목명', 'OJC분류', '수량(EA)', '점유율', '공급가액',
-    '품목코드', '품목명', 'OJC분류', '수량(EA)', '점유율', '공급가액'])
+    '품목코드', '품목명', 'OJC분류', '수량(EA)', '수량점유율', '공급가액', '가액점유율',
+    '품목코드', '품목명', 'OJC분류', '수량(EA)', '수량점유율', '공급가액', '가액점유율',
+    '품목코드', '품목명', 'OJC분류', '수량(EA)', '수량점유율', '공급가액', '가액점유율'])
   styleHdr(s7h1, C.darkBlue, 26); styleHdr(s7h2, C.darkBlue, 20)
   ;[1, 2, 3, 4].forEach(ci => ws7.mergeCells(s7h1.number, ci, s7h2.number, ci))
-  ws7.mergeCells(s7h1.number, 5,  s7h1.number, 10)
-  ws7.mergeCells(s7h1.number, 11, s7h1.number, 16)
-  ws7.mergeCells(s7h1.number, 17, s7h1.number, 22)
-  ;[5, 11, 17].forEach((ci, gi) => {
+  ws7.mergeCells(s7h1.number, 5,  s7h1.number, 11)
+  ws7.mergeCells(s7h1.number, 12, s7h1.number, 18)
+  ws7.mergeCells(s7h1.number, 19, s7h1.number, 25)
+  ;[5, 12, 19].forEach((ci, gi) => {
     ws7.getCell(s7h1.number, ci).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: s5TopColors[gi] } }
   })
 
@@ -985,12 +989,12 @@ async function downloadStyledExcel(
         c.alignment = { horizontal: 'right', vertical: 'middle' }; c.font = { bold: true, color: { argb: C.midBlue } }
         if (typeof c.value === 'number') c.numFmt = '#,##0'
       } else {
-        const pos = (ci - 5) % 6  // 0=품목코드, 1=품목명, 2=OJC분류, 3=수량, 4=점유율, 5=공급가액
+        const pos = (ci - 5) % 7  // 0=품목코드, 1=품목명, 2=OJC분류, 3=수량, 4=수량점유율, 5=공급가액, 6=가액점유율
         if (pos === 0) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { size: 9, color: { argb: C.gray3 } } }
         else if (pos === 1) { c.alignment = { horizontal: 'left', vertical: 'middle' }; c.font = { size: 9 } }
         else if (pos === 2) { c.alignment = { horizontal: 'center', vertical: 'middle' }; c.font = { size: 9, color: { argb: C.midBlue } } }
         else if (pos === 3) { c.alignment = { horizontal: 'right', vertical: 'middle' }; if (typeof c.value === 'number') c.numFmt = '#,##0' }
-        else if (pos === 4) {
+        else if (pos === 4 || pos === 6) {
           c.alignment = { horizontal: 'right', vertical: 'middle' }
           if (typeof c.value === 'number') {
             c.numFmt = '0%'
@@ -1002,32 +1006,36 @@ async function downloadStyledExcel(
   }
 
   Object.entries(ojcCumulTop3).forEach(([cust, cumulTop], custIdx) => {
-    const cumulTotal = cumulTop.reduce((s, x) => s + x.qty, 0)
-    const startRow   = ws7.rowCount + 1
-    const rowBg      = custIdx % 2 === 0 ? C.white : C.altBlue
+    const cumulTotal      = cumulTop.reduce((s, x) => s + x.qty, 0)
+    const cumulPriceTotal = cumulTop.reduce((s, x) => s + x.price, 0)
+    const startRow        = ws7.rowCount + 1
+    const rowBg           = custIdx % 2 === 0 ? C.white : C.altBlue
 
     years.forEach(yr => {
-      const yrMap = buildTop3(ojcRowsForExcel, yr)
-      const top3  = yrMap[cust] ?? []
-      const total = top3.reduce((s, x) => s + x.qty, 0)
-      const pct   = (i: number) => top3[i] && total > 0 ? top3[i].qty / total : null
-      const ojcC  = (i: number) => top3[i] ? classifyOjc(top3[i].name) ?? null : null
-      const row   = ws7.addRow([
+      const yrMap      = buildTop3(ojcRowsForExcel, yr)
+      const top3       = yrMap[cust] ?? []
+      const total      = top3.reduce((s, x) => s + x.qty, 0)
+      const priceTotal = top3.reduce((s, x) => s + x.price, 0)
+      const qp  = (i: number) => top3[i] && total      > 0 ? top3[i].qty   / total      : null
+      const pp  = (i: number) => top3[i] && priceTotal > 0 ? top3[i].price / priceTotal : null
+      const ojcC = (i: number) => top3[i] ? classifyOjc(top3[i].name) ?? null : null
+      const row  = ws7.addRow([
         null, null, `20${yr}년`, total || null,
-        top3[0]?.code || null, top3[0]?.name ?? null, ojcC(0), top3[0]?.qty ?? null, pct(0), top3[0]?.price || null,
-        top3[1]?.code || null, top3[1]?.name ?? null, ojcC(1), top3[1]?.qty ?? null, pct(1), top3[1]?.price || null,
-        top3[2]?.code || null, top3[2]?.name ?? null, ojcC(2), top3[2]?.qty ?? null, pct(2), top3[2]?.price || null,
+        top3[0]?.code || null, top3[0]?.name ?? null, ojcC(0), top3[0]?.qty ?? null, qp(0), top3[0]?.price || null, pp(0),
+        top3[1]?.code || null, top3[1]?.name ?? null, ojcC(1), top3[1]?.qty ?? null, qp(1), top3[1]?.price || null, pp(1),
+        top3[2]?.code || null, top3[2]?.name ?? null, ojcC(2), top3[2]?.qty ?? null, qp(2), top3[2]?.price || null, pp(2),
       ])
       row.height = 17; applyS7Style(row, rowBg, false)
     })
 
-    const cpct  = (i: number) => cumulTop[i] && cumulTotal > 0 ? cumulTop[i].qty / cumulTotal : null
+    const cqp  = (i: number) => cumulTop[i] && cumulTotal      > 0 ? cumulTop[i].qty   / cumulTotal      : null
+    const cpp  = (i: number) => cumulTop[i] && cumulPriceTotal > 0 ? cumulTop[i].price / cumulPriceTotal : null
     const cojcC = (i: number) => cumulTop[i] ? classifyOjc(cumulTop[i].name) ?? null : null
     const cumulRow = ws7.addRow([
       null, null, '전체 누적', cumulTotal || null,
-      cumulTop[0]?.code || null, cumulTop[0]?.name ?? null, cojcC(0), cumulTop[0]?.qty ?? null, cpct(0), cumulTop[0]?.price || null,
-      cumulTop[1]?.code || null, cumulTop[1]?.name ?? null, cojcC(1), cumulTop[1]?.qty ?? null, cpct(1), cumulTop[1]?.price || null,
-      cumulTop[2]?.code || null, cumulTop[2]?.name ?? null, cojcC(2), cumulTop[2]?.qty ?? null, cpct(2), cumulTop[2]?.price || null,
+      cumulTop[0]?.code || null, cumulTop[0]?.name ?? null, cojcC(0), cumulTop[0]?.qty ?? null, cqp(0), cumulTop[0]?.price || null, cpp(0),
+      cumulTop[1]?.code || null, cumulTop[1]?.name ?? null, cojcC(1), cumulTop[1]?.qty ?? null, cqp(1), cumulTop[1]?.price || null, cpp(1),
+      cumulTop[2]?.code || null, cumulTop[2]?.name ?? null, cojcC(2), cumulTop[2]?.qty ?? null, cqp(2), cumulTop[2]?.price || null, cpp(2),
     ])
     cumulRow.height = 17; applyS7Style(cumulRow, C.lightBlue, true)
 
@@ -1488,7 +1496,7 @@ function downloadCustomerTop3(
 
 const TOP3_DISPLAY_LIMIT = 20
 
-function buildTop3(rawRows: import('../lib/parse/parseDetailedSales').DetailedSalesRow[], yr: string | 'cumul') {
+function buildTop3(rawRows: import('../lib/parse/parseDetailedSales').DetailedSalesRow[], yr: string | 'cumul', sortBy: 'qty' | 'price' = 'qty') {
   const custMap: Record<string, Record<string, { code: string; qty: number; price: number }>> = {}
   for (const row of rawRows) {
     if (isTop3Excluded(row.name)) continue
@@ -1502,13 +1510,15 @@ function buildTop3(rawRows: import('../lib/parse/parseDetailedSales').DetailedSa
   const result: Record<string, Array<{ name: string; code: string; qty: number; price: number }>> = {}
   for (const [cust, products] of Object.entries(custMap)) {
     result[cust] = Object.entries(products)
-      .sort((a, b) => b[1].qty - a[1].qty)
+      .sort((a, b) => sortBy === 'price' ? b[1].price - a[1].price : b[1].qty - a[1].qty)
       .slice(0, 3)
       .map(([name, d]) => ({ name, code: d.code, qty: d.qty, price: d.price }))
   }
   return Object.fromEntries(
     Object.entries(result).sort((a, b) =>
-      b[1].reduce((s, x) => s + x.qty, 0) - a[1].reduce((s, x) => s + x.qty, 0)
+      sortBy === 'price'
+        ? b[1].reduce((s, x) => s + x.price, 0) - a[1].reduce((s, x) => s + x.price, 0)
+        : b[1].reduce((s, x) => s + x.qty, 0) - a[1].reduce((s, x) => s + x.qty, 0)
     )
   )
 }
@@ -1524,10 +1534,11 @@ function CustomerTop3View({
   const [activeTab, setActiveTab]   = useState<string>(latestYr)
   const [search, setSearch]         = useState('')
   const [showAll, setShowAll]       = useState(false)
+  const [sortMode, setSortMode]     = useState<'qty' | 'price'>('qty')
 
   const computedTop3 = useMemo(
-    () => activeTab === 'cumul' ? customerTop3 : buildTop3(rawRows, activeTab),
-    [activeTab, customerTop3, rawRows]
+    () => buildTop3(rawRows, activeTab === 'cumul' ? 'cumul' : activeTab, sortMode),
+    [activeTab, rawRows, sortMode]
   )
 
   const customers = Object.entries(computedTop3)
@@ -1568,6 +1579,17 @@ function CustomerTop3View({
           </button>
         </div>
         <div className="flex gap-2 items-center pb-1">
+          <div className="flex gap-0 border border-gray-200 rounded overflow-hidden text-xs">
+            {(['qty', 'price'] as const).map(mode => (
+              <button
+                key={mode}
+                onClick={() => { setSortMode(mode); setShowAll(false) }}
+                className={`px-3 py-1.5 font-medium transition ${sortMode === mode ? 'bg-[#2E75B6] text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+              >
+                {mode === 'qty' ? '📦 판매량순' : '💰 공급가액순'}
+              </button>
+            ))}
+          </div>
           <span className="text-xs text-gray-500">{filtered.length}개 거래처</span>
           <input
             type="text"
@@ -1591,47 +1613,74 @@ function CustomerTop3View({
             <tr>
               <th className={`${thBase} text-right`}>순위</th>
               <th className={`${thBase} text-left`}>거래처명</th>
-              <th className={`${thBase} text-right`}>총구매(EA)</th>
+              <th className={`${thBase} text-right`}>{sortMode === 'qty' ? '총구매(EA)' : '공급가액 합산'}</th>
               {[1, 2, 3].map(rank => (
                 <Fragment key={rank}>
                   <th className={`${thBase} text-left`}>TOP{rank} 품목명</th>
-                  <th className={`${thBase} text-right`}>수량(EA)</th>
-                  <th className={`${thBase} text-right`}>점유율</th>
-                  <th className={`${thBase} text-right`}>공급가액</th>
+                  {sortMode === 'qty' ? (
+                    <>
+                      <th className={`${thBase} text-right`}>수량(EA)</th>
+                      <th className={`${thBase} text-right`}>수량점유율</th>
+                      <th className={`${thBase} text-right`}>가액점유율</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className={`${thBase} text-right`}>공급가액</th>
+                      <th className={`${thBase} text-right`}>가액점유율</th>
+                      <th className={`${thBase} text-right`}>수량점유율</th>
+                    </>
+                  )}
                 </Fragment>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {displayed.map(([cust, top3], i) => {
-              const total = top3.reduce((s, x) => s + x.qty, 0)
+              const qtyTotal   = top3.reduce((s, x) => s + x.qty, 0)
+              const priceTotal = top3.reduce((s, x) => s + x.price, 0)
               return (
                 <tr key={cust} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="px-3 py-2 text-right text-gray-400 text-xs">{i + 1}</td>
                   <td className="px-3 py-2 font-semibold text-gray-800">{cust}</td>
                   <td className="px-3 py-2 text-right font-mono font-bold text-gray-900">
-                    {total.toLocaleString()}
+                    {sortMode === 'qty' ? qtyTotal.toLocaleString() : fmtPrice(priceTotal)}
                   </td>
                   {[0, 1, 2].map(rank => {
-                    const item = top3[rank]
-                    const pct  = item && total > 0 ? Math.round(item.qty / total * 100) : null
+                    const item     = top3[rank]
+                    const qtyPct   = item && qtyTotal   > 0 ? Math.round(item.qty   / qtyTotal   * 100) : null
+                    const pricePct = item && priceTotal > 0 ? Math.round(item.price / priceTotal * 100) : null
+                    const pctCls   = (v: number | null) => v === null ? 'text-gray-300' : `font-semibold ${v >= 60 ? 'text-orange-600' : v >= 30 ? 'text-blue-600' : 'text-gray-500'}`
                     return (
                       <Fragment key={rank}>
                         <td className="px-3 py-2 max-w-[200px] text-sm text-gray-700" title={item?.name ?? ''}>
                           <div className="text-[10px] text-gray-400 font-mono">{item?.code || '—'}</div>
                           <div className="truncate">{item?.name ?? <span className="text-gray-300">—</span>}</div>
                         </td>
-                        <td className="px-3 py-2 text-right font-mono text-sm">
-                          {item ? item.qty.toLocaleString() : <span className="text-gray-300">—</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right text-xs">
-                          {pct !== null
-                            ? <span className={`font-semibold ${pct >= 60 ? 'text-orange-600' : pct >= 30 ? 'text-blue-600' : 'text-gray-500'}`}>{pct}%</span>
-                            : <span className="text-gray-300">—</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right text-xs text-gray-600">
-                          {item ? fmtPrice(item.price) : <span className="text-gray-300">—</span>}
-                        </td>
+                        {sortMode === 'qty' ? (
+                          <>
+                            <td className="px-3 py-2 text-right font-mono text-sm">
+                              {item ? item.qty.toLocaleString() : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              <span className={pctCls(qtyPct)}>{qtyPct !== null ? `${qtyPct}%` : '—'}</span>
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              <span className={pctCls(pricePct)}>{pricePct !== null ? `${pricePct}%` : '—'}</span>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-2 text-right text-xs text-gray-600">
+                              {item ? fmtPrice(item.price) : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              <span className={pctCls(pricePct)}>{pricePct !== null ? `${pricePct}%` : '—'}</span>
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              <span className={pctCls(qtyPct)}>{qtyPct !== null ? `${qtyPct}%` : '—'}</span>
+                            </td>
+                          </>
+                        )}
                       </Fragment>
                     )
                   })}
@@ -1735,26 +1784,30 @@ function OjcCustomerTop3View({
                   <th className={`${thBase} text-left`}>TOP{rank} 품목명</th>
                   <th className={`${thBase} text-center`}>OJC 분류</th>
                   <th className={`${thBase} text-right`}>수량(EA)</th>
-                  <th className={`${thBase} text-right`}>점유율</th>
+                  <th className={`${thBase} text-right`}>수량점유율</th>
                   <th className={`${thBase} text-right`}>공급가액</th>
+                  <th className={`${thBase} text-right`}>가액점유율</th>
                 </Fragment>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {displayed.map(([cust, top3], i) => {
-              const total = top3.reduce((s, x) => s + x.qty, 0)
+              const qtyTotal   = top3.reduce((s, x) => s + x.qty, 0)
+              const priceTotal = top3.reduce((s, x) => s + x.price, 0)
               return (
                 <tr key={cust} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="px-3 py-2 text-right text-gray-400 text-xs">{i + 1}</td>
                   <td className="px-3 py-2 font-semibold text-gray-800">{cust}</td>
                   <td className="px-3 py-2 text-right font-mono font-bold text-[#1F3864]">
-                    {total.toLocaleString()}
+                    {qtyTotal.toLocaleString()}
                   </td>
                   {[0, 1, 2].map(rank => {
-                    const item = top3[rank]
-                    const ojcCat = item ? classifyOjc(item.name) : null
-                    const pct    = item && total > 0 ? Math.round(item.qty / total * 100) : null
+                    const item     = top3[rank]
+                    const ojcCat   = item ? classifyOjc(item.name) : null
+                    const qtyPct   = item && qtyTotal   > 0 ? Math.round(item.qty   / qtyTotal   * 100) : null
+                    const pricePct = item && priceTotal > 0 ? Math.round(item.price / priceTotal * 100) : null
+                    const pctCls   = (v: number | null) => v === null ? 'text-gray-300' : `font-semibold ${v >= 60 ? 'text-orange-600' : v >= 30 ? 'text-blue-600' : 'text-gray-500'}`
                     return (
                       <Fragment key={rank}>
                         <td className="px-3 py-2 max-w-[200px] text-sm text-gray-700" title={item?.name ?? ''}>
@@ -1770,12 +1823,13 @@ function OjcCustomerTop3View({
                           {item ? item.qty.toLocaleString() : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-3 py-2 text-right text-xs">
-                          {pct !== null
-                            ? <span className={`font-semibold ${pct >= 60 ? 'text-orange-600' : pct >= 30 ? 'text-blue-600' : 'text-gray-500'}`}>{pct}%</span>
-                            : <span className="text-gray-300">—</span>}
+                          <span className={pctCls(qtyPct)}>{qtyPct !== null ? `${qtyPct}%` : '—'}</span>
                         </td>
                         <td className="px-3 py-2 text-right text-xs text-gray-600">
                           {item ? fmtPrice(item.price) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs">
+                          <span className={pctCls(pricePct)}>{pricePct !== null ? `${pricePct}%` : '—'}</span>
                         </td>
                       </Fragment>
                     )
