@@ -32,10 +32,10 @@ export function classifyDist(name: string): boolean {
 // KT-SP/DP/MOJC, LG-SP/DP/MOJC, DROP-1C/2C, 피그테일-SK 성단용 세분화
 export function classifyOjcDetailed(name: string): string | null {
   if (name.startsWith('OJC-A1-') || name.startsWith('OJC-C2-')) {
-    const type = (name.split('-')[2] ?? '').toUpperCase()
-    if (type === 'SP')   return 'KT OJC-SP'
-    if (type === 'DP')   return 'KT OJC-DP'
-    if (type === 'MOJC') return 'KT OJC-MOJC'
+    const u = name.toUpperCase()
+    if (u.includes('-SP-') || u.endsWith('-SP'))   return 'KT OJC-SP'
+    if (u.includes('-DP-') || u.endsWith('-DP'))   return 'KT OJC-DP'
+    if (u.includes('-MOJC-') || u.endsWith('-MOJC')) return 'KT OJC-MOJC'
     return 'KT OJC'
   }
   if (name.startsWith('SOJC-')) return 'LG OJC-SP'

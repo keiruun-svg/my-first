@@ -648,8 +648,8 @@ async function downloadStyledExcel(
   const ws1 = wb.addWorksheet('① 판매현황_요약')
   ws1.views = [{ state: 'frozen', ySplit: 2 }]
 
-  // cat(1) + count(1) + years(N) + yoy(1) + cagr(1) + stock(1) + cover(1) = N+6
-  const S1     = 2 + years.length + 4
+  // cat(1) + count(1) + years(N) + yoy(1) + cagr(1) + stock(1) + cover_pk(1) + cover_avg(1) = N+7
+  const S1     = 2 + years.length + 5
   const prevYr = years[years.length - 2] ?? ''
 
   const sumQty   = (rows: typeof rawRows, yr: string) => rows.filter(r => r.year === yr).reduce((s, r) => s + r.qty, 0)
@@ -660,13 +660,6 @@ async function downloadStyledExcel(
   const allCusts  = [...new Set(rawRows.map(r => r.customer).filter(Boolean))].length
   const domCusts  = [...new Set(domesticRowsForExcel.map(r => r.customer).filter(Boolean))].length
   const forCusts  = [...new Set(foreignRowsForExcel.map(r => r.customer).filter(Boolean))].length
-  const totLatest = sumQty(rawRows, latestYr)
-  const totPrev   = sumQty(rawRows, prevYr)
-  const domLatest = sumQty(domesticRowsForExcel, latestYr)
-  const domPrev   = sumQty(domesticRowsForExcel, prevYr)
-  const forLatest = sumQty(foreignRowsForExcel, latestYr)
-  const forPrev   = sumQty(foreignRowsForExcel, prevYr)
-
   addTitle(ws1,
     `AJW 판매현황 요약 대시보드  ·  20${years[0]}년 ~ 20${latestYr}년`,
     `생성: ${today()}  |  ${fullProducts.length}종 품목  |  거래처 ${allCusts}개 (내자 ${domCusts} / 외자 ${forCusts})`, S1)
@@ -684,35 +677,46 @@ async function downloadStyledExcel(
   // ── [A] KPI 블록 ─────────────────────────────────────────────────────────
   addSecHdr1('  ▶ 전체 판매 현황 요약')
 
+  // 구분(1) + 연도별(N) + 전년비(0 or 1) + 거래처수(1) + 품목수(1)
+  const kpiYoyCols  = prevYr ? 1 : 0
+  const kpiFixedCols = 1 + years.length + kpiYoyCols + 2
   const kpiHdr = ws1.addRow([
-    '구분', `20${latestYr}년 판매(EA)`,
-    prevYr ? `20${prevYr}년 판매(EA)` : '전년 판매(EA)',
-    '전년비', '거래처 수', '품목 수',
-    ...Array(Math.max(0, S1 - 6)).fill(null),
+    '구분',
+    ...years.map(y => `20${y}년\n판매(EA)`),
+    ...(prevYr ? [`20${latestYr}년/\n20${prevYr}년 전년비`] : []),
+    '거래처 수', '품목 수',
+    ...Array(Math.max(0, S1 - kpiFixedCols)).fill(null),
   ])
   styleHdr(kpiHdr, C.midBlue, 22)
-  if (S1 > 6) ws1.mergeCells(kpiHdr.number, 6, kpiHdr.number, S1)
+  if (S1 > kpiFixedCols) ws1.mergeCells(kpiHdr.number, kpiFixedCols, kpiHdr.number, S1)
 
+  const kpiYoyCol = prevYr ? 2 + years.length : -1
   ;[
-    { label: '전체',      latest: totLatest, prev: totPrev, custs: allCusts, items: fullProducts.length },
-    { label: '내자 🏠',  latest: domLatest, prev: domPrev, custs: domCusts,
+    { label: '전체',      rows: rawRows,                custs: allCusts, items: fullProducts.length },
+    { label: '내자 🏠',  rows: domesticRowsForExcel,   custs: domCusts,
       items: [...new Set(domesticRowsForExcel.map(r => r.name))].length },
-    { label: '외자 ✈️', latest: forLatest, prev: forPrev, custs: forCusts,
+    { label: '외자 ✈️', rows: foreignRowsForExcel,    custs: forCusts,
       items: [...new Set(foreignRowsForExcel.map(r => r.name))].length },
   ].forEach((kd, ki) => {
-    const yoyV = yoyRate(kd.latest, kd.prev)
-    const row  = ws1.addRow([
-      kd.label, kd.latest || null, kd.prev || null, yoyV,
-      kd.custs || null, kd.items || null, ...Array(Math.max(0, S1 - 6)).fill(null),
+    const yqts  = years.map(yr => sumQty(kd.rows, yr))
+    const latQ  = yqts[yqts.length - 1] ?? 0
+    const preQ  = yqts[yqts.length - 2] ?? 0
+    const yoyV  = yoyRate(latQ, preQ)
+    const row   = ws1.addRow([
+      kd.label,
+      ...yqts.map(q => q || null),
+      ...(prevYr ? [yoyV] : []),
+      kd.custs || null, kd.items || null,
+      ...Array(Math.max(0, S1 - kpiFixedCols)).fill(null),
     ])
-    if (S1 > 6) ws1.mergeCells(row.number, 6, row.number, S1)
+    if (S1 > kpiFixedCols) ws1.mergeCells(row.number, kpiFixedCols, row.number, S1)
     row.height = 20
     row.eachCell({ includeEmpty: true }, (c, ci) => {
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ki === 0 ? C.altBlue : C.white } }
       c.border = { bottom: { style: 'thin', color: { argb: C.gray2 } } }
       if (ci === 1) {
         c.font = { bold: true, color: { argb: C.darkBlue } }; c.alignment = { horizontal: 'left', vertical: 'middle' }
-      } else if (ci === 4) {
+      } else if (ci === kpiYoyCol) {
         c.alignment = { horizontal: 'right', vertical: 'middle' }
         if (typeof c.value === 'number') {
           c.numFmt = '+0.0%;-0.0%;"-"'
@@ -724,7 +728,11 @@ async function downloadStyledExcel(
 
   // ── [B] OJC 카테고리별 판매 추이 ─────────────────────────────────────────
   addSecHdr1('  ▶ OJC 판매 현황')
-  styleHdr(ws1.addRow(['카테고리', '품목수', ...years.map(y => `20${y}년\n판매(EA)`), '전년비', 'CAGR', '현재고\n(EA)', '재고여유\n(최고월)']), C.midBlue, 32)
+  styleHdr(ws1.addRow([
+    '카테고리', '품목수', ...years.map(y => `20${y}년\n판매(EA)`),
+    prevYr ? `20${latestYr}년/\n20${prevYr}년 전년비` : '전년비',
+    '연평균\n성장률(CAGR)', '현재고\n(EA)', '재고여유\n(최고월)', '재고여유\n(평균)',
+  ]), C.midBlue, 32)
 
   const applyTrendRow = (row: ExcelJS.Row, bg: string, fontColor: string) => {
     const yoyCol  = 3 + years.length
@@ -742,7 +750,7 @@ async function downloadStyledExcel(
           c.numFmt = '+0.0%;-0.0%;"-"'
           c.font = { bold: true, color: { argb: c.value > 0 ? C.green : c.value < 0 ? C.red : C.gray3 } }
         }
-      } else if (ci === S1) {
+      } else if (ci === S1 - 1 || ci === S1) {
         c.alignment = { horizontal: 'right', vertical: 'middle' }
         if (typeof c.value === 'number') {
           c.numFmt = '0.0"개월"'
@@ -759,13 +767,15 @@ async function downloadStyledExcel(
     const prevQty   = data.annuals[prevYr]    ?? 0
     const mv        = MONTHS.map(m => data.monthlyLatest[m] ?? 0)
     const pk        = Math.max(0, ...mv)
+    const avg       = latestQty / 12
     const st        = ojcStock[cat] ?? 0
     const cpk       = st > 0 && pk > 0 ? parseFloat((st / pk).toFixed(1)) : null
+    const cav       = st > 0 && avg > 0 ? parseFloat((st / avg).toFixed(1)) : null
     const row = ws1.addRow([
       cat, Object.keys(data.products).length,
       ...years.map(yr => data.annuals[yr] || null),
       yoyRate(latestQty, prevQty), cagrRate(firstQty, latestQty, years.length),
-      st || null, cpk,
+      st || null, cpk, cav,
     ])
     row.height = 18
     applyTrendRow(row, ri1 % 2 === 0 ? C.white : C.altBlue, C.midBlue)
@@ -774,7 +784,11 @@ async function downloadStyledExcel(
 
   // ── [C] 기타 품목 판매 현황 ───────────────────────────────────────────────
   addSecHdr1('  ▶ 기타 품목 판매 현황')
-  styleHdr(ws1.addRow(['카테고리', '품목수', ...years.map(y => `20${y}년\n판매(EA)`), '전년비', 'CAGR', '현재고\n(EA)', '재고여유\n(최고월)']), C.purple, 32)
+  styleHdr(ws1.addRow([
+    '카테고리', '품목수', ...years.map(y => `20${y}년\n판매(EA)`),
+    prevYr ? `20${latestYr}년/\n20${prevYr}년 전년비` : '전년비',
+    '연평균\n성장률(CAGR)', '현재고\n(EA)', '재고여유\n(최고월)', '재고여유\n(평균)',
+  ]), C.purple, 32)
 
   let ri2 = 0
   for (const [cat, data] of Object.entries(etcByCategory)) {
@@ -783,13 +797,15 @@ async function downloadStyledExcel(
     const prevQty   = data.annuals[prevYr]    ?? 0
     const mv        = MONTHS.map(m => data.monthlyLatest[m] ?? 0)
     const pk        = Math.max(0, ...mv)
+    const avg       = latestQty / 12
     const st        = ojcStock[cat] ?? 0
     const cpk       = st > 0 && pk > 0 ? parseFloat((st / pk).toFixed(1)) : null
+    const cav       = st > 0 && avg > 0 ? parseFloat((st / avg).toFixed(1)) : null
     const row = ws1.addRow([
       cat, Object.keys(data.products).length,
       ...years.map(yr => data.annuals[yr] || null),
       yoyRate(latestQty, prevQty), cagrRate(firstQty, latestQty, years.length),
-      st || null, cpk,
+      st || null, cpk, cav,
     ])
     row.height = 18
     applyTrendRow(row, ri2 % 2 === 0 ? C.white : C.altPurple, C.purple)
@@ -797,16 +813,24 @@ async function downloadStyledExcel(
   }
 
   // ── [D] 거래처 TOP5 (내자 / 외자) ───────────────────────────────────────
-  addSecHdr1('  ▶ 거래처 TOP5 (구매량 기준)')
-
-  const custHdr = ws1.addRow(['순위', '거래처명', '누적 구매(EA)', `20${latestYr}년(EA)`, '전년비', ...Array(Math.max(0, S1 - 5)).fill(null)])
-  styleHdr(custHdr, C.midBlue, 22)
-  if (S1 > 5) ws1.mergeCells(custHdr.number, 5, custHdr.number, S1)
+  addSecHdr1('  ▶ 거래처 TOP5')
 
   const writeCustTop5 = (
+    hdrLabel: string | null, hdrColor: string,
     subLabel: string, subBg: string, subFontColor: string,
     filteredRows: typeof rawRows,
+    sortBy: 'qty' | 'price',
   ) => {
+    if (hdrLabel) {
+      const hd = ws1.addRow([
+        '순위', '거래처명',
+        sortBy === 'price' ? '누적 금액(원)' : '누적 구매(EA)',
+        sortBy === 'price' ? `20${latestYr}년(원)` : `20${latestYr}년(EA)`,
+        '전년비', ...Array(Math.max(0, S1 - 5)).fill(null),
+      ])
+      styleHdr(hd, hdrColor, 22)
+      if (S1 > 5) ws1.mergeCells(hd.number, 5, hd.number, S1)
+    }
     const sub = ws1.addRow([subLabel, ...Array(S1 - 1).fill(null)])
     ws1.mergeCells(sub.number, 1, sub.number, S1)
     const sc = ws1.getCell(sub.number, 1)
@@ -815,10 +839,11 @@ async function downloadStyledExcel(
     sc.alignment = { horizontal: 'left', vertical: 'middle' }
     sub.height = 16
 
-    Object.entries(buildTop3(filteredRows, 'cumul')).slice(0, 5).forEach(([cust, prods], ci) => {
-      const cumul    = prods.reduce((s, x) => s + x.qty, 0)
-      const custLat  = filteredRows.filter(r => r.customer === cust && r.year === latestYr).reduce((s, r) => s + r.qty, 0)
-      const custPrev = filteredRows.filter(r => r.customer === cust && r.year === prevYr).reduce((s, r) => s + r.qty, 0)
+    Object.entries(buildTop3(filteredRows, 'cumul', sortBy)).slice(0, 5).forEach(([cust, prods], ci) => {
+      const isPrice  = sortBy === 'price'
+      const cumul    = prods.reduce((s, x) => s + (isPrice ? x.price : x.qty), 0)
+      const custLat  = filteredRows.filter(r => r.customer === cust && r.year === latestYr).reduce((s, r) => s + (isPrice ? r.price : r.qty), 0)
+      const custPrev = filteredRows.filter(r => r.customer === cust && r.year === prevYr).reduce((s, r) => s + (isPrice ? r.price : r.qty), 0)
       const row = ws1.addRow([ci + 1, cust, cumul || null, custLat || null, yoyRate(custLat, custPrev), ...Array(Math.max(0, S1 - 5)).fill(null)])
       if (S1 > 5) ws1.mergeCells(row.number, 5, row.number, S1)
       row.height = 18
@@ -842,13 +867,15 @@ async function downloadStyledExcel(
     })
   }
 
-  writeCustTop5('  🏠 내자 거래처', C.lightBlue, C.darkBlue, domesticRowsForExcel)
-  writeCustTop5('  ✈️  외자 거래처', C.altPurple, C.purple, foreignRowsForExcel)
+  writeCustTop5('  📦 구매량 기준', C.midBlue, '  🏠 내자 거래처', C.lightBlue, C.darkBlue, domesticRowsForExcel, 'qty')
+  writeCustTop5(null, C.midBlue, '  ✈️  외자 거래처', C.altPurple, C.purple, foreignRowsForExcel, 'qty')
+  writeCustTop5('  💰 판매금액 기준', C.purple, '  🏠 내자 거래처', C.lightBlue, C.darkBlue, domesticRowsForExcel, 'price')
+  writeCustTop5(null, C.purple, '  ✈️  외자 거래처', C.altPurple, C.purple, foreignRowsForExcel, 'price')
 
   ws1.columns = [
     { width: 26 }, { width: 10 },
     ...years.map(() => ({ width: 14 })),
-    { width: 11 }, { width: 11 }, { width: 12 }, { width: 12 },
+    { width: 11 }, { width: 11 }, { width: 12 }, { width: 12 }, { width: 12 },
   ]
 
   await prog(2, '② 연도별_피크분석')
