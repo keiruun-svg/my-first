@@ -379,6 +379,22 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
     setImportApplied(true)
   }
 
+  // ── 행 삭제 ───────────────────────────────────────────────────
+  const deleteCableKey = (key: string) => {
+    if (!window.confirm(`케이블 항목 "${key}"를 삭제하시겠습니까?\n(저장 버튼을 눌러야 DB에 반영됩니다)`)) return
+    const cable = { ...metadata.cable }; delete cable[key]
+    const cableInv = { ...inventory.cable }; delete cableInv[key]
+    setMetadata({ ...metadata, cable })
+    setInventory({ ...inventory, cable: cableInv })
+  }
+  const deleteFerruleKey = (key: string) => {
+    if (!window.confirm(`페룰 항목 "${key}"를 삭제하시겠습니까?\n(저장 버튼을 눌러야 DB에 반영됩니다)`)) return
+    const ferrule = { ...metadata.ferrule }; delete ferrule[key]
+    const ferruleInv = { ...inventory.ferrule }; delete ferruleInv[key]
+    setMetadata({ ...metadata, ferrule })
+    setInventory({ ...inventory, ferrule: ferruleInv })
+  }
+
   // ── 공통 헬퍼 ─────────────────────────────────────────────────
   const getCm  = (k: string): CableMeta   => metadata.cable[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
   const getFm  = (k: string): FerruleMeta => metadata.ferrule[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
@@ -657,7 +673,7 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
               <th className={thR}>현재고{tab==='cable'?' (m)':' (EA)'}</th>
               <th className={thR}>기발주{tab==='cable'?' (m)':' (EA)'}</th>
               <th className={thCls}>상태</th>
-              {tab === 'housing' && CAN_WRITE && <th className={thCls}></th>}
+              {CAN_WRITE && <th className={thCls}></th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -768,12 +784,22 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
                   <td className="px-2 py-1 text-center">
                     {missing ? <span className="text-red-500 font-semibold">⚠</span> : <span className="text-green-600">✓</span>}
                   </td>
+                  {CAN_WRITE && (
+                    <td className="px-1 py-1 text-center">
+                      <button
+                        onClick={() => tab === 'cable' ? deleteCableKey(key) : deleteFerruleKey(key)}
+                        title="항목 삭제"
+                        className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-500 hover:bg-red-200 transition">
+                        ×
+                      </button>
+                    </td>
+                  )}
                 </tr>
               )
             })}
             {tab !== 'housing' && (tab==='cable' ? cableKeys : ferruleKeys).length === 0 && (
               <tr>
-                <td colSpan={tab === 'ferrule' ? 8 : 9} className="text-center text-gray-400 py-10">
+                <td colSpan={tab === 'ferrule' ? (CAN_WRITE ? 9 : 8) : (CAN_WRITE ? 10 : 9)} className="text-center text-gray-400 py-10">
                   STEP 1 실행 후 품번을 입력하세요.
                 </td>
               </tr>
