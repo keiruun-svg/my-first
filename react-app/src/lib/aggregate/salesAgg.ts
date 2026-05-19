@@ -48,9 +48,9 @@ export function forecastProduction(
 }
 
 // ── 내부 헬퍼 ───────────────────────────────────────────────────
-function kindOf(name: string): string {
+function kindOf(name: string, spec = ''): string {
   const core = deriveCore(name)
-  return deriveKind(name, '', core)
+  return deriveKind(name, spec, core)
 }
 
 function calcCagr(vals: number[]): number {
@@ -82,7 +82,7 @@ export function aggregateSales(
   const prodByKind:  Record<string, Record<string, number>> = {}
 
   const addTo = (map: typeof salesByKind, row: SalesRow) => {
-    const kind = kindOf(row.name)
+    const kind = kindOf(row.name, row.spec ?? '')
     if (!map[kind])           map[kind] = {}
     if (!map[kind][row.year]) map[kind][row.year] = 0
     map[kind][row.year] += row.qty

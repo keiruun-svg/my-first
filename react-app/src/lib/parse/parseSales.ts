@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 export interface SalesRow {
   code: string
   name: string
+  spec: string  // 규격 (used for color variant detection)
   year: string  // '23', '24', '25'
   qty:  number
 }
@@ -63,16 +64,18 @@ export function parseSalesFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] 
       // 형식 C: 가로 집계형
       const nameIdx = headers.findIndex(h => h === '품목명')
       const codeIdx = headers.findIndex(h => h === '품목코드')
+      const specIdx = headers.findIndex(h => h === '규격')
       let cnt = 0
       for (let i = hdrIdx + 1; i < raw.length; i++) {
         const row = raw[i]
         const name = String(row[nameIdx] ?? '').trim()
         const code = codeIdx >= 0 ? String(row[codeIdx] ?? '').trim() : ''
+        const spec = specIdx >= 0 ? String(row[specIdx] ?? '').trim() : ''
         if (!name) continue
         for (const { yr, idx } of yearCols) {
           const qty = parseInt(String(row[idx] ?? '0')) || 0
           if (qty <= 0) continue
-          allRows.push({ code, name, year: yr, qty })
+          allRows.push({ code, name, spec, year: yr, qty })
           cnt++
         }
       }
@@ -96,7 +99,7 @@ export function parseSalesFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] 
       dataRows[0]['거래처'] !== undefined
     )
 
-    const agg: Record<string, { code: string; name: string; qty: number }> = {}
+    const agg: Record<string, { code: string; name: string; spec: string; qty: number }> = {}
     for (const row of dataRows) {
       const code = String(row['품목코드'] ?? '').trim()
       const name = String(row['품목명'] ?? row['제품명'] ?? '').trim()
@@ -105,6 +108,8 @@ export function parseSalesFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] 
       const qty = parseInt(String(row['수량'] ?? row['합계'] ?? '0')) || 0
       if (qty <= 0) continue
 
+      const spec = String(row['규격'] ?? '').trim()
+
       // 년 컬럼 → 일자 앞 4자리 → 시트명 순서로 연도 추출
       const dateStr = String(row['일자'] ?? row['일'] ?? '')
       const dateYr = dateStr.length >= 4 ? toYY(dateStr.slice(0, 4)) : null
@@ -112,13 +117,13 @@ export function parseSalesFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] 
       if (!yr) continue
 
       const key = `${code}||${name}||${yr}`
-      if (!agg[key]) agg[key] = { code, name, qty: 0 }
+      if (!agg[key]) agg[key] = { code, name, spec, qty: 0 }
       agg[key].qty += qty
     }
 
     const sheetRows = Object.entries(agg).map(([key, v]) => {
       const [,, yr] = key.split('||')
-      return { code: v.code, name: v.name, year: yr, qty: v.qty }
+      return { code: v.code, name: v.name, spec: v.spec, year: yr, qty: v.qty }
     })
 
     if (sheetRows.length > 0) {
@@ -131,18 +136,23 @@ export function parseSalesFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] 
   return allRows
 }
 
-/** 구매관리(맥산).xlsx — 컬럼: 품목코드, 품목명, 입고일자, 수량 */
+/** 구매관리(맥산).xlsx — 컬럼: 품목코드, 품목명, 입고일자(또는 입고 일자), 수량
+ *  타이틀 행이 있어도 자동 감지 */
 export function parseProductionFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] {
   const wb  = XLSX.read(buffer, { type: 'array' })
   const ws  = wb.Sheets[wb.SheetNames[0]]
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
-  logs.push(`구매관리(맥산): ${raw.length.toLocaleString()}행 로드`)
 
-  // 진단: 첫 행 컬럼 확인
-  if (raw.length > 0) {
-    const firstKeys = Object.keys(raw[0]).slice(0, 6).join(', ')
-    logs.push(`  컬럼: [${firstKeys}]`)
-  }
+  // 헤더 행 자동 탐지 ('품목코드' 또는 '품목명' 셀이 있는 행)
+  const rawArr = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null }) as unknown[][]
+  const hdrIdx = rawArr.findIndex(r =>
+    r.some(c => String(c ?? '').trim() === '품목코드' || String(c ?? '').trim() === '품목명')
+  )
+
+  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
+    defval: null,
+    range: hdrIdx >= 0 ? hdrIdx : 0,
+  })
+  logs.push(`구매관리(맥산): ${raw.length.toLocaleString()}행 로드 (헤더: ${hdrIdx + 1}행)`)
 
   const rows: SalesRow[] = []
   for (const row of raw) {
@@ -153,14 +163,18 @@ export function parseProductionFile(buffer: ArrayBuffer, logs: string[]): SalesR
     const qty = parseInt(String(row['수량'] ?? '0')) || 0
     if (qty <= 0) continue
 
-    // 입고일자: 'YYYY-MM-DD' or 'YYYYMMDD' or 'YY/MM/DD'
-    const dateRaw = String(row['입고일자'] ?? '').replace(/\s*-\d+\s*$/, '').trim()
+    // '입고일자' 또는 '입고 일자' (띄어쓰기 변형 대응)
+    const dateVal = row['입고일자'] ?? row['입고 일자'] ?? row['입고일'] ?? ''
+    const dateRaw = String(dateVal).replace(/\s*-\d+\s*$/, '').trim()
     const m = dateRaw.match(/^(\d{2,4})/)
     if (!m) continue
     const yr = m[1].length === 4 ? m[1].slice(2) : m[1]
     if (!/^\d{2}$/.test(yr)) continue
+    // 연도 범위 체크 — MM/DD 형식(01~12)이 연도로 오인되는 것 방지
+    const yrNum = parseInt(yr)
+    if (yrNum < 15 || yrNum > 35) continue
 
-    rows.push({ code, name, year: yr, qty })
+    rows.push({ code, name, spec: '', year: yr, qty })
   }
   logs.push(`  → 생산입고 ${rows.length.toLocaleString()}건`)
   return rows

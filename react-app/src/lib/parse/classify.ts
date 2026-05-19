@@ -63,8 +63,8 @@ export function deriveKind(name: string, spec: string, core: number): string {
     return /-MM\b|-MM-|MM\(OM3\)/.test(name) ? 'om1-pigtail' : 'pigtail'
   if (name.startsWith('DROP'))                return 'drop'
   if (name.startsWith('Optical Cable Parts')) return 'a2'
-  if (name.startsWith('MOJC'))                return `b3-${core}c`
-  if (name.includes('OJC-C2'))                return core === 4 ? `b3-${core}c` : `a1-${core}c`
+  if (name.startsWith('MOJC'))                return 'b3'
+  if (name.includes('OJC-C2'))                return 'b3'
   if (/\bB3\b/i.test(spec))                   return 'b3'
   if (name.includes('MM(OM3)') || /\bOM3\b/i.test(spec) || name.includes('-OM3')) return 'om3'
   if (/-MM\b|-MM-/.test(name))                return 'om1'

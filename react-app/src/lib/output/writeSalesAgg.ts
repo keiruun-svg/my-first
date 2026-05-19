@@ -44,8 +44,6 @@ export async function writeSalesAgg(result: SalesAggResult): Promise<ArrayBuffer
   const wb = new ExcelJS.Workbook()
   const { byType, byProduct, salesCagr, productionCagr, years } = result
   const latest = years[years.length - 1]
-  const pct = (v: number) => `${Math.round(v * 100)}%`
-  const cagrStr = (v: number) => { const s = Math.round(v * 100); return s > 0 ? `+${s}%` : `${s}%` }
 
   // ── Sheet 1: 타입별_분석 ──────────────────────────────────────
   const ws1 = wb.addWorksheet('타입별_분석')
@@ -55,7 +53,7 @@ export async function writeSalesAgg(result: SalesAggResult): Promise<ArrayBuffer
     ...years.map(yr => `20${yr}년\n판매(EA)`),
     ...years.map(yr => `20${yr}년\n생산(EA)`),
     ...years.map(yr => `20${yr}년\n생산비중`),
-    '판매\nCAGR', '생산\nCAGR',
+    '판매CAGR', '생산CAGR',
     `20${latest}년\n생산비중`,
   ])
   styleHeader(hdr1, s1Cols)
@@ -74,15 +72,20 @@ export async function writeSalesAgg(result: SalesAggResult): Promise<ArrayBuffer
       KIND_LABEL[kind] ?? kind.toUpperCase(),
       ...years.map(yr => byYear[yr]?.sales      ?? 0),
       ...years.map(yr => byYear[yr]?.production ?? 0),
-      ...years.map(yr => pct(byYear[yr]?.ratio  ?? 0)),
-      cagrStr(salesCagr[kind]      ?? 0),
-      cagrStr(productionCagr[kind] ?? 0),
-      pct(byYear[latest]?.ratio ?? 0),
+      ...years.map(yr => byYear[yr]?.ratio      ?? 0),
+      salesCagr[kind]      ?? 0,
+      productionCagr[kind] ?? 0,
+      byYear[latest]?.ratio ?? 0,
     ])
     styleDataRow(row, s1Cols, i % 2 === 1)
     // 수량 컬럼 숫자 포맷
     for (let c = 3; c <= 2 + years.length * 2; c++) {
       row.getCell(c).numFmt = '#,##0'
+      row.getCell(c).alignment = { horizontal: 'right' }
+    }
+    // 비율/CAGR 컬럼 % 포맷
+    for (let c = 3 + years.length * 2; c <= s1Cols; c++) {
+      row.getCell(c).numFmt = '+0%;-0%;0%'
       row.getCell(c).alignment = { horizontal: 'right' }
     }
     row.getCell(1).font = { bold: true, size: 9 }
