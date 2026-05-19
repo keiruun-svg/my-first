@@ -135,7 +135,7 @@ export default function Inventory({ inventory, setInventory, metadata }: Props) 
       }
     })
 
-    setInventory({ cable: newCable, housing: newHousing })
+    setInventory({ cable: newCable, housing: newHousing, ferrule: inventory.ferrule ?? {} })
     setImportApplied(true)
   }
 

@@ -72,6 +72,7 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
         const newMeta: Metadata = {
           cable:   { ...metadata.cable },
           housing: { ...metadata.housing },
+          ferrule: { ...metadata.ferrule },
         }
         for (const k of result.newCableKeys)
           newMeta.cable[k] = { 품번: '', 품명: '', 구매처: '', 리드타임: null }

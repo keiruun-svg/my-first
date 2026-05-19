@@ -58,7 +58,7 @@ export function saveSettings(s: AppSettings) {
 export async function loadMetadata(): Promise<Metadata> {
   const d = await sbLoad('metadata')
   if (d) return d as Metadata
-  return lsGet('ajw_metadata', { cable: {}, housing: {} })
+  return lsGet('ajw_metadata', { cable: {}, housing: {}, ferrule: {} })
 }
 
 export function saveMetadata(m: Metadata) {
@@ -69,7 +69,7 @@ export function saveMetadata(m: Metadata) {
 export async function loadInventory(): Promise<Inventory> {
   const d = await sbLoad('inventory')
   if (d) return d as Inventory
-  return lsGet('ajw_inventory', { cable: {}, housing: {} })
+  return lsGet('ajw_inventory', { cable: {}, housing: {}, ferrule: {} })
 }
 
 export function saveInventory(inv: Inventory) {

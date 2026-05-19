@@ -18,6 +18,13 @@ export interface HousingComp {
   리드타임: string | number | null
 }
 
+export interface FerruleMeta {
+  품번: string
+  품명: string
+  구매처: string
+  리드타임: string | number | null
+}
+
 export interface InventoryCableItem {
   현재고: number
   기발주: number
@@ -28,15 +35,21 @@ export interface InventoryHousingItem {
   기발주: number
 }
 
+export interface InventoryFerruleItem {
+  현재고: number
+  기발주: number
+}
+
 export interface Metadata {
-  cable: Record<string, CableMeta>
-  housing: Record<string, HousingComp | HousingComp[]>
-  ferrule?: Record<string, { 품번: string; 품명: string; 구매처: string; 리드타임: string | null }>
+  cable:    Record<string, CableMeta>
+  housing:  Record<string, HousingComp | HousingComp[]>
+  ferrule:  Record<string, FerruleMeta>
 }
 
 export interface Inventory {
-  cable: Record<string, InventoryCableItem>
+  cable:   Record<string, InventoryCableItem>
   housing: Record<string, InventoryHousingItem | InventoryHousingItem[]>
+  ferrule: Record<string, InventoryFerruleItem>
 }
 
 export interface SalesYearData {

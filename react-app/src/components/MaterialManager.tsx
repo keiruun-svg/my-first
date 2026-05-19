@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { saveMetadata, saveInventory, CAN_WRITE } from '../lib/supabase'
-import type { Metadata, Inventory, CableMeta, HousingComp } from '../lib/types'
+import type { Metadata, Inventory, CableMeta, HousingComp, FerruleMeta } from '../lib/types'
 
 interface Props {
   metadata:     Metadata
@@ -11,7 +11,7 @@ interface Props {
 }
 
 interface PreviewRow {
-  kind: 'cable' | 'housing'
+  kind: 'cable' | 'housing' | 'ferrule'
   key: string; pai: string; type: string
   품번: string; 품명: string; 구매처: string; 리드타임: string
   현재고: number; 기발주: number
@@ -20,14 +20,14 @@ interface PreviewRow {
 
 interface ImportRow {
   code: string; name: string; total: number; byWh: Record<string, number>
-  matchType: 'cable' | 'housing' | null; metaKey: string | null
+  matchType: 'cable' | 'housing' | 'ferrule' | null; metaKey: string | null
 }
 
 const thCls = 'px-3 py-2 text-xs font-bold text-gray-700 border-b-2 border-gray-200 bg-gray-50 whitespace-nowrap text-left'
 const thR   = `${thCls} text-right`
 
 export default function MaterialManager({ metadata, setMetadata, inventory, setInventory }: Props) {
-  const [tab,   setTab]   = useState<'cable' | 'housing'>('cable')
+  const [tab,   setTab]   = useState<'cable' | 'housing' | 'ferrule'>('cable')
   const [saved, setSaved] = useState<'' | 'both' | 'meta' | 'inv'>('')
 
   // 품번 Excel 업로드 상태
@@ -58,6 +58,12 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
     const base = (Array.isArray(cur) ? cur[0] : cur) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
     setMetadata({ ...metadata, housing: { ...metadata.housing, [key]: { ...base, [field]: value } } })
   }
+  const updateFerruleMeta = (key: string, field: keyof FerruleMeta, value: string) => {
+    setMetadata({ ...metadata, ferrule: {
+      ...metadata.ferrule,
+      [key]: { ...(metadata.ferrule[key] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }), [field]: value },
+    }})
+  }
 
   // ── 재고 수정 ──────────────────────────────────────────────────
   const updateCableInv = (key: string, field: '현재고' | '기발주', value: string) => {
@@ -68,6 +74,10 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
     const cur  = inventory.housing[key]
     const prev = (Array.isArray(cur) ? cur[0] : cur) ?? { 현재고: 0, 기발주: 0 }
     setInventory({ ...inventory, housing: { ...inventory.housing, [key]: { ...prev, [field]: parseInt(value) || 0 } } })
+  }
+  const updateFerruleInv = (key: string, field: '현재고' | '기발주', value: string) => {
+    const prev = inventory.ferrule[key] ?? { 현재고: 0, 기발주: 0 }
+    setInventory({ ...inventory, ferrule: { ...inventory.ferrule, [key]: { ...prev, [field]: parseInt(value) || 0 } } })
   }
 
   // ── 저장 ───────────────────────────────────────────────────────
@@ -110,6 +120,21 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
     housingWs['!cols'] = [8, 20, 16, 30, 16, 12, 12, 12].map(w => ({ wch: w }))
     XLSX.utils.book_append_sheet(wb, housingWs, '하우징')
 
+    // 페룰 시트
+    const ferruleKeys   = Object.keys(metadata.ferrule).sort()
+    const ferruleHeader = ['파이', '페룰타입', '품번', '품명', '구매처', '리드타임(일)', '현재고(EA)', '기발주(EA)']
+    const ferruleRows   = ferruleKeys.length
+      ? ferruleKeys.map(k => {
+          const [pai, type] = k.split('|')
+          const m   = metadata.ferrule[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
+          const inv = inventory.ferrule[k] ?? { 현재고: 0, 기발주: 0 }
+          return [pai, type, m.품번 ?? '', m.품명 ?? '', m.구매처 ?? '', m.리드타임 ?? '', inv.현재고 ?? 0, inv.기발주 ?? 0]
+        })
+      : [['1.25', 'LC/PC', '', '', '', '30', 0, 0]]
+    const ferruleWs = XLSX.utils.aoa_to_sheet([ferruleHeader, ...ferruleRows])
+    ferruleWs['!cols'] = [8, 20, 16, 30, 16, 12, 12, 12].map(w => ({ wch: w }))
+    XLSX.utils.book_append_sheet(wb, ferruleWs, '페룰')
+
     XLSX.writeFile(wb, '자재관리_양식.xlsx')
   }
 
@@ -123,8 +148,8 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
         const wb   = XLSX.read(ev.target?.result, { type: 'array' })
         const parsed: PreviewRow[] = []
 
-        for (const kind of ['cable', 'housing'] as const) {
-          const sheetName = kind === 'cable' ? '케이블' : '하우징'
+        for (const kind of ['cable', 'housing', 'ferrule'] as const) {
+          const sheetName = kind === 'cable' ? '케이블' : kind === 'housing' ? '하우징' : '페룰'
           const ws = wb.Sheets[sheetName]
           if (!ws) continue
           const raw = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' }) as string[][]
@@ -134,7 +159,7 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
             const type = String(r[1] ?? '').trim()
             if (!pai || !type) continue
             const key    = `${pai}|${type}`
-            const exists = kind === 'cable' ? !!metadata.cable[key] : !!metadata.housing[key]
+            const exists = kind === 'cable' ? !!metadata.cable[key] : kind === 'housing' ? !!metadata.housing[key] : !!metadata.ferrule[key]
             parsed.push({
               kind, key, pai, type,
               품번:     String(r[2] ?? '').trim(),
@@ -159,28 +184,34 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
     if (!preview) return
     const nextMeta = { ...metadata }
     const nextInv  = { ...inventory }
-    const cable    = { ...nextMeta.cable }
-    const housing  = { ...nextMeta.housing }
+    const cable      = { ...nextMeta.cable }
+    const housing    = { ...nextMeta.housing }
+    const ferrule    = { ...nextMeta.ferrule }
     const cableInv   = { ...nextInv.cable }
     const housingInv = { ...nextInv.housing }
+    const ferruleInv = { ...nextInv.ferrule }
 
     for (const r of preview.rows) {
       if (r.kind === 'cable') {
         cable[r.key]    = { 품번: r.품번, 품명: r.품명, 구매처: r.구매처, 리드타임: r.리드타임 || null }
         const prev      = cableInv[r.key] ?? { 현재고: 0, 기발주: 0 }
         cableInv[r.key] = { ...prev, 현재고: r.현재고, 기발주: r.기발주 }
-      } else {
+      } else if (r.kind === 'housing') {
         const curMeta  = housing[r.key]
         const baseMeta = (Array.isArray(curMeta) ? curMeta[0] : curMeta) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
         housing[r.key] = { ...baseMeta, 품번: r.품번, 품명: r.품명, 구매처: r.구매처, 리드타임: r.리드타임 || null }
         const curInv   = housingInv[r.key]
         const baseInv  = (Array.isArray(curInv) ? curInv[0] : curInv) ?? { 현재고: 0, 기발주: 0 }
         housingInv[r.key] = { ...baseInv, 현재고: r.현재고, 기발주: r.기발주 }
+      } else {
+        ferrule[r.key]    = { 품번: r.품번, 품명: r.품명, 구매처: r.구매처, 리드타임: r.리드타임 || null }
+        const prev        = ferruleInv[r.key] ?? { 현재고: 0, 기발주: 0 }
+        ferruleInv[r.key] = { ...prev, 현재고: r.현재고, 기발주: r.기발주 }
       }
     }
 
-    nextMeta.cable = cable; nextMeta.housing = housing
-    nextInv.cable  = cableInv; nextInv.housing = housingInv
+    nextMeta.cable = cable; nextMeta.housing = housing; nextMeta.ferrule = ferrule
+    nextInv.cable  = cableInv; nextInv.housing = housingInv; nextInv.ferrule = ferruleInv
     setMetadata(nextMeta); saveMetadata(nextMeta)
     setInventory(nextInv); saveInventory(nextInv)
     setPreview(null); flash('both')
@@ -203,11 +234,13 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
       setWarehouses(whCols); setSelectedWh(whCols[0] ?? '')
       const cableMap: Record<string, string> = {}
       const housingMap: Record<string, string> = {}
+      const ferruleMap: Record<string, string> = {}
       Object.entries(metadata.cable).forEach(([k, m]) => { if (m.품번) cableMap[m.품번] = k })
       Object.entries(metadata.housing).forEach(([k, mRaw]) => {
         const m = Array.isArray(mRaw) ? mRaw[0] : mRaw
         if (m?.품번) housingMap[m.품번] = k
       })
+      Object.entries(metadata.ferrule).forEach(([k, m]) => { if (m.품번) ferruleMap[m.품번] = k })
       const rows: ImportRow[] = []
       for (let r = 2; r <= range.e.r; r++) {
         const code  = ws[XLSX.utils.encode_cell({ r, c: 0 })]?.v?.toString().trim() ?? ''
@@ -216,10 +249,11 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
         if (!code) continue
         const byWh: Record<string, number> = {}
         whCols.forEach((wh, wi) => { byWh[wh] = Number(ws[XLSX.utils.encode_cell({ r, c: 4 + wi })]?.v ?? 0) })
-        let matchType: 'cable' | 'housing' | null = null
+        let matchType: 'cable' | 'housing' | 'ferrule' | null = null
         let metaKey: string | null = null
-        if (cableMap[code])        { matchType = 'cable';   metaKey = cableMap[code] }
-        else if (housingMap[code]) { matchType = 'housing'; metaKey = housingMap[code] }
+        if (cableMap[code])         { matchType = 'cable';   metaKey = cableMap[code] }
+        else if (housingMap[code])  { matchType = 'housing'; metaKey = housingMap[code] }
+        else if (ferruleMap[code])  { matchType = 'ferrule'; metaKey = ferruleMap[code] }
         rows.push({ code, name, total, byWh, matchType, metaKey })
       }
       setImportRows(rows); setImportApplied(false)
@@ -229,34 +263,42 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
 
   function applyErpImport(useTotal: boolean) {
     if (!importRows) return
-    const newCable   = { ...inventory.cable }
-    const newHousing = { ...inventory.housing }
+    const newCable    = { ...inventory.cable }
+    const newHousing  = { ...inventory.housing }
+    const newFerrule  = { ...inventory.ferrule }
     importRows.forEach(row => {
       if (!row.matchType || !row.metaKey) return
       const qty = useTotal ? row.total : (row.byWh[selectedWh] ?? 0)
       if (row.matchType === 'cable') {
         const prev = newCable[row.metaKey] ?? { 현재고: 0, 기발주: 0 }
         newCable[row.metaKey] = { ...prev, 현재고: qty }
-      } else {
+      } else if (row.matchType === 'housing') {
         const prevRaw = newHousing[row.metaKey]
         const prev    = (Array.isArray(prevRaw) ? prevRaw[0] : prevRaw) ?? { 현재고: 0, 기발주: 0 }
         newHousing[row.metaKey] = { ...prev, 현재고: qty }
+      } else {
+        const prev = newFerrule[row.metaKey] ?? { 현재고: 0, 기발주: 0 }
+        newFerrule[row.metaKey] = { ...prev, 현재고: qty }
       }
     })
-    setInventory({ cable: newCable, housing: newHousing })
+    setInventory({ cable: newCable, housing: newHousing, ferrule: newFerrule })
     setImportApplied(true)
   }
 
   // ── 공통 헬퍼 ─────────────────────────────────────────────────
-  const getCm  = (k: string): CableMeta   => metadata.cable[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
-  const getHm  = (k: string): HousingComp => { const c = metadata.housing[k]; return (Array.isArray(c) ? c[0] : c) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null } }
+  const getCm  = (k: string): CableMeta    => metadata.cable[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
+  const getHm  = (k: string): HousingComp  => { const c = metadata.housing[k]; return (Array.isArray(c) ? c[0] : c) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null } }
+  const getFm  = (k: string): FerruleMeta  => metadata.ferrule[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
   const getCiv = (k: string) => inventory.cable[k] ?? { 현재고: 0, 기발주: 0 }
   const getHiv = (k: string) => { const c = inventory.housing[k]; return (Array.isArray(c) ? c[0] : c) ?? { 현재고: 0, 기발주: 0 } }
+  const getFiv = (k: string) => inventory.ferrule[k] ?? { 현재고: 0, 기발주: 0 }
 
-  const cableKeys   = Object.keys(metadata.cable).sort()
-  const housingKeys = Object.keys(metadata.housing).sort()
+  const cableKeys    = Object.keys(metadata.cable).sort()
+  const housingKeys  = Object.keys(metadata.housing).sort()
+  const ferruleKeys  = Object.keys(metadata.ferrule).sort()
   const cableMissing   = cableKeys.filter(k => !getCm(k).품번).length
   const housingMissing = housingKeys.filter(k => !getHm(k).품번).length
+  const ferruleMissing = ferruleKeys.filter(k => !getFm(k).품번).length
   const matched   = importRows?.filter(r => r.matchType) ?? []
   const unmatched = importRows?.filter(r => !r.matchType) ?? []
 
@@ -278,6 +320,7 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
           {([
             ['cable',   '케이블', cableKeys.length,   cableMissing],
             ['housing', '하우징', housingKeys.length,  housingMissing],
+            ['ferrule', '페룰',   ferruleKeys.length,  ferruleMissing],
           ] as [typeof tab, string, number, number][]).map(([id, lbl, cnt, miss]) => (
             <button key={id} onClick={() => { setTab(id); setPreview(null) }}
               className={`px-4 py-2 rounded font-semibold text-sm flex items-center gap-2 transition ${
@@ -353,8 +396,8 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
                     {preview.rows.map(r => (
                       <tr key={`${r.kind}-${r.key}`} className={r.isNew ? 'bg-green-50' : ''}>
                         <td className="px-2 py-1">
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${r.kind==='cable'?'bg-blue-100 text-blue-700':'bg-purple-100 text-purple-700'}`}>
-                            {r.kind==='cable'?'케이블':'하우징'}
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${r.kind==='cable'?'bg-blue-100 text-blue-700':r.kind==='housing'?'bg-purple-100 text-purple-700':'bg-orange-100 text-orange-700'}`}>
+                            {r.kind==='cable'?'케이블':r.kind==='housing'?'하우징':'페룰'}
                           </span>
                         </td>
                         <td className="px-2 py-1 font-mono text-gray-500">{r.pai}</td>
@@ -447,8 +490,8 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
                           <td className="px-3 py-1 font-mono text-gray-500">{pai ?? '—'}</td>
                           <td className="px-3 py-1 font-semibold">{type ?? '—'}</td>
                           <td className="px-3 py-1">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.matchType==='cable'?'bg-blue-50 text-blue-700':'bg-purple-50 text-purple-700'}`}>
-                              {r.matchType==='cable'?'케이블':'하우징'}
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.matchType==='cable'?'bg-blue-50 text-blue-700':r.matchType==='housing'?'bg-purple-50 text-purple-700':'bg-orange-50 text-orange-700'}`}>
+                              {r.matchType==='cable'?'케이블':r.matchType==='housing'?'하우징':'페룰'}
                             </span>
                           </td>
                           <td className="px-3 py-1 text-right font-mono font-semibold">{qty.toLocaleString()}</td>
@@ -492,7 +535,7 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
           <thead>
             <tr>
               <th className={thCls}>파이</th>
-              <th className={thCls}>{tab==='cable'?'케이블종류':'하우징타입'}</th>
+              <th className={thCls}>{tab==='cable'?'케이블종류':tab==='housing'?'하우징타입':'페룰타입'}</th>
               <th className={thCls}>품번</th>
               <th className={thCls}>품명</th>
               <th className={thCls}>구매처</th>
@@ -503,10 +546,10 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {(tab==='cable' ? cableKeys : housingKeys).map((key, i) => {
+            {(tab==='cable' ? cableKeys : tab==='housing' ? housingKeys : ferruleKeys).map((key, i) => {
               const [pai, type] = key.split('|')
-              const m   = tab==='cable' ? getCm(key) : getHm(key)
-              const inv = tab==='cable' ? getCiv(key) : getHiv(key)
+              const m   = tab==='cable' ? getCm(key) : tab==='housing' ? getHm(key) : getFm(key)
+              const inv = tab==='cable' ? getCiv(key) : tab==='housing' ? getHiv(key) : getFiv(key)
               const missing = !m.품번
               return (
                 <tr key={key} className={missing ? 'bg-red-50' : i%2===0 ? 'bg-white' : 'bg-gray-50'}>
@@ -517,7 +560,7 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
                       <input
                         value={String(m[f] ?? '')}
                         readOnly={!CAN_WRITE}
-                        onChange={e => tab==='cable' ? updateCableMeta(key, f, e.target.value) : updateHousingMeta(key, f, e.target.value)}
+                        onChange={e => tab==='cable' ? updateCableMeta(key, f, e.target.value) : tab==='housing' ? updateHousingMeta(key, f, e.target.value) : updateFerruleMeta(key, f, e.target.value)}
                         className={CAN_WRITE
                           ? `${inputCls} ${missing && f==='품번' ? 'border-red-400 bg-red-50' : ''}`
                           : inputRoCls}
@@ -527,12 +570,12 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
                   ))}
                   <td className="px-1 py-1">
                     <input type="number" min="0" value={inv.현재고}
-                      onChange={e => tab==='cable' ? updateCableInv(key,'현재고',e.target.value) : updateHousingInv(key,'현재고',e.target.value)}
+                      onChange={e => tab==='cable' ? updateCableInv(key,'현재고',e.target.value) : tab==='housing' ? updateHousingInv(key,'현재고',e.target.value) : updateFerruleInv(key,'현재고',e.target.value)}
                       className={inputInvCls} />
                   </td>
                   <td className="px-1 py-1">
                     <input type="number" min="0" value={inv.기발주 ?? 0}
-                      onChange={e => tab==='cable' ? updateCableInv(key,'기발주',e.target.value) : updateHousingInv(key,'기발주',e.target.value)}
+                      onChange={e => tab==='cable' ? updateCableInv(key,'기발주',e.target.value) : tab==='housing' ? updateHousingInv(key,'기발주',e.target.value) : updateFerruleInv(key,'기발주',e.target.value)}
                       className={inputInvCls} />
                   </td>
                   <td className="px-2 py-1 text-center">
@@ -541,7 +584,7 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
                 </tr>
               )
             })}
-            {(tab==='cable' ? cableKeys : housingKeys).length === 0 && (
+            {(tab==='cable' ? cableKeys : tab==='housing' ? housingKeys : ferruleKeys).length === 0 && (
               <tr>
                 <td colSpan={9} className="text-center text-gray-400 py-10">
                   STEP 1 실행 후 품번을 입력하세요.
