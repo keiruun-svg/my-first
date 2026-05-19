@@ -478,7 +478,7 @@ function writeBunhoSheet(
   hdr(3, C_AVG, `${nY}개년\n평균`, 12); hdr(3, C_SS, `안전재고`, 12)
   hdr(3, C_CUR, `현재고`, 10); hdr(3, C_ORD, `기발주\n(참고)`, 10)
   hdr(3, C_TGT, `목표수량`, 12); hdr(3, C_REQ, `필요발주`, 12)
-  hdr(3, C_NOTE, '비고', 20)
+  hdr(3, C_NOTE, '합산 출처 (가공파일 대조용)', 45)
 
   let ri = 4; let no = 1
 
@@ -537,37 +537,53 @@ function writeBunhoSheet(
     ws.getRow(ri).height = 17; ri++
   }
 
+  // 출처 요약 생성: "3타입: 2.0mm SC/PC 청색(100K) + 백색(80K) + ..."
+  function buildSrcNote(srcs: Map<string, number>): string {
+    if (srcs.size === 0) return ''
+    const sorted = [...srcs.entries()].sort((a, b) => b[1] - a[1])
+    const fmt = (n: number) => n >= 1000 ? `${Math.round(n / 1000)}K` : String(n)
+    const parts = sorted.slice(0, 4).map(([lbl, n]) => `${lbl}(${fmt(n)})`)
+    const suffix = sorted.length > 4 ? ` 외 ${sorted.length - 4}` : ''
+    return `${sorted.length}타입: ${parts.join(' + ')}${suffix}`
+  }
+
   // ── 케이블 섹션 ───────────────────────────────────────────
   // 현재고/기발주는 같은 품번 = 동일 실물 재고이므로 첫 번째 등장 값만 사용
-  type BunhoEntry = { 품명: string; 구매처: string; 리드타임: number; 현재고: number; 기발주: number; annByYear: number[] }
+  type BunhoEntry = { 품명: string; 구매처: string; 리드타임: number; 현재고: number; 기발주: number; annByYear: number[]; srcs: Map<string, number> }
   const byCable = new Map<string, BunhoEntry>()
+  const latestYr = years[nY - 1]
   for (const row of cableRows) {
     const bn = (row.품번 || '').trim(); if (!bn) continue
-    if (!byCable.has(bn)) byCable.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0) })
+    if (!byCable.has(bn)) byCable.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0), srcs: new Map() })
     const e = byCable.get(bn)!
+    const srcKey = `${row.pai} ${row.label}`
+    e.srcs.set(srcKey, (e.srcs.get(srcKey) ?? 0) + (row.byYear[latestYr]?.annual ?? 0))
     for (let i = 0; i < nY; i++) e.annByYear[i] += row.byYear[years[i]]?.annual ?? 0
   }
   if (byCable.size > 0) {
     sectionHeader('▼ 케이블 (m)', mainColor)
     for (const [bn, d] of [...byCable.entries()].sort())
-      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'm', d.annByYear, d.현재고, d.기발주)
+      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'm', d.annByYear, d.현재고, d.기발주, undefined, d.srcs.size > 1 ? buildSrcNote(d.srcs) : '')
     ri++
   }
 
   // ── 하우징 섹션 ───────────────────────────────────────────
   // 같은 품번이 여러 하우징 타입에 공통 부품으로 등록될 수 있음
   // 연간 사용량: 타입별로 합산(올바름) / 현재고·기발주: 첫 등장값만(합산하면 N배 과대 계상)
+  // 비고: 합산에 기여한 하우징 타입 목록 표시 (가공파일 대조용)
   const byHousing = new Map<string, BunhoEntry>()
   for (const row of housingRows) {
     const bn = (row.품번 || '').trim(); if (!bn) continue
-    if (!byHousing.has(bn)) byHousing.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0) })
+    if (!byHousing.has(bn)) byHousing.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0), srcs: new Map() })
     const e = byHousing.get(bn)!
+    const srcKey = `${row.pai} ${row.label}`
+    e.srcs.set(srcKey, (e.srcs.get(srcKey) ?? 0) + (row.byYear[latestYr]?.annual ?? 0))
     for (let i = 0; i < nY; i++) e.annByYear[i] += row.byYear[years[i]]?.annual ?? 0
   }
   if (byHousing.size > 0) {
     sectionHeader('▼ 하우징 공용 부품 (EA)', '7030A0')
     for (const [bn, d] of [...byHousing.entries()].sort())
-      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'EA', d.annByYear, d.현재고, d.기발주)
+      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'EA', d.annByYear, d.현재고, d.기발주, undefined, buildSrcNote(d.srcs))
     ri++
   }
 
