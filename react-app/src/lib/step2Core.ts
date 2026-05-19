@@ -221,8 +221,8 @@ export function buildOrderPlan(
         ? (annuals[annuals.length - 2] - annuals[annuals.length - 3]) / annuals[annuals.length - 3] : null
 
       for (let i = 0; i < metas.length; i++) {
-        const m = metas[i] as Record<string, unknown> ?? {}
-        const inv = (invs[i] ?? { 현재고: 0, 기발주: 0 }) as Record<string, number>
+        const m = (metas[i] ?? {}) as unknown as Record<string, unknown>
+        const inv = (invs[i] ?? { 현재고: 0, 기발주: 0 }) as unknown as Record<string, number>
         const lt = ltDays(m['리드타임'], ltDefault)
         const 안전재고 = Math.round(avgPeak * lt / 30)
 

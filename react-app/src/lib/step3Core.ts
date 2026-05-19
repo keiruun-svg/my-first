@@ -147,8 +147,8 @@ export function buildStep3Plan(
     row.years        = years.filter(yr => row.byYear[yr])
     row.latestAnnual = row.byYear[latestYr]?.annual ?? 0
     row.latestPeak   = row.byYear[latestYr]?.peak   ?? 0
-    const meta = metadata.cable?.[row.key] as Record<string, unknown> | undefined ?? {}
-    const inv  = inventory.cable?.[row.key] as Record<string, number> | undefined ?? {}
+    const meta = (metadata.cable?.[row.key] ?? {}) as unknown as Record<string, unknown>
+    const inv  = (inventory.cable?.[row.key] ?? {}) as unknown as Record<string, number>
     row.품번     = String(meta['품번'] ?? '')
     row.품명     = String(meta['품명'] ?? '')
     row.구매처   = String(meta['구매처'] ?? '')

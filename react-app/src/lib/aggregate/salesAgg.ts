@@ -33,7 +33,7 @@ export interface SalesAggResult {
 // 26년 예측 생산 수량 = 25년 판매 × (1 + 판매CAGR) × 생산비중_25년
 export function forecastProduction(
   result: SalesAggResult,
-  targetYear: string,
+  _targetYear: string,
   baseYear: string,
 ): Record<string, number> {
   const forecast: Record<string, number> = {}

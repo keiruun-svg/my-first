@@ -12,7 +12,6 @@ interface Props {
   settings:  AppSettings
 }
 
-const MAIN_COLOR = 'FF1F3864'
 const HEADER_BG  = 'FFBDD7EE'
 const BORDER: Partial<ExcelJS.Border> = { style: 'thin', color: { argb: 'FF000000' } }
 const ALL_BORDERS = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER }

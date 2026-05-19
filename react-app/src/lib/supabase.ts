@@ -45,6 +45,7 @@ export async function loadSettings(): Promise<AppSettings> {
   if (d) return d as AppSettings
   return lsGet('ajw_settings', {
     lead_time_default: 60,
+    safety_stock_k: 1.5,
     colors: { main_header: '1F3864', year_23: '2F5597', year_24: '2E75B6', year_25: '155480' },
   })
 }
