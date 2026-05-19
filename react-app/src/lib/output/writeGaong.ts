@@ -86,21 +86,35 @@ function calcHousing(row: PivotRow): Record<number, number> {
 // ── 집계 시트 빌드 ───────────────────────────────────────────
 interface AggEntry { monthly: number[] }
 
+const PIGTAIL_COLORS_AGG = ['청','등','녹','적','황','자','갈','흑','백','회','연청','연등']
+const PIGTAIL_COLOR_MAP: Record<string, string> = { '연청': '청록', '연등': '분홍' }
+
 function buildCableAgg(rows: PivotRow[]): Map<string, AggEntry & { pai: string; unit: string }> {
   const agg = new Map<string, AggEntry & { pai: string; unit: string }>()
 
   for (const row of rows) {
     const isPigtail = row.kind === 'pigtail' || row.kind === 'om1-pigtail'
-    const label = kindLabel(row.kind, row.core)
-    const key   = `${row.pai}|${label}`
 
-    // 단위: PIGTAIL이거나 길이 없으면 개(ea), 나머지는 m
+    // 0.9mm 피그테일: 코어수만큼 색상별 분리 (각 색상이 동일 수량)
+    if (isPigtail && row.pai === '0.9mm') {
+      const nc = Math.max(1, row.core || 1)
+      for (const raw of PIGTAIL_COLORS_AGG.slice(0, nc)) {
+        const color = PIGTAIL_COLOR_MAP[raw] ?? raw
+        const key = `0.9mm|pigtail-${color}`
+        if (!agg.has(key)) agg.set(key, { pai: '0.9mm', unit: '개', monthly: new Array(12).fill(0) })
+        const entry = agg.get(key)!
+        for (let i = 0; i < 12; i++) entry.monthly[i] += row.monthly[i]
+      }
+      continue
+    }
+
+    const label  = kindLabel(row.kind, row.core)
+    const key    = `${row.pai}|${label}`
     const hasLen = row.length != null && row.length > 0 && !isPigtail
     const unit   = hasLen ? 'm' : '개'
 
     if (!agg.has(key)) agg.set(key, { pai: row.pai, unit, monthly: new Array(12).fill(0) })
     const entry = agg.get(key)!
-
     for (let i = 0; i < 12; i++) {
       entry.monthly[i] += hasLen
         ? Math.round(row.monthly[i] * (row.length ?? 0))

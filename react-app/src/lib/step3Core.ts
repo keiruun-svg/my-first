@@ -9,7 +9,7 @@ export interface Step3Row {
   label:          string
   pai:            string
   unit:           string
-  byYear:         Record<string, { annual: number; peak: number }>
+  byYear:         Record<string, { annual: number; peak: number; monthly: number[] }>
   years:          string[]
   latestAnnual:   number
   latestPeak:     number
@@ -108,12 +108,13 @@ export function buildStep3Plan(
         const label  = String(row[0] ?? '').trim()
         const pai    = String(row[1] ?? '').trim()
         const unit   = String(row[2] ?? '').trim()
+        const monthly = Array.from({ length: 12 }, (_, i) => Number(row[3 + i]) || 0)
         const annual = Number(row[15]) || 0
         const peak   = Number(row[16]) || 0
         if (!label || !pai || annual <= 0) continue
         const key = `${pai}|${label}`
         if (!cableMap[key]) cableMap[key] = mkRow('cable', key, label, pai, unit)
-        cableMap[key].byYear[yr] = { annual, peak }
+        cableMap[key].byYear[yr] = { annual, peak, monthly }
       }
     }
 
@@ -124,19 +125,30 @@ export function buildStep3Plan(
       const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[hSheet], { header: 1, defval: null }) as unknown[][]
       for (const row of rows.slice(1)) {
         const fullLabel = String(row[0] ?? '').trim()
+        const monthly   = Array.from({ length: 12 }, (_, i) => Number(row[1 + i]) || 0)
         const annual    = Number(row[13]) || 0
         const peak      = Number(row[14]) || 0
         if (!fullLabel || annual <= 0) continue
-        // "2.0mm - LC/PC 청색" → pai="2.0mm", type="LC/PC 청색" → key="2.0mm|LC/PC 청색"
         const sep  = fullLabel.indexOf(' - ')
         const pai  = sep > 0 ? fullLabel.slice(0, sep) : ''
         const type = sep > 0 ? fullLabel.slice(sep + 3) : fullLabel
         if (!pai) continue
         const key = `${pai}|${type}`
         if (!housingMap[key]) housingMap[key] = mkRow('housing', key, fullLabel, pai, 'EA')
-        housingMap[key].byYear[yr] = { annual, peak }
+        housingMap[key].byYear[yr] = { annual, peak, monthly }
       }
     }
+  }
+
+  // ── 가공파일에 없지만 자재 관리에 품번 등록된 케이블 추가 (사용량 0) ──
+  for (const [key, metaVal] of Object.entries(metadata.cable ?? {})) {
+    if (cableMap[key]) continue
+    const m = metaVal as Record<string, unknown>
+    if (!String(m['품번'] ?? '').trim()) continue
+    const [pai, label] = key.split('|', 2)
+    if (!pai || !label) continue
+    const unit = pai === '0.9mm' ? '개' : 'm'
+    cableMap[key] = mkRow('cable', key, label, pai, unit)
   }
 
   // ── 메타/재고 연결 + 계산 ────────────────────────────────

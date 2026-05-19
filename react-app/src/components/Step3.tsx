@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import ExcelJS from 'exceljs'
 import { buildStep3Plan, parseSalesAggExcel } from '../lib/step3Core'
 import type { Step3Row } from '../lib/step3Core'
 import type { Metadata, Inventory, AppSettings } from '../lib/types'
+import { buildStep3Workbook } from '../lib/output/writeStep3Excel'
 import { downloadXlsx, today } from '../lib/download'
 import FileUploader from './FileUploader'
 
@@ -12,19 +12,16 @@ interface Props {
   settings:  AppSettings
 }
 
-const HEADER_BG  = 'FFBDD7EE'
-const BORDER: Partial<ExcelJS.Border> = { style: 'thin', color: { argb: 'FF000000' } }
-const ALL_BORDERS = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER }
 const num = (v: number, unit = '') => v === 0 ? '—' : v.toLocaleString() + (unit ? ' ' + unit : '')
 
 export default function Step3({ metadata, inventory, settings }: Props) {
-  const [logs, setLogs]               = useState<string[]>([])
-  const [running, setRunning]         = useState(false)
-  const [done, setDone]               = useState(false)
-  const [gaongFile, setGaongFile]     = useState<File | null>(null)
+  const [logs, setLogs]                 = useState<string[]>([])
+  const [running, setRunning]           = useState(false)
+  const [done, setDone]                 = useState(false)
+  const [gaongFile, setGaongFile]       = useState<File | null>(null)
   const [salesAggFile, setSalesAggFile] = useState<File | null>(null)
-  const [rows, setRows]               = useState<Step3Row[]>([])
-  const [years, setYears]             = useState<string[]>([])
+  const [rows, setRows]                 = useState<Step3Row[]>([])
+  const [years, setYears]               = useState<string[]>([])
 
   const run = async () => {
     if (!gaongFile) return alert('가공파일을 선택해주세요.')
@@ -49,10 +46,7 @@ export default function Step3({ metadata, inventory, settings }: Props) {
 
   const exportExcel = async () => {
     if (!rows.length) return
-    const wb = new ExcelJS.Workbook()
-    wb.creator = 'AJW 발주계획 시스템'
-    writeSheet(wb, '케이블 발주계획', rows.filter(r => r.type === 'cable'),   years, settings.colors.main_header)
-    writeSheet(wb, '하우징 발주계획', rows.filter(r => r.type === 'housing'), years, settings.colors.main_header)
+    const wb  = buildStep3Workbook(rows, years, settings.colors.main_header, settings.safety_stock_k ?? 1.5, metadata, inventory)
     const buf = await wb.xlsx.writeBuffer()
     downloadXlsx(buf as ArrayBuffer, `발주계획_${today()}.xlsx`)
   }
@@ -232,97 +226,3 @@ function SectionTable({
   )
 }
 
-// ── Excel 출력 ────────────────────────────────────────────────────
-function writeSheet(
-  wb:      ExcelJS.Workbook,
-  name:    string,
-  rows:    Step3Row[],
-  years:   string[],
-  color:   string,
-) {
-  if (!rows.length) return
-  const ws      = wb.addWorksheet(name)
-  const latestYr = years[years.length - 1]
-  const unitCol  = rows[0]?.unit === 'm' ? 'm' : 'EA'
-  const nYears   = years.length
-  const mainFill  = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF' + color } }
-  const cell = (r: number, c: number) => ws.getCell(r, c)
-  const hdr  = (r: number, c: number, v: string, w?: number) => {
-    const cl = cell(r, c)
-    cl.value = v; cl.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_BG } }
-    cl.font = { name: 'Arial', bold: true, size: 9, color: { argb: 'FF1F3864' } }
-    cl.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
-    cl.border = ALL_BORDERS
-    if (w) ws.getColumn(c).width = w
-  }
-
-  // 타이틀
-  const totalCols = 7 + nYears + 4
-  ws.mergeCells(1, 1, 1, totalCols)
-  const titleCell = cell(1, 1)
-  titleCell.value = name
-  titleCell.fill = mainFill
-  titleCell.font = { name: 'Arial', bold: true, size: 13, color: { argb: 'FFFFFFFF' } }
-  titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
-  ws.getRow(1).height = 26
-
-  // 헤더 행
-  ws.getRow(2).height = 36
-  const baseHdrs: [string, number][] = [
-    ['NO', 5], ['파이', 8], ['타입', 20], ['품번', 16], ['품명', 38], ['구매처', 14], [`LT\n(일)`, 9],
-  ]
-  baseHdrs.forEach(([h, w], i) => hdr(2, i + 1, h, w))
-  let col = 8
-  years.forEach(yr => { hdr(2, col, `${yr}년\n연간(${unitCol})`, 12); col++ })
-  hdr(2, col++, `피크\n(${latestYr}년)`, 11)
-  hdr(2, col++, `안전재고\n(${unitCol})`, 11)
-  hdr(2, col++, '현재고', 10)
-  hdr(2, col++, `발주\n필요량`, 12)
-
-  // 데이터 행
-  rows.forEach((row, idx) => {
-    const ri   = idx + 3
-    const even = idx % 2 === 0
-    const bg   = even ? undefined : { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFF5F5F5' } }
-    const setCell = (c: number, v: ExcelJS.CellValue, right = false) => {
-      const cl = cell(ri, c)
-      cl.value = v
-      cl.font = { name: 'Arial', size: 9 }
-      cl.border = ALL_BORDERS
-      if (bg) cl.fill = bg
-      cl.alignment = { horizontal: right ? 'right' : c <= 2 ? 'center' : 'left', vertical: 'middle' }
-      if (right) cl.numFmt = '#,##0'
-    }
-    setCell(1, idx + 1)
-    setCell(2, row.pai)
-    setCell(3, row.label)
-    setCell(4, row.품번 || '(미등록)')
-    setCell(5, row.품명 || '')
-    setCell(6, row.구매처 || '')
-    setCell(7, row.리드타임, true)
-    let c2 = 8
-    years.forEach(yr => { setCell(c2, row.byYear[yr]?.annual || null, true); c2++ })
-    setCell(c2++, row.latestPeak || null, true)
-    // 안전재고 — 강조
-    const safeCell = cell(ri, c2)
-    safeCell.value = row.안전재고 || null
-    safeCell.font  = { name: 'Arial', bold: true, size: 9 }
-    safeCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } }
-    safeCell.border = ALL_BORDERS; safeCell.numFmt = '#,##0'
-    safeCell.alignment = { horizontal: 'right', vertical: 'middle' }
-    c2++
-    setCell(c2++, row.현재고 || null, true)
-    // 발주필요량 — 강조
-    const orderCell = cell(ri, c2)
-    orderCell.value = row.발주필요량 || null
-    orderCell.font  = { name: 'Arial', bold: true, size: 9, color: { argb: row.발주필요량 > 0 ? 'FF375623' : 'FF999999' } }
-    orderCell.fill  = row.발주필요량 > 0
-      ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } }
-      : (bg ?? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } })
-    orderCell.border = ALL_BORDERS; orderCell.numFmt = '#,##0'
-    orderCell.alignment = { horizontal: 'right', vertical: 'middle' }
-    ws.getRow(ri).height = 17
-  })
-
-  ws.views = [{ state: 'frozen', xSplit: 3, ySplit: 2 }]
-}
