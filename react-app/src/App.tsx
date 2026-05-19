@@ -10,8 +10,7 @@ import type { SalesAggResult } from './lib/aggregate/salesAgg'
 import Step1 from './components/Step1'
 import Step2 from './components/Step2'
 import Step3 from './components/Step3'
-import MetaManager from './components/MetaManager'
-import InventoryComp from './components/Inventory'
+import MaterialManager from './components/MaterialManager'
 import Settings from './components/Settings'
 import PartNumberGenerator from './components/PartNumberGenerator'
 import SalesAnalysisTab from './components/SalesAnalysisTab'
@@ -24,8 +23,7 @@ const ALL_TABS = [
   { id: 'step3',     label: '📊 STEP 3 — 발주계획 생성',  devOnly: false },
   { id: 'sales',     label: '🔍 판매 현황 분석',           devOnly: false },
   { id: 'partnum',   label: '🏷 품번 생성기',              devOnly: false },
-  { id: 'meta',      label: '📋 품번 관리',                devOnly: true  },  // 로컬 전용
-  { id: 'inventory', label: '📦 재고 현황',                devOnly: false },
+  { id: 'material',  label: '📦 자재 관리',                devOnly: false },
   { id: 'settings',  label: '⚙️ 파라미터 & 양식 설정',   devOnly: false },
 ] as const
 
@@ -130,11 +128,11 @@ export default function App() {
             setOjcProducts={(p) => { setOjcProducts(p); saveOjcProducts(p) }}
           />
         )}
-        {activeTab === 'meta' && CAN_WRITE && (
-          <MetaManager metadata={metadata} setMetadata={setMetadata} />
-        )}
-        {activeTab === 'inventory' && (
-          <InventoryComp inventory={inventory} setInventory={setInventory} metadata={metadata} />
+        {activeTab === 'material' && (
+          <MaterialManager
+            metadata={metadata}     setMetadata={setMetadata}
+            inventory={inventory}   setInventory={setInventory}
+          />
         )}
         {activeTab === 'settings' && (
           <Settings
