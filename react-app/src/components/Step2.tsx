@@ -9,7 +9,7 @@ import FileUploader from './FileUploader'
 
 interface Props {
   salesAgg:    SalesAggResult | null
-  setSalesAgg: (s: SalesAggResult) => void
+  setSalesAgg: (s: SalesAggResult | null) => void
 }
 
 
@@ -89,7 +89,7 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
         )}
         {(done || logs.length > 0) && (
           <button
-            onClick={() => { setDone(false); setLogs([]); setSalesFile(null); setPurchaseFile(null) }}
+            onClick={() => { setDone(false); setLogs([]); setSalesFile(null); setPurchaseFile(null); setSalesAgg(null) }}
             className="px-4 py-2 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition"
           >
             🗑 초기화
