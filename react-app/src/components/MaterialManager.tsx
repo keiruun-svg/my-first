@@ -26,7 +26,9 @@ interface ImportRow {
 const thCls = 'px-3 py-2 text-xs font-bold text-gray-700 border-b-2 border-gray-200 bg-gray-50 whitespace-nowrap text-left'
 const thR   = `${thCls} text-right`
 
-export default function MaterialManager({ metadata, setMetadata, inventory, setInventory }: Props) {
+export default function MaterialManager({ metadata: metadataRaw, setMetadata, inventory: inventoryRaw, setInventory }: Props) {
+  const metadata  = { ...metadataRaw,  ferrule: metadataRaw.ferrule  ?? {} }
+  const inventory = { ...inventoryRaw, ferrule: inventoryRaw.ferrule ?? {} }
   const [tab,   setTab]   = useState<'cable' | 'housing' | 'ferrule'>('cable')
   const [saved, setSaved] = useState<'' | 'both' | 'meta' | 'inv'>('')
 
@@ -120,19 +122,18 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
     housingWs['!cols'] = [8, 20, 16, 30, 16, 12, 12, 12].map(w => ({ wch: w }))
     XLSX.utils.book_append_sheet(wb, housingWs, '하우징')
 
-    // 페룰 시트
+    // 페룰 시트 (파이 없음 — 페룰타입이 곧 키)
     const ferruleKeys   = Object.keys(metadata.ferrule).sort()
-    const ferruleHeader = ['파이', '페룰타입', '품번', '품명', '구매처', '리드타임(일)', '현재고(EA)', '기발주(EA)']
+    const ferruleHeader = ['페룰타입', '품번', '품명', '구매처', '리드타임(일)', '현재고(EA)', '기발주(EA)']
     const ferruleRows   = ferruleKeys.length
       ? ferruleKeys.map(k => {
-          const [pai, type] = k.split('|')
           const m   = metadata.ferrule[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
           const inv = inventory.ferrule[k] ?? { 현재고: 0, 기발주: 0 }
-          return [pai, type, m.품번 ?? '', m.품명 ?? '', m.구매처 ?? '', m.리드타임 ?? '', inv.현재고 ?? 0, inv.기발주 ?? 0]
+          return [k, m.품번 ?? '', m.품명 ?? '', m.구매처 ?? '', m.리드타임 ?? '', inv.현재고 ?? 0, inv.기발주 ?? 0]
         })
-      : [['1.25', 'LC/PC', '', '', '', '30', 0, 0]]
+      : [['LC/PC 청색', '', '', '', '30', 0, 0]]
     const ferruleWs = XLSX.utils.aoa_to_sheet([ferruleHeader, ...ferruleRows])
-    ferruleWs['!cols'] = [8, 20, 16, 30, 16, 12, 12, 12].map(w => ({ wch: w }))
+    ferruleWs['!cols'] = [20, 16, 30, 16, 12, 12, 12].map(w => ({ wch: w }))
     XLSX.utils.book_append_sheet(wb, ferruleWs, '페룰')
 
     XLSX.writeFile(wb, '자재관리_양식.xlsx')
@@ -154,22 +155,38 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
           if (!ws) continue
           const raw = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' }) as string[][]
           for (let i = 1; i < raw.length; i++) {
-            const r    = raw[i]
-            const pai  = String(r[0] ?? '').trim()
-            const type = String(r[1] ?? '').trim()
-            if (!pai || !type) continue
-            const key    = `${pai}|${type}`
-            const exists = kind === 'cable' ? !!metadata.cable[key] : kind === 'housing' ? !!metadata.housing[key] : !!metadata.ferrule[key]
-            parsed.push({
-              kind, key, pai, type,
-              품번:     String(r[2] ?? '').trim(),
-              품명:     String(r[3] ?? '').trim(),
-              구매처:   String(r[4] ?? '').trim(),
-              리드타임: String(r[5] ?? '').trim(),
-              현재고:   Number(r[6]) || 0,
-              기발주:   Number(r[7]) || 0,
-              isNew: !exists,
-            })
+            const r = raw[i]
+            if (kind === 'ferrule') {
+              const type = String(r[0] ?? '').trim()
+              if (!type) continue
+              const key = type
+              parsed.push({
+                kind, key, pai: '', type,
+                품번:     String(r[1] ?? '').trim(),
+                품명:     String(r[2] ?? '').trim(),
+                구매처:   String(r[3] ?? '').trim(),
+                리드타임: String(r[4] ?? '').trim(),
+                현재고:   Number(r[5]) || 0,
+                기발주:   Number(r[6]) || 0,
+                isNew: !metadata.ferrule[key],
+              })
+            } else {
+              const pai  = String(r[0] ?? '').trim()
+              const type = String(r[1] ?? '').trim()
+              if (!pai || !type) continue
+              const key    = `${pai}|${type}`
+              const exists = kind === 'cable' ? !!metadata.cable[key] : !!metadata.housing[key]
+              parsed.push({
+                kind, key, pai, type,
+                품번:     String(r[2] ?? '').trim(),
+                품명:     String(r[3] ?? '').trim(),
+                구매처:   String(r[4] ?? '').trim(),
+                리드타임: String(r[5] ?? '').trim(),
+                현재고:   Number(r[6]) || 0,
+                기발주:   Number(r[7]) || 0,
+                isNew: !exists,
+              })
+            }
           }
         }
 
@@ -534,7 +551,7 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
         <table className="text-xs w-full border-collapse bg-white">
           <thead>
             <tr>
-              <th className={thCls}>파이</th>
+              {tab !== 'ferrule' && <th className={thCls}>파이</th>}
               <th className={thCls}>{tab==='cable'?'케이블종류':tab==='housing'?'하우징타입':'페룰타입'}</th>
               <th className={thCls}>품번</th>
               <th className={thCls}>품명</th>
@@ -547,13 +564,13 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
           </thead>
           <tbody className="divide-y divide-gray-100">
             {(tab==='cable' ? cableKeys : tab==='housing' ? housingKeys : ferruleKeys).map((key, i) => {
-              const [pai, type] = key.split('|')
+              const [pai, type] = tab === 'ferrule' ? ['', key] : key.split('|')
               const m   = tab==='cable' ? getCm(key) : tab==='housing' ? getHm(key) : getFm(key)
               const inv = tab==='cable' ? getCiv(key) : tab==='housing' ? getHiv(key) : getFiv(key)
               const missing = !m.품번
               return (
                 <tr key={key} className={missing ? 'bg-red-50' : i%2===0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className="px-3 py-1 font-mono text-gray-500 whitespace-nowrap">{pai}</td>
+                  {tab !== 'ferrule' && <td className="px-3 py-1 font-mono text-gray-500 whitespace-nowrap">{pai}</td>}
                   <td className="px-3 py-1.5 font-semibold whitespace-nowrap">{type}</td>
                   {(['품번','품명','구매처','리드타임'] as const).map(f => (
                     <td key={f} className="px-1 py-1">
@@ -586,7 +603,7 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
             })}
             {(tab==='cable' ? cableKeys : tab==='housing' ? housingKeys : ferruleKeys).length === 0 && (
               <tr>
-                <td colSpan={9} className="text-center text-gray-400 py-10">
+                <td colSpan={tab === 'ferrule' ? 8 : 9} className="text-center text-gray-400 py-10">
                   STEP 1 실행 후 품번을 입력하세요.
                 </td>
               </tr>

@@ -30,10 +30,13 @@ function mc2(kind: unknown, core: unknown): string {
   return k.toUpperCase()
 }
 
-function getHousingPrimary(t: unknown, kind: unknown, pai: string): [string,string] | null {
+const LG_PREFIXES = ['SOJC-', 'DOJC-', 'MOJC-']
+const isLgHyang = (code: string) => LG_PREFIXES.some(pfx => code.toUpperCase().startsWith(pfx))
+
+function getHousingPrimary(t: unknown, kind: unknown, pai: string, pCode = ''): [string,string] | null {
   if (!t) return null
   const ts = String(t).trim(); const p = normalPai(pai); const k = String(kind ?? '').toLowerCase()
-  if (ts === 'LC/PC') return MM_KINDS.has(k) && p === '2.0mm' ? [p,'LC/PC 베이지MM'] : [p,'LC/PC 청색']
+  if (ts === 'LC/PC') return MM_KINDS.has(k) && p === '2.0mm' && isLgHyang(pCode) ? [p,'LC/PC 베이지MM'] : [p,'LC/PC 청색']
   const m: Record<string, [string,string]> = {
     'LC/APC':[p,'LC/APC 녹색'],'SC/PC':[p,'SC/PC 청색'],
     'SC/APC':[p,'SC/APC 녹색'],'FC/PC':[p,'FC/PC 흑색'],'FC/APC':[p,'FC/APC 녹색'],
@@ -121,6 +124,7 @@ export function aggregateStats(fileBuffer: ArrayBuffer): Step2Stats {
     if (hs) {
       const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[hs], { header: 1, defval: null }) as unknown[][]
       for (const row of rows.slice(1)) {
+        const pCode = String(row[0] ?? '').trim()
         const kind = row[3], pai = row[4], core = row[5], t1 = row[7], t2 = row[8]
         if (!pai) continue
         const ph = normalPai(pai)
@@ -129,10 +133,10 @@ export function aggregateStats(fileBuffer: ArrayBuffer): Step2Stats {
         for (let mi = 0; mi < 12; mi++) {
           const qty = row[9 + mi]; if (!qty) continue
           const q = parseFloat(String(qty))
-          const ha = getHousingPrimary(t1, kind, ph)
+          const ha = getHousingPrimary(t1, kind, ph, pCode)
           if (ha) { const hk = `${ha[0]}|${ha[1]}`; initKey(housingAgg, hk); housingAgg[hk][yr][mi] += q * cps }
           if (t2) {
-            const hb = isDp ? getHousingRed(t2, ph) : getHousingPrimary(t2, kind, ph)
+            const hb = isDp ? getHousingRed(t2, ph) : getHousingPrimary(t2, kind, ph, pCode)
             if (hb) { const hk = `${hb[0]}|${hb[1]}`; initKey(housingAgg, hk); housingAgg[hk][yr][mi] += q * cps }
           }
         }

@@ -17,18 +17,32 @@ function toYY(raw: unknown): string | null {
   return null
 }
 
-/** 전체 판매량.xlsx — 컬럼: 품목코드, 품목명, 년, 수량 */
+/** 전체 판매량.xlsx
+ *  형식 A (연간 합산): 품목코드, 품목명, 년, 수량
+ *  형식 B (판매현황 분석): 거래처명, 품목코드, 품목명, 년, 월, 수량, 공급가액 — 자동 감지 후 연간 합산
+ */
 export function parseSalesFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] {
   const wb  = XLSX.read(buffer, { type: 'array' })
-  const ws  = wb.Sheets[wb.SheetNames[0]]
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
-  logs.push(`전체 판매량: ${raw.length.toLocaleString()}행 로드`)
+  const allRaw: Record<string, unknown>[] = []
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name]
+    if (!ws || !ws['!ref']) continue
+    allRaw.push(...XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null }))
+  }
+  logs.push(`전체 판매량: ${allRaw.length.toLocaleString()}행 로드`)
 
-  const rows: SalesRow[] = []
-  for (const row of raw) {
+  // 형식 감지 — '월' 컬럼 또는 '거래처명' 컬럼이 있으면 판매현황 분석 파일
+  const isDetailed = allRaw.length > 0 && (
+    allRaw[0]['월'] !== undefined || allRaw[0]['거래처명'] !== undefined || allRaw[0]['거래처'] !== undefined
+  )
+  if (isDetailed) logs.push('  → 판매현황 분석 파일 감지 — 월별 데이터를 연간 합산합니다')
+
+  const agg: Record<string, { code: string; name: string; qty: number }> = {}
+
+  for (const row of allRaw) {
     const code = String(row['품목코드'] ?? '').trim()
-    const name = String(row['품목명']  ?? '').trim()
-    if (!code || !name) continue
+    const name = String(row['품목명'] ?? row['제품명'] ?? '').trim()
+    if (!name) continue
 
     const qty = parseInt(String(row['수량'] ?? '0')) || 0
     if (qty <= 0) continue
@@ -36,9 +50,17 @@ export function parseSalesFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] 
     const yr = toYY(row['년'] ?? row['연도'] ?? row['year'])
     if (!yr) continue
 
-    rows.push({ code, name, year: yr, qty })
+    const key = `${code}||${name}||${yr}`
+    if (!agg[key]) agg[key] = { code, name, qty: 0 }
+    agg[key].qty += qty
   }
-  logs.push(`  → OJC 포함 전체 ${rows.length.toLocaleString()}건`)
+
+  const rows: SalesRow[] = Object.entries(agg).map(([key, v]) => {
+    const [,, yr] = key.split('||')
+    return { code: v.code, name: v.name, year: yr, qty: v.qty }
+  })
+
+  logs.push(`  → OJC 포함 전체 ${rows.length.toLocaleString()}건 (${isDetailed ? '월별→연간 합산' : '연간 직접'})`)
   return rows
 }
 

@@ -57,9 +57,9 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
     }
   }
 
-  const downloadSalesAgg = () => {
+  const downloadSalesAgg = async () => {
     if (!salesAgg) return
-    downloadXlsx(writeSalesAgg(salesAgg), `판매분석_${today()}.xlsx`)
+    downloadXlsx(await writeSalesAgg(salesAgg), `판매분석_${today()}.xlsx`)
   }
 
   const years      = salesAgg?.years ?? []
@@ -78,7 +78,7 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FileUploader
-          label="① 전체 판매량.xlsx — 컬럼: 품목코드, 품목명, 년, 수량"
+          label="① 전체 판매량.xlsx 또는 판매현황 분석 파일 (자동 감지)"
           fileName={salesFile?.name ?? ''}
           onFile={setSalesFile}
         />
