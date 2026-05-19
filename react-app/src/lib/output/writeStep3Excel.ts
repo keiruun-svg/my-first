@@ -590,6 +590,7 @@ function writeBunhoSheet(
   // ── 페롤 섹션 ─────────────────────────────────────────────
   const connAnn = new Map<string, number[]>()
   for (const row of housingRows) {
+    if (row.isSubRow) continue  // 다중 부품 하우징의 2번째+ 행은 제외 (같은 annual이 N번 합산되는 것 방지)
     const type = row.key.split('|')[1] ?? ''
     const m = type.match(/^(LC\/PC|LC\/APC|SC\/PC|SC\/APC|FC\/PC|FC\/APC)/)
     if (!m) continue
