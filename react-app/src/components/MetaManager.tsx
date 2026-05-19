@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { saveMetadata } from '../lib/supabase'
+import { today } from '../lib/download'
 import type { Metadata, CableMeta, HousingComp } from '../lib/types'
 
 interface Props {
@@ -83,7 +84,7 @@ export default function MetaManager({ metadata, setMetadata }: Props) {
 
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, isCable ? '케이블' : '하우징')
-    XLSX.writeFile(wb, `품번관리_${isCable ? '케이블' : '하우징'}_템플릿.xlsx`)
+    XLSX.writeFile(wb, `품번관리_${isCable ? '케이블' : '하우징'}_${today()}.xlsx`)
   }
 
   // ── Excel 파싱 ───────────────────────────────────────────────

@@ -17,7 +17,7 @@ const HOUSING_COL_NAMES: Record<number, string> = {
   29:'2.0mm - SC/APC 녹색', 30:'2.0mm - SC/APC 적색',
   31:'2.0mm - FC/PC 흑색',  32:'2.0mm - FC/PC 적색',
   33:'2.0mm - FC/APC 녹색', 34:'2.0mm - FC/APC 적색',
-  35:'2.0mm - LC/PC 베이지(OM1·OM3)',
+  35:'2.0mm - LC/PC 베이지MM',
   36:'3.0mm - LC/PC 청색',  37:'3.0mm - LC/PC 적색',
   38:'3.0mm - LC/APC 녹색', 39:'3.0mm - LC/APC 적색',
   40:'3.0mm - SC/PC 청색',  41:'3.0mm - SC/PC 적색',
@@ -87,7 +87,7 @@ function calcHousing(row: PivotRow): Record<number, number> {
 interface AggEntry { monthly: number[] }
 
 const PIGTAIL_COLORS_AGG = ['청','등','녹','적','황','자','갈','흑','백','회','연청','연등']
-const PIGTAIL_COLOR_MAP: Record<string, string> = { '연청': '청록', '연등': '분홍' }
+const PIGTAIL_COLOR_MAP: Record<string, string> = { '연청': 'AQUA', '연등': 'rose' }
 
 function buildCableAgg(rows: PivotRow[]): Map<string, AggEntry & { pai: string; unit: string }> {
   const agg = new Map<string, AggEntry & { pai: string; unit: string }>()

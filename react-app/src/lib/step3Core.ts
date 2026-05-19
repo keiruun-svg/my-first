@@ -3,6 +3,11 @@ import type { Metadata, Inventory } from './types'
 
 const PAI_ORDER: Record<string, number> = { '2.0mm': 0, '3.0mm': 1, '0.9mm': 2 }
 
+export interface CodeCableEntry {
+  key:    string  // pai|label key matching Step3Row
+  length: number  // meters per unit
+}
+
 export interface Step3Row {
   type:           'cable' | 'housing'
   key:            string
@@ -23,6 +28,21 @@ export interface Step3Row {
   현재고:          number
   기발주:          number
   발주필요량:      number
+  isSubRow:       boolean  // 다중 부품 하우징 타입의 2번째+ 행
+}
+
+// kind + core → 집계 레이블 (writeGaong.ts kindLabel과 동일)
+function kindToLabel(kind: string, core: number): string {
+  const sd = core === 1 ? 'SP' : core === 2 ? 'DP' : `${core}C`
+  const map: Record<string, string> = {
+    'a1':'A1','b3':'B3','om1':'OM1','om3':'OM3',
+    'a1-청':'A1_청','a1-녹':'A1_녹','a1-적':'A1_적','a1-자':'A1_자',
+  }
+  if (map[kind])  return `${map[kind]}-${sd}`
+  if (kind === 'drop') return `DROP-${sd}`
+  if (kind === 'pigtail' || kind === 'om1-pigtail') return ''  // 수요분석 제외
+  if (kind === 'a2') return 'Optical cable'
+  return kind.toUpperCase()
 }
 
 // 집계 시트 레이블("A1-SP", "B3-DP", ...) → salesAgg kind 키
@@ -68,7 +88,7 @@ function ltDays(lt: unknown, def: number): number {
 }
 
 function mkRow(type: 'cable' | 'housing', key: string, label: string, pai: string, unit: string): Step3Row {
-  return { type, key, label, pai, unit, byYear: {}, years: [], latestAnnual: 0, latestPeak: 0, forecastAnnual: 0, appliedCagr: 0, 품번: '', 품명: '', 구매처: '', 리드타임: 60, 안전재고: 0, 현재고: 0, 기발주: 0, 발주필요량: 0 }
+  return { type, key, label, pai, unit, byYear: {}, years: [], latestAnnual: 0, latestPeak: 0, forecastAnnual: 0, appliedCagr: 0, 품번: '', 품명: '', 구매처: '', 리드타임: 60, 안전재고: 0, 현재고: 0, 기발주: 0, 발주필요량: 0, isSubRow: false }
 }
 
 export function buildStep3Plan(
@@ -78,7 +98,7 @@ export function buildStep3Plan(
   ltDefault: number,
   safetyK = 1.5,
   kindCagr?: Record<string, number>,
-): { rows: Step3Row[]; years: string[]; logs: string[] } {
+): { rows: Step3Row[]; years: string[]; logs: string[]; codeToCable: Record<string, CodeCableEntry> } {
   const logs: string[] = []
   const wb    = XLSX.read(fileBuffer, { type: 'array' })
   const names = new Set(wb.SheetNames)
@@ -91,9 +111,31 @@ export function buildStep3Plan(
 
   if (!years.length) {
     logs.push('⚠ 집계 시트 없음 — STEP 1을 최신 버전으로 다시 실행하세요.')
-    return { rows: [], years: [], logs }
+    return { rows: [], years: [], logs, codeToCable: {} }
   }
   logs.push(`감지된 연도: ${years.map(y => '20'+y+'년').join(', ')}`)
+
+  // ── 원본 케이블 시트에서 품목코드 → 자재 키 매핑 ──────────────
+  // cols: 0=품목코드, 3=케이블종류, 4=파이, 5=코어수, 6=케이블길이
+  const codeToCable: Record<string, CodeCableEntry> = {}
+  for (const yr of years) {
+    const rawSheet = `${yr}년_케이블`
+    if (names.has(rawSheet)) {
+      const rawRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[rawSheet], { header: 1, defval: null }) as unknown[][]
+      for (const row of rawRows.slice(1)) {
+        const code = String(row[0] ?? '').trim()
+        if (!code || codeToCable[code]) continue
+        const kind = String(row[3] ?? '').trim()
+        const pai  = String(row[4] ?? '').trim()
+        const core = Number(row[5]) || 1
+        const len  = Number(row[6]) || 0
+        if (!kind || !pai || len <= 0) continue
+        const label = kindToLabel(kind, core)
+        if (!label) continue
+        codeToCable[code] = { key: `${pai}|${label}`, length: len }
+      }
+    }
+  }
 
   const cableMap:   Record<string, Step3Row> = {}
   const housingMap: Record<string, Step3Row> = {}
@@ -176,25 +218,33 @@ export function buildStep3Plan(
     allRows.push(row)
   }
 
-  for (const row of Object.values(housingMap)) {
-    row.years        = years.filter(yr => row.byYear[yr])
-    row.latestAnnual = row.byYear[latestYr]?.annual ?? 0
-    row.latestPeak   = row.byYear[latestYr]?.peak   ?? 0
-    const metaRaw = metadata.housing?.[row.key]
-    const meta = (metaRaw ? (Array.isArray(metaRaw) ? metaRaw[0] : metaRaw) : {}) as Record<string, unknown>
-    const invRaw = inventory.housing?.[row.key]
-    const inv  = (invRaw ? (Array.isArray(invRaw) ? invRaw[0] : invRaw) : {}) as Record<string, number>
-    row.품번     = String(meta['품번'] ?? '')
-    row.품명     = String(meta['품명'] ?? '')
-    row.구매처   = String(meta['구매처'] ?? '')
-    row.리드타임 = ltDays(meta['리드타임'], ltDefault)
-    row.appliedCagr    = 0
-    row.forecastAnnual = row.latestAnnual
-    row.안전재고 = Math.round((row.forecastAnnual / 12) * (row.리드타임 / 30) * safetyK)
-    row.현재고   = Number(inv['현재고'] ?? 0)
-    row.기발주   = Number(inv['기발주'] ?? 0)
-    row.발주필요량 = Math.max(0, row.forecastAnnual + row.안전재고 - row.현재고 - row.기발주)
-    allRows.push(row)
+  for (const baseRow of Object.values(housingMap)) {
+    baseRow.years        = years.filter(yr => baseRow.byYear[yr])
+    baseRow.latestAnnual = baseRow.byYear[latestYr]?.annual ?? 0
+    baseRow.latestPeak   = baseRow.byYear[latestYr]?.peak   ?? 0
+    baseRow.appliedCagr    = 0
+    baseRow.forecastAnnual = baseRow.latestAnnual
+
+    const metaRaw = metadata.housing?.[baseRow.key]
+    const comps   = metaRaw ? (Array.isArray(metaRaw) ? metaRaw : [metaRaw]) : [{}]
+    const invRaw  = inventory.housing?.[baseRow.key]
+    const invs    = invRaw  ? (Array.isArray(invRaw)  ? invRaw  : [invRaw])  : [{}]
+
+    for (let ci = 0; ci < comps.length; ci++) {
+      const comp = comps[ci] as Record<string, unknown>
+      const inv  = ((ci < invs.length ? invs[ci] : invs[0]) ?? {}) as Record<string, number>
+      const row: Step3Row = ci === 0 ? baseRow : { ...baseRow }
+      row.품번     = String(comp['품번']   ?? '')
+      row.품명     = String(comp['품명']   ?? '')
+      row.구매처   = String(comp['구매처'] ?? '')
+      row.리드타임 = ltDays(comp['리드타임'], ltDefault)
+      row.안전재고 = Math.round((baseRow.forecastAnnual / 12) * (row.리드타임 / 30) * safetyK)
+      row.현재고   = Number(inv['현재고'] ?? 0)
+      row.기발주   = Number(inv['기발주'] ?? 0)
+      row.발주필요량 = Math.max(0, baseRow.forecastAnnual + row.안전재고 - row.현재고 - row.기발주)
+      row.isSubRow = ci > 0
+      allRows.push(row)
+    }
   }
 
   // ── 정렬: 케이블 우선, 파이 순, 타입 알파벳 ──────────────
@@ -204,9 +254,10 @@ export function buildStep3Plan(
   })
 
   const nC = allRows.filter(r => r.type === 'cable').length
-  const nH = allRows.filter(r => r.type === 'housing').length
+  const nH = allRows.filter(r => r.type === 'housing' && !r.isSubRow).length
+  const nHComp = allRows.filter(r => r.type === 'housing').length
   const nMissing = allRows.filter(r => !r.품번).length
-  logs.push(`집계 완료 — 케이블 ${nC}타입 / 하우징 ${nH}타입`)
+  logs.push(`집계 완료 — 케이블 ${nC}타입 / 하우징 ${nH}타입 (부품 ${nHComp}항목)`)
   logs.push(`안전재고 계수 k=${safetyK} (안전재고 = 월평균 × LT/30 × ${safetyK})`)
   if (kindCagr && Object.keys(kindCagr).length) {
     const nApplied = allRows.filter(r => r.appliedCagr !== 0).length
@@ -214,5 +265,5 @@ export function buildStep3Plan(
   }
   if (nMissing) logs.push(`⚠ 품번 미등록 ${nMissing}건 — 품번 관리 탭에서 입력 필요`)
 
-  return { rows: allRows, years, logs }
+  return { rows: allRows, years, logs, codeToCable }
 }

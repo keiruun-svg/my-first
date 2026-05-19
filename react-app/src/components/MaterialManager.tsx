@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import { saveMetadata, saveInventory, CAN_WRITE } from '../lib/supabase'
-import type { Metadata, Inventory, CableMeta, HousingComp, FerruleMeta } from '../lib/types'
+import { today } from '../lib/download'
+import type { Metadata, Inventory, CableMeta, HousingComp, FerruleMeta, InventoryHousingItem } from '../lib/types'
 
 interface Props {
   metadata:     Metadata
@@ -13,6 +14,7 @@ interface Props {
 interface PreviewRow {
   kind: 'cable' | 'housing' | 'ferrule'
   key: string; pai: string; type: string
+  compIdx: number  // 0 for cable/ferrule; component index for housing
   품번: string; 품명: string; 구매처: string; 리드타임: string
   현재고: number; 기발주: number
   isNew: boolean
@@ -21,7 +23,11 @@ interface PreviewRow {
 interface ImportRow {
   code: string; name: string; total: number; byWh: Record<string, number>
   matchType: 'cable' | 'housing' | 'ferrule' | null; metaKey: string | null
+  compIdx: number
 }
+
+const DEFAULT_COMP: HousingComp          = { 품번: '', 품명: '', 구매처: '', 리드타임: null }
+const DEFAULT_INV:  InventoryHousingItem = { 현재고: 0, 기발주: 0 }
 
 const thCls = 'px-3 py-2 text-xs font-bold text-gray-700 border-b-2 border-gray-200 bg-gray-50 whitespace-nowrap text-left'
 const thR   = `${thCls} text-right`
@@ -48,6 +54,24 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
   const [importFileName, setImportFileName] = useState('')
   const erpFileRef = useRef<HTMLInputElement>(null)
 
+  // ── 하우징 다중 부품 헬퍼 ─────────────────────────────────────
+  function getHousingComps(key: string): HousingComp[] {
+    const raw = metadata.housing[key]
+    if (!raw) return [{ ...DEFAULT_COMP }]
+    return Array.isArray(raw) ? raw : [raw]
+  }
+  function getHousingInvs(key: string): InventoryHousingItem[] {
+    const raw = inventory.housing[key]
+    if (!raw) return [{ ...DEFAULT_INV }]
+    return Array.isArray(raw) ? raw : [raw]
+  }
+  function packComps(comps: HousingComp[]): HousingComp | HousingComp[] {
+    return comps.length === 1 ? comps[0] : comps
+  }
+  function packInvs(invs: InventoryHousingItem[]): InventoryHousingItem | InventoryHousingItem[] {
+    return invs.length === 1 ? invs[0] : invs
+  }
+
   // ── 메타 수정 ──────────────────────────────────────────────────
   const updateCableMeta = (key: string, field: keyof CableMeta, value: string) => {
     setMetadata({ ...metadata, cable: {
@@ -55,10 +79,10 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
       [key]: { ...(metadata.cable[key] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }), [field]: value },
     }})
   }
-  const updateHousingMeta = (key: string, field: keyof HousingComp, value: string) => {
-    const cur  = metadata.housing[key]
-    const base = (Array.isArray(cur) ? cur[0] : cur) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
-    setMetadata({ ...metadata, housing: { ...metadata.housing, [key]: { ...base, [field]: value } } })
+  const updateHousingCompMeta = (key: string, ci: number, field: keyof HousingComp, value: string) => {
+    const comps = [...getHousingComps(key)]
+    comps[ci] = { ...comps[ci], [field]: value }
+    setMetadata({ ...metadata, housing: { ...metadata.housing, [key]: packComps(comps) } })
   }
   const updateFerruleMeta = (key: string, field: keyof FerruleMeta, value: string) => {
     setMetadata({ ...metadata, ferrule: {
@@ -72,21 +96,39 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
     const prev = inventory.cable[key] ?? { 현재고: 0, 기발주: 0 }
     setInventory({ ...inventory, cable: { ...inventory.cable, [key]: { ...prev, [field]: parseInt(value) || 0 } } })
   }
-  const updateHousingInv = (key: string, field: '현재고' | '기발주', value: string) => {
-    const cur  = inventory.housing[key]
-    const prev = (Array.isArray(cur) ? cur[0] : cur) ?? { 현재고: 0, 기발주: 0 }
-    setInventory({ ...inventory, housing: { ...inventory.housing, [key]: { ...prev, [field]: parseInt(value) || 0 } } })
+  const updateHousingCompInv = (key: string, ci: number, field: '현재고' | '기발주', value: string) => {
+    const invs = [...getHousingInvs(key)]
+    while (invs.length <= ci) invs.push({ ...DEFAULT_INV })
+    invs[ci] = { ...invs[ci], [field]: parseInt(value) || 0 }
+    setInventory({ ...inventory, housing: { ...inventory.housing, [key]: packInvs(invs) } })
   }
   const updateFerruleInv = (key: string, field: '현재고' | '기발주', value: string) => {
     const prev = inventory.ferrule[key] ?? { 현재고: 0, 기발주: 0 }
     setInventory({ ...inventory, ferrule: { ...inventory.ferrule, [key]: { ...prev, [field]: parseInt(value) || 0 } } })
   }
 
+  // ── 하우징 다중 부품 추가 / 제거 ─────────────────────────────
+  const addHousingComp = (key: string) => {
+    const comps = [...getHousingComps(key), { ...DEFAULT_COMP }]
+    const invs  = [...getHousingInvs(key),  { ...DEFAULT_INV }]
+    setMetadata({ ...metadata, housing: { ...metadata.housing, [key]: packComps(comps) } })
+    setInventory({ ...inventory, housing: { ...inventory.housing, [key]: packInvs(invs) } })
+  }
+  const removeHousingComp = (key: string, ci: number) => {
+    const comps = [...getHousingComps(key)]
+    const invs  = [...getHousingInvs(key)]
+    if (comps.length <= 1) return
+    comps.splice(ci, 1)
+    invs.splice(ci, 1)
+    setMetadata({ ...metadata, housing: { ...metadata.housing, [key]: packComps(comps) } })
+    setInventory({ ...inventory, housing: { ...inventory.housing, [key]: packInvs(invs) } })
+  }
+
   // ── 저장 ───────────────────────────────────────────────────────
   const flash = (type: typeof saved) => { setSaved(type); setTimeout(() => setSaved(''), 2000) }
   const saveAll = () => { saveMetadata(metadata); saveInventory(inventory); flash('both') }
 
-  // ── 양식 다운로드 (케이블 + 하우징 2시트) ─────────────────────
+  // ── 양식 다운로드 (케이블 + 하우징 + 페룰 3시트) ──────────────
   function downloadForm() {
     const wb = XLSX.utils.book_new()
 
@@ -105,24 +147,25 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
     cableWs['!cols'] = [8, 20, 16, 30, 16, 12, 12, 12].map(w => ({ wch: w }))
     XLSX.utils.book_append_sheet(wb, cableWs, '케이블')
 
-    // 하우징 시트
+    // 하우징 시트 — 다중 부품 전개 (같은 파이+타입이 여러 행으로)
     const housingKeys   = Object.keys(metadata.housing).sort()
     const housingHeader = ['파이', '하우징타입', '품번', '품명', '구매처', '리드타임(일)', '현재고(EA)', '기발주(EA)']
     const housingRows   = housingKeys.length
-      ? housingKeys.map(k => {
+      ? housingKeys.flatMap(k => {
           const [pai, type] = k.split('|')
-          const cm  = metadata.housing[k]
-          const m   = (Array.isArray(cm) ? cm[0] : cm) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
-          const civRaw = inventory.housing[k]
-          const inv    = (Array.isArray(civRaw) ? civRaw[0] : civRaw) ?? { 현재고: 0, 기발주: 0 }
-          return [pai, type, m.품번 ?? '', m.품명 ?? '', m.구매처 ?? '', m.리드타임 ?? '', inv.현재고 ?? 0, inv.기발주 ?? 0]
+          const comps = getHousingComps(k)
+          const invs  = getHousingInvs(k)
+          return comps.map((m, ci) => {
+            const inv = invs[ci] ?? DEFAULT_INV
+            return [pai, type, m.품번 ?? '', m.품명 ?? '', m.구매처 ?? '', m.리드타임 ?? '', inv.현재고 ?? 0, inv.기발주 ?? 0]
+          })
         })
       : [['A1.6', '예시타입', '', '', '', '60', 0, 0]]
     const housingWs = XLSX.utils.aoa_to_sheet([housingHeader, ...housingRows])
     housingWs['!cols'] = [8, 20, 16, 30, 16, 12, 12, 12].map(w => ({ wch: w }))
     XLSX.utils.book_append_sheet(wb, housingWs, '하우징')
 
-    // 페룰 시트 (파이 없음 — 페룰타입이 곧 키)
+    // 페룰 시트
     const ferruleKeys   = Object.keys(metadata.ferrule).sort()
     const ferruleHeader = ['페룰타입', '품번', '품명', '구매처', '리드타임(일)', '현재고(EA)', '기발주(EA)']
     const ferruleRows   = ferruleKeys.length
@@ -136,10 +179,10 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
     ferruleWs['!cols'] = [20, 16, 30, 16, 12, 12, 12].map(w => ({ wch: w }))
     XLSX.utils.book_append_sheet(wb, ferruleWs, '페룰')
 
-    XLSX.writeFile(wb, '자재관리_양식.xlsx')
+    XLSX.writeFile(wb, `자재관리_양식_${today()}.xlsx`)
   }
 
-  // ── 양식 Excel 업로드 파싱 (케이블 + 하우징 동시) ────────────
+  // ── 양식 Excel 업로드 파싱 ────────────────────────────────────
   function handlePnUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return
     e.target.value = ''; setPreviewErr('')
@@ -154,37 +197,52 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
           const ws = wb.Sheets[sheetName]
           if (!ws) continue
           const raw = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' }) as string[][]
-          for (let i = 1; i < raw.length; i++) {
-            const r = raw[i]
-            if (kind === 'ferrule') {
+
+          if (kind === 'ferrule') {
+            for (let i = 1; i < raw.length; i++) {
+              const r = raw[i]
               const type = String(r[0] ?? '').trim()
               if (!type) continue
-              const key = type
               parsed.push({
-                kind, key, pai: '', type,
-                품번:     String(r[1] ?? '').trim(),
-                품명:     String(r[2] ?? '').trim(),
-                구매처:   String(r[3] ?? '').trim(),
-                리드타임: String(r[4] ?? '').trim(),
-                현재고:   Number(r[5]) || 0,
-                기발주:   Number(r[6]) || 0,
-                isNew: !metadata.ferrule[key],
+                kind, key: type, pai: '', type, compIdx: 0,
+                품번: String(r[1] ?? '').trim(), 품명: String(r[2] ?? '').trim(),
+                구매처: String(r[3] ?? '').trim(), 리드타임: String(r[4] ?? '').trim(),
+                현재고: Number(r[5]) || 0, 기발주: Number(r[6]) || 0,
+                isNew: !metadata.ferrule[type],
               })
-            } else {
+            }
+          } else if (kind === 'cable') {
+            for (let i = 1; i < raw.length; i++) {
+              const r = raw[i]
               const pai  = String(r[0] ?? '').trim()
               const type = String(r[1] ?? '').trim()
               if (!pai || !type) continue
-              const key    = `${pai}|${type}`
-              const exists = kind === 'cable' ? !!metadata.cable[key] : !!metadata.housing[key]
+              const key = `${pai}|${type}`
               parsed.push({
-                kind, key, pai, type,
-                품번:     String(r[2] ?? '').trim(),
-                품명:     String(r[3] ?? '').trim(),
-                구매처:   String(r[4] ?? '').trim(),
-                리드타임: String(r[5] ?? '').trim(),
-                현재고:   Number(r[6]) || 0,
-                기발주:   Number(r[7]) || 0,
-                isNew: !exists,
+                kind, key, pai, type, compIdx: 0,
+                품번: String(r[2] ?? '').trim(), 품명: String(r[3] ?? '').trim(),
+                구매처: String(r[4] ?? '').trim(), 리드타임: String(r[5] ?? '').trim(),
+                현재고: Number(r[6]) || 0, 기발주: Number(r[7]) || 0,
+                isNew: !metadata.cable[key],
+              })
+            }
+          } else {
+            // housing — 같은 파이+타입이 연속으로 나오면 같은 키의 다중 부품
+            const compCountPerKey: Record<string, number> = {}
+            for (let i = 1; i < raw.length; i++) {
+              const r = raw[i]
+              const pai  = String(r[0] ?? '').trim()
+              const type = String(r[1] ?? '').trim()
+              if (!pai || !type) continue
+              const key = `${pai}|${type}`
+              const ci = compCountPerKey[key] ?? 0
+              compCountPerKey[key] = ci + 1
+              parsed.push({
+                kind, key, pai, type, compIdx: ci,
+                품번: String(r[2] ?? '').trim(), 품명: String(r[3] ?? '').trim(),
+                구매처: String(r[4] ?? '').trim(), 리드타임: String(r[5] ?? '').trim(),
+                현재고: Number(r[6]) || 0, 기발주: Number(r[7]) || 0,
+                isNew: !metadata.housing[key],
               })
             }
           }
@@ -208,19 +266,29 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
     const housingInv = { ...nextInv.housing }
     const ferruleInv = { ...nextInv.ferrule }
 
+    // housing: 키별로 컴포넌트 배열 누적
+    const housingCompsByKey: Record<string, Array<{ meta: HousingComp; inv: InventoryHousingItem }>> = {}
+    for (const r of preview.rows) {
+      if (r.kind !== 'housing') continue
+      if (!housingCompsByKey[r.key]) housingCompsByKey[r.key] = []
+      housingCompsByKey[r.key][r.compIdx] = {
+        meta: { 품번: r.품번, 품명: r.품명, 구매처: r.구매처, 리드타임: r.리드타임 || null },
+        inv:  { 현재고: r.현재고, 기발주: r.기발주 },
+      }
+    }
+    for (const [key, entries] of Object.entries(housingCompsByKey)) {
+      const comps = entries.map(e => e.meta)
+      const invs  = entries.map(e => e.inv)
+      housing[key]    = packComps(comps)
+      housingInv[key] = packInvs(invs)
+    }
+
     for (const r of preview.rows) {
       if (r.kind === 'cable') {
         cable[r.key]    = { 품번: r.품번, 품명: r.품명, 구매처: r.구매처, 리드타임: r.리드타임 || null }
         const prev      = cableInv[r.key] ?? { 현재고: 0, 기발주: 0 }
         cableInv[r.key] = { ...prev, 현재고: r.현재고, 기발주: r.기발주 }
-      } else if (r.kind === 'housing') {
-        const curMeta  = housing[r.key]
-        const baseMeta = (Array.isArray(curMeta) ? curMeta[0] : curMeta) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
-        housing[r.key] = { ...baseMeta, 품번: r.품번, 품명: r.품명, 구매처: r.구매처, 리드타임: r.리드타임 || null }
-        const curInv   = housingInv[r.key]
-        const baseInv  = (Array.isArray(curInv) ? curInv[0] : curInv) ?? { 현재고: 0, 기발주: 0 }
-        housingInv[r.key] = { ...baseInv, 현재고: r.현재고, 기발주: r.기발주 }
-      } else {
+      } else if (r.kind === 'ferrule') {
         ferrule[r.key]    = { 품번: r.품번, 품명: r.품명, 구매처: r.구매처, 리드타임: r.리드타임 || null }
         const prev        = ferruleInv[r.key] ?? { 현재고: 0, 기발주: 0 }
         ferruleInv[r.key] = { ...prev, 현재고: r.현재고, 기발주: r.기발주 }
@@ -249,15 +317,20 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
         headerRow.push(ws[XLSX.utils.encode_cell({ r: 1, c })]?.v?.toString().trim() ?? '')
       const whCols = headerRow.slice(4).filter(h => h)
       setWarehouses(whCols); setSelectedWh(whCols[0] ?? '')
-      const cableMap: Record<string, string> = {}
-      const housingMap: Record<string, string> = {}
+
+      // 품번 → 자재 키 맵 (케이블/페룰)
+      const cableMap:   Record<string, string> = {}
       const ferruleMap: Record<string, string> = {}
       Object.entries(metadata.cable).forEach(([k, m]) => { if (m.품번) cableMap[m.품번] = k })
-      Object.entries(metadata.housing).forEach(([k, mRaw]) => {
-        const m = Array.isArray(mRaw) ? mRaw[0] : mRaw
-        if (m?.품번) housingMap[m.품번] = k
-      })
       Object.entries(metadata.ferrule).forEach(([k, m]) => { if (m.품번) ferruleMap[m.품번] = k })
+
+      // 하우징: 품번 → { key, compIdx }
+      const housingCompMap: Record<string, { key: string; ci: number }> = {}
+      Object.entries(metadata.housing).forEach(([k, mRaw]) => {
+        const comps = Array.isArray(mRaw) ? mRaw : [mRaw]
+        comps.forEach((m, ci) => { if (m?.품번) housingCompMap[m.품번] = { key: k, ci } })
+      })
+
       const rows: ImportRow[] = []
       for (let r = 2; r <= range.e.r; r++) {
         const code  = ws[XLSX.utils.encode_cell({ r, c: 0 })]?.v?.toString().trim() ?? ''
@@ -268,10 +341,11 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
         whCols.forEach((wh, wi) => { byWh[wh] = Number(ws[XLSX.utils.encode_cell({ r, c: 4 + wi })]?.v ?? 0) })
         let matchType: 'cable' | 'housing' | 'ferrule' | null = null
         let metaKey: string | null = null
-        if (cableMap[code])         { matchType = 'cable';   metaKey = cableMap[code] }
-        else if (housingMap[code])  { matchType = 'housing'; metaKey = housingMap[code] }
-        else if (ferruleMap[code])  { matchType = 'ferrule'; metaKey = ferruleMap[code] }
-        rows.push({ code, name, total, byWh, matchType, metaKey })
+        let compIdx = 0
+        if (cableMap[code])              { matchType = 'cable';   metaKey = cableMap[code] }
+        else if (housingCompMap[code])   { matchType = 'housing'; metaKey = housingCompMap[code].key; compIdx = housingCompMap[code].ci }
+        else if (ferruleMap[code])       { matchType = 'ferrule'; metaKey = ferruleMap[code] }
+        rows.push({ code, name, total, byWh, matchType, metaKey, compIdx })
       }
       setImportRows(rows); setImportApplied(false)
     }
@@ -290,9 +364,12 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
         const prev = newCable[row.metaKey] ?? { 현재고: 0, 기발주: 0 }
         newCable[row.metaKey] = { ...prev, 현재고: qty }
       } else if (row.matchType === 'housing') {
-        const prevRaw = newHousing[row.metaKey]
-        const prev    = (Array.isArray(prevRaw) ? prevRaw[0] : prevRaw) ?? { 현재고: 0, 기발주: 0 }
-        newHousing[row.metaKey] = { ...prev, 현재고: qty }
+        const invs = Array.isArray(newHousing[row.metaKey])
+          ? [...(newHousing[row.metaKey] as InventoryHousingItem[])]
+          : [newHousing[row.metaKey] as InventoryHousingItem ?? { ...DEFAULT_INV }]
+        while (invs.length <= row.compIdx) invs.push({ ...DEFAULT_INV })
+        invs[row.compIdx] = { ...(invs[row.compIdx] ?? DEFAULT_INV), 현재고: qty }
+        newHousing[row.metaKey] = packInvs(invs)
       } else {
         const prev = newFerrule[row.metaKey] ?? { 현재고: 0, 기발주: 0 }
         newFerrule[row.metaKey] = { ...prev, 현재고: qty }
@@ -303,21 +380,41 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
   }
 
   // ── 공통 헬퍼 ─────────────────────────────────────────────────
-  const getCm  = (k: string): CableMeta    => metadata.cable[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
-  const getHm  = (k: string): HousingComp  => { const c = metadata.housing[k]; return (Array.isArray(c) ? c[0] : c) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null } }
-  const getFm  = (k: string): FerruleMeta  => metadata.ferrule[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
+  const getCm  = (k: string): CableMeta   => metadata.cable[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
+  const getFm  = (k: string): FerruleMeta => metadata.ferrule[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
   const getCiv = (k: string) => inventory.cable[k] ?? { 현재고: 0, 기발주: 0 }
-  const getHiv = (k: string) => { const c = inventory.housing[k]; return (Array.isArray(c) ? c[0] : c) ?? { 현재고: 0, 기발주: 0 } }
   const getFiv = (k: string) => inventory.ferrule[k] ?? { 현재고: 0, 기발주: 0 }
 
   const cableKeys    = Object.keys(metadata.cable).sort()
   const housingKeys  = Object.keys(metadata.housing).sort()
   const ferruleKeys  = Object.keys(metadata.ferrule).sort()
   const cableMissing   = cableKeys.filter(k => !getCm(k).품번).length
-  const housingMissing = housingKeys.filter(k => !getHm(k).품번).length
+  // 하우징: 어떤 부품이라도 품번 미입력이면 ⚠
+  const housingMissing = housingKeys.filter(k => getHousingComps(k).some(c => !c.품번)).length
   const ferruleMissing = ferruleKeys.filter(k => !getFm(k).품번).length
   const matched   = importRows?.filter(r => r.matchType) ?? []
   const unmatched = importRows?.filter(r => !r.matchType) ?? []
+
+  // 하우징 표시용 전개 행
+  interface HousingDisplayRow {
+    key: string; ci: number; pai: string; type: string
+    comp: HousingComp; inv: InventoryHousingItem
+    missing: boolean; isFirst: boolean; isLast: boolean; total: number
+  }
+  const housingDisplayRows: HousingDisplayRow[] = housingKeys.flatMap(key => {
+    const [pai, type] = key.split('|')
+    const comps = getHousingComps(key)
+    const invs  = getHousingInvs(key)
+    return comps.map((comp, ci) => ({
+      key, ci, pai, type,
+      comp: comp ?? { ...DEFAULT_COMP },
+      inv:  invs[ci] ?? { ...DEFAULT_INV },
+      missing: !comp?.품번,
+      isFirst: ci === 0,
+      isLast:  ci === comps.length - 1,
+      total:   comps.length,
+    }))
+  })
 
   const inputCls    = 'w-full border border-gray-200 rounded px-2 py-0.5 text-xs focus:outline-none focus:border-blue-400'
   const inputRoCls  = `${inputCls} bg-gray-50 text-gray-400 cursor-default`
@@ -332,12 +429,11 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
 
       {/* ── 툴바 ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        {/* 케이블 / 하우징 토글 */}
         <div className="flex gap-2">
           {([
             ['cable',   '케이블', cableKeys.length,   cableMissing],
             ['housing', '하우징', housingKeys.length,  housingMissing],
-            ['ferrule', '페룰',   ferruleKeys.length,  ferruleMissing],
+            ['ferrule', '페롤',   ferruleKeys.length,  ferruleMissing],
           ] as [typeof tab, string, number, number][]).map(([id, lbl, cnt, miss]) => (
             <button key={id} onClick={() => { setTab(id); setPreview(null) }}
               className={`px-4 py-2 rounded font-semibold text-sm flex items-center gap-2 transition ${
@@ -350,7 +446,6 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
           ))}
         </div>
 
-        {/* 액션 버튼들 */}
         <div className="flex items-center gap-2">
           {CAN_WRITE && (
             <>
@@ -387,7 +482,7 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
           </div>
           <p className="text-xs text-blue-600">
             양식 다운로드로 받은 <b>자재관리_양식.xlsx</b> 파일을 수정 후 업로드하세요.
-            케이블·하우징 시트의 품번·품명·구매처·리드타임·현재고·기발주가 모두 반영됩니다.
+            하우징은 동일한 파이+타입이 여러 행이면 다중 부품으로 처리됩니다.
           </p>
           {previewErr && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded">{previewErr}</div>}
           {!preview ? (
@@ -405,20 +500,21 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
               <div className="overflow-x-auto max-h-60 overflow-y-auto rounded border border-blue-100">
                 <table className="text-xs w-full bg-white">
                   <thead className="sticky top-0 bg-blue-100 text-blue-800">
-                    <tr>{['구분','파이','종류','품번','품명','구매처','LT','현재고','기발주','상태'].map(h=>(
+                    <tr>{['구분','파이','종류','#','품번','품명','구매처','LT','현재고','기발주','상태'].map(h=>(
                       <th key={h} className="px-2 py-1.5 text-left font-semibold whitespace-nowrap">{h}</th>
                     ))}</tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {preview.rows.map(r => (
-                      <tr key={`${r.kind}-${r.key}`} className={r.isNew ? 'bg-green-50' : ''}>
+                    {preview.rows.map((r, ri) => (
+                      <tr key={`${r.kind}-${r.key}-${ri}`} className={r.isNew ? 'bg-green-50' : r.compIdx > 0 ? 'bg-purple-50' : ''}>
                         <td className="px-2 py-1">
                           <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${r.kind==='cable'?'bg-blue-100 text-blue-700':r.kind==='housing'?'bg-purple-100 text-purple-700':'bg-orange-100 text-orange-700'}`}>
                             {r.kind==='cable'?'케이블':r.kind==='housing'?'하우징':'페룰'}
                           </span>
                         </td>
                         <td className="px-2 py-1 font-mono text-gray-500">{r.pai}</td>
-                        <td className="px-2 py-1 font-semibold">{r.type}</td>
+                        <td className="px-2 py-1 font-semibold">{r.compIdx > 0 ? <span className="text-purple-400">└ 동일</span> : r.type}</td>
+                        <td className="px-2 py-1 text-center text-gray-400">{r.kind==='housing' ? r.compIdx+1 : ''}</td>
                         <td className="px-2 py-1">{r.품번 || <span className="text-red-400">미입력</span>}</td>
                         <td className="px-2 py-1 max-w-[120px] truncate" title={r.품명}>{r.품명 || '—'}</td>
                         <td className="px-2 py-1">{r.구매처 || '—'}</td>
@@ -505,7 +601,7 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
                           <td className="px-3 py-1 font-mono text-gray-500">{r.code}</td>
                           <td className="px-3 py-1 max-w-[140px] truncate" title={r.name}>{r.name}</td>
                           <td className="px-3 py-1 font-mono text-gray-500">{pai ?? '—'}</td>
-                          <td className="px-3 py-1 font-semibold">{type ?? '—'}</td>
+                          <td className="px-3 py-1 font-semibold">{type ?? '—'}{r.matchType==='housing' && r.compIdx > 0 ? <span className="text-purple-400 ml-1">[{r.compIdx+1}]</span> : ''}</td>
                           <td className="px-3 py-1">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.matchType==='cable'?'bg-blue-50 text-blue-700':r.matchType==='housing'?'bg-purple-50 text-purple-700':'bg-orange-50 text-orange-700'}`}>
                               {r.matchType==='cable'?'케이블':r.matchType==='housing'?'하우징':'페룰'}
@@ -553,6 +649,7 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
             <tr>
               {tab !== 'ferrule' && <th className={thCls}>파이</th>}
               <th className={thCls}>{tab==='cable'?'케이블종류':tab==='housing'?'하우징타입':'페룰타입'}</th>
+              {tab === 'housing' && <th className={thCls} style={{ width: 24 }}>#</th>}
               <th className={thCls}>품번</th>
               <th className={thCls}>품명</th>
               <th className={thCls}>구매처</th>
@@ -560,13 +657,86 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
               <th className={thR}>현재고{tab==='cable'?' (m)':' (EA)'}</th>
               <th className={thR}>기발주{tab==='cable'?' (m)':' (EA)'}</th>
               <th className={thCls}>상태</th>
+              {tab === 'housing' && CAN_WRITE && <th className={thCls}></th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {(tab==='cable' ? cableKeys : tab==='housing' ? housingKeys : ferruleKeys).map((key, i) => {
+            {tab === 'housing' ? (
+              housingDisplayRows.length > 0 ? housingDisplayRows.map(({ key, ci, pai, type, comp, inv, missing, isFirst, isLast, total }, rowIdx) => (
+                <tr key={`${key}-${ci}`} className={missing ? 'bg-red-50' : !isFirst ? 'bg-purple-50' : rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  {/* 파이 — 첫 번째 부품 행만 표시 */}
+                  <td className="px-3 py-1 font-mono text-gray-500 whitespace-nowrap">
+                    {isFirst ? pai : ''}
+                  </td>
+                  {/* 하우징 타입 — 첫 번째 부품 행만 표시 */}
+                  <td className="px-3 py-1.5 font-semibold whitespace-nowrap">
+                    {isFirst ? type : <span className="text-purple-400 font-normal">└ 동일</span>}
+                  </td>
+                  {/* 부품 번호 */}
+                  <td className="px-2 py-1 text-center text-gray-400 text-xs">{total > 1 ? ci + 1 : ''}</td>
+                  {/* 품번, 품명, 구매처, LT */}
+                  {(['품번','품명','구매처','리드타임'] as const).map(f => (
+                    <td key={f} className="px-1 py-1">
+                      <input
+                        value={String(comp[f] ?? '')}
+                        readOnly={!CAN_WRITE}
+                        onChange={e => updateHousingCompMeta(key, ci, f, e.target.value)}
+                        className={CAN_WRITE
+                          ? `${inputCls} ${missing && f==='품번' ? 'border-red-400 bg-red-50' : ''}`
+                          : inputRoCls}
+                        placeholder={f==='리드타임' ? '숫자(일)' : f}
+                      />
+                    </td>
+                  ))}
+                  {/* 현재고 */}
+                  <td className="px-1 py-1">
+                    <input type="number" min="0" value={inv.현재고}
+                      onChange={e => updateHousingCompInv(key, ci, '현재고', e.target.value)}
+                      className={inputInvCls} />
+                  </td>
+                  {/* 기발주 */}
+                  <td className="px-1 py-1">
+                    <input type="number" min="0" value={inv.기발주 ?? 0}
+                      onChange={e => updateHousingCompInv(key, ci, '기발주', e.target.value)}
+                      className={inputInvCls} />
+                  </td>
+                  {/* 상태 */}
+                  <td className="px-2 py-1 text-center">
+                    {missing ? <span className="text-red-500 font-semibold">⚠</span> : <span className="text-green-600">✓</span>}
+                  </td>
+                  {/* 추가/제거 버튼 */}
+                  {CAN_WRITE && (
+                    <td className="px-1 py-1 whitespace-nowrap">
+                      {isLast && (
+                        <button
+                          onClick={() => addHousingComp(key)}
+                          title="부품 추가"
+                          className="text-xs px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200 transition mr-1">
+                          +
+                        </button>
+                      )}
+                      {ci > 0 && (
+                        <button
+                          onClick={() => removeHousingComp(key, ci)}
+                          title="부품 제거"
+                          className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-500 hover:bg-red-200 transition">
+                          ×
+                        </button>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={11} className="text-center text-gray-400 py-10">
+                    STEP 1 실행 후 품번을 입력하세요.
+                  </td>
+                </tr>
+              )
+            ) : (tab==='cable' ? cableKeys : ferruleKeys).map((key, i) => {
               const [pai, type] = tab === 'ferrule' ? ['', key] : key.split('|')
-              const m   = tab==='cable' ? getCm(key) : tab==='housing' ? getHm(key) : getFm(key)
-              const inv = tab==='cable' ? getCiv(key) : tab==='housing' ? getHiv(key) : getFiv(key)
+              const m   = tab==='cable' ? getCm(key) : getFm(key)
+              const inv = tab==='cable' ? getCiv(key) : getFiv(key)
               const missing = !m.품번
               return (
                 <tr key={key} className={missing ? 'bg-red-50' : i%2===0 ? 'bg-white' : 'bg-gray-50'}>
@@ -577,7 +747,7 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
                       <input
                         value={String(m[f] ?? '')}
                         readOnly={!CAN_WRITE}
-                        onChange={e => tab==='cable' ? updateCableMeta(key, f, e.target.value) : tab==='housing' ? updateHousingMeta(key, f, e.target.value) : updateFerruleMeta(key, f, e.target.value)}
+                        onChange={e => tab==='cable' ? updateCableMeta(key, f, e.target.value) : updateFerruleMeta(key, f, e.target.value)}
                         className={CAN_WRITE
                           ? `${inputCls} ${missing && f==='품번' ? 'border-red-400 bg-red-50' : ''}`
                           : inputRoCls}
@@ -587,12 +757,12 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
                   ))}
                   <td className="px-1 py-1">
                     <input type="number" min="0" value={inv.현재고}
-                      onChange={e => tab==='cable' ? updateCableInv(key,'현재고',e.target.value) : tab==='housing' ? updateHousingInv(key,'현재고',e.target.value) : updateFerruleInv(key,'현재고',e.target.value)}
+                      onChange={e => tab==='cable' ? updateCableInv(key,'현재고',e.target.value) : updateFerruleInv(key,'현재고',e.target.value)}
                       className={inputInvCls} />
                   </td>
                   <td className="px-1 py-1">
                     <input type="number" min="0" value={inv.기발주 ?? 0}
-                      onChange={e => tab==='cable' ? updateCableInv(key,'기발주',e.target.value) : tab==='housing' ? updateHousingInv(key,'기발주',e.target.value) : updateFerruleInv(key,'기발주',e.target.value)}
+                      onChange={e => tab==='cable' ? updateCableInv(key,'기발주',e.target.value) : updateFerruleInv(key,'기발주',e.target.value)}
                       className={inputInvCls} />
                   </td>
                   <td className="px-2 py-1 text-center">
@@ -601,7 +771,7 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
                 </tr>
               )
             })}
-            {(tab==='cable' ? cableKeys : tab==='housing' ? housingKeys : ferruleKeys).length === 0 && (
+            {tab !== 'housing' && (tab==='cable' ? cableKeys : ferruleKeys).length === 0 && (
               <tr>
                 <td colSpan={tab === 'ferrule' ? 8 : 9} className="text-center text-gray-400 py-10">
                   STEP 1 실행 후 품번을 입력하세요.

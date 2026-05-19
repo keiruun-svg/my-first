@@ -132,6 +132,38 @@ export function saveOjcProducts(products: OjcProduct[]): void {
   void sbSave('ojc_products', products)
 }
 
+// ── 피그테일 키 마이그레이션 (연청→AQUA, 연등→rose) ──────────────
+const PIGTAIL_KEY_RENAME: [string, string][] = [
+  ['pigtail-연청', 'pigtail-AQUA'],
+  ['pigtail-연등', 'pigtail-rose'],
+]
+
+function renameCableKeys<T>(obj: Record<string, T>): { result: Record<string, T>; count: number } {
+  let count = 0
+  const result: Record<string, T> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    let newKey = k
+    for (const [from, to] of PIGTAIL_KEY_RENAME) {
+      if (k.includes(from)) { newKey = k.replace(from, to); count++; break }
+    }
+    result[newKey] = v
+  }
+  return { result, count }
+}
+
+export async function migratePigtailKeys(
+  metadata:  Metadata,
+  inventory: Inventory,
+): Promise<{ metadata: Metadata; inventory: Inventory; changed: number }> {
+  const { result: newCableMeta, count: c1 } = renameCableKeys(metadata.cable  ?? {})
+  const { result: newCableInv,  count: c2 } = renameCableKeys(inventory.cable ?? {})
+  const changed = c1 + c2
+  const newMeta: Metadata  = { ...metadata,  cable: newCableMeta }
+  const newInv:  Inventory = { ...inventory, cable: newCableInv  }
+  if (changed > 0) { saveMetadata(newMeta); saveInventory(newInv) }
+  return { metadata: newMeta, inventory: newInv, changed }
+}
+
 export async function syncToSupabase(
   settings: AppSettings,
   metadata: Metadata,

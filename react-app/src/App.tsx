@@ -161,7 +161,7 @@ export default function App() {
           <Step2 salesAgg={salesAgg} setSalesAgg={setSalesAgg} />
         )}
         {activeTab === 'step3' && (
-          <Step3 metadata={metadata} inventory={inventory} settings={settings} />
+          <Step3 metadata={metadata} inventory={inventory} settings={settings} salesAgg={salesAgg} />
         )}
         {activeTab === 'sales' && (
           <SalesAnalysisTab />
@@ -180,9 +180,10 @@ export default function App() {
         )}
         {activeTab === 'settings' && (
           <Settings
-            settings={settings} setSettings={setSettings}
-            metadata={metadata} inventory={inventory} sales={sales}
-            salesAgg={salesAgg}
+            settings={settings}   setSettings={setSettings}
+            metadata={metadata}   setMetadata={setMetadata}
+            inventory={inventory} setInventory={setInventory}
+            sales={sales}         salesAgg={salesAgg}
           />
         )}
       </div>

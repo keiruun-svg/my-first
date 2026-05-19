@@ -1,21 +1,25 @@
 import { useState } from 'react'
-import { saveSettings, syncToSupabase, sb, CAN_WRITE } from '../lib/supabase'
+import { saveSettings, syncToSupabase, migratePigtailKeys, sb, CAN_WRITE } from '../lib/supabase'
 import type { AppSettings, Metadata, Inventory, SalesAnalysis } from '../lib/types'
 import type { SalesAggResult } from '../lib/aggregate/salesAgg'
 
 interface Props {
-  settings:    AppSettings
-  setSettings: (s: AppSettings) => void
-  metadata:    Metadata
-  inventory:   Inventory
-  sales:       SalesAnalysis
-  salesAgg?:   SalesAggResult | null
+  settings:     AppSettings
+  setSettings:  (s: AppSettings) => void
+  metadata:     Metadata
+  setMetadata:  (m: Metadata) => void
+  inventory:    Inventory
+  setInventory: (i: Inventory) => void
+  sales:        SalesAnalysis
+  salesAgg?:    SalesAggResult | null
 }
 
-export default function Settings({ settings, setSettings, metadata, inventory, sales, salesAgg }: Props) {
-  const [saved, setSaved]           = useState(false)
-  const [syncStatus, setSyncStatus] = useState<string | null>(null)
-  const [syncing, setSyncing]       = useState(false)
+export default function Settings({ settings, setSettings, metadata, setMetadata, inventory, setInventory, sales, salesAgg }: Props) {
+  const [saved, setSaved]                 = useState(false)
+  const [syncStatus, setSyncStatus]       = useState<string | null>(null)
+  const [syncing, setSyncing]             = useState(false)
+  const [migrStatus, setMigrStatus]       = useState<string | null>(null)
+  const [migrating, setMigrating]         = useState(false)
 
   const save = () => {
     saveSettings(settings)
@@ -39,6 +43,24 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
       setSyncStatus(`❌ 오류: ${e}`)
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const runMigration = async () => {
+    setMigrating(true); setMigrStatus(null)
+    try {
+      const { metadata: newMeta, inventory: newInv, changed } = await migratePigtailKeys(metadata, inventory)
+      if (changed === 0) {
+        setMigrStatus('ℹ 변경 대상 없음 — 이미 마이그레이션되었거나 해당 키가 없습니다.')
+      } else {
+        setMetadata(newMeta)
+        setInventory(newInv)
+        setMigrStatus(`✅ ${changed}개 키 변경 완료 (pigtail-연청→AQUA, pigtail-연등→rose)${CAN_WRITE ? ' — Supabase 동기화 완료' : ' — 로컬만 반영. Supabase 동기화 필요'}`)
+      }
+    } catch (e) {
+      setMigrStatus(`❌ 오류: ${e}`)
+    } finally {
+      setMigrating(false)
     }
   }
 
@@ -177,6 +199,36 @@ export default function Settings({ settings, setSettings, metadata, inventory, s
             </div>
           </div>
         )}
+      </div>
+
+      <hr className="border-gray-200" />
+
+      {/* 피그테일 키 마이그레이션 */}
+      <div>
+        <div className="text-sm font-semibold text-gray-700 mb-3">🔧 데이터 마이그레이션</div>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm text-gray-700 font-medium">피그테일 키 이름 변경</div>
+              <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+                <div><code className="bg-white px-1 rounded">pigtail-연청</code> → <code className="bg-white px-1 rounded">pigtail-AQUA</code> (P14-RM-417D)</div>
+                <div><code className="bg-white px-1 rounded">pigtail-연등</code> → <code className="bg-white px-1 rounded">pigtail-rose</code> (P14-RM-417C)</div>
+              </div>
+            </div>
+            <button
+              onClick={runMigration}
+              disabled={migrating}
+              className="flex-shrink-0 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 text-white font-semibold px-4 py-2 rounded-lg transition text-sm"
+            >
+              {migrating ? '⏳ 처리 중...' : '🔄 마이그레이션 실행'}
+            </button>
+          </div>
+          {migrStatus && (
+            <div className={`rounded-md px-3 py-2 text-sm font-medium ${migrStatus.startsWith('✅') ? 'bg-green-100 text-green-800' : migrStatus.startsWith('ℹ') ? 'bg-blue-50 text-blue-700' : 'bg-red-100 text-red-800'}`}>
+              {migrStatus}
+            </div>
+          )}
+        </div>
       </div>
 
     </div>

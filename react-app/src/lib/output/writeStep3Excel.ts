@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
-import type { Step3Row } from '../step3Core'
+import type { Step3Row, CodeCableEntry } from '../step3Core'
 import type { Metadata, Inventory } from '../types'
+import type { SalesAggResult } from '../aggregate/salesAgg'
 
 // ── 스타일 상수 ───────────────────────────────────────────────
 const BORDER_THIN: Partial<ExcelJS.Border> = { style: 'thin', color: { argb: 'FF000000' } }
@@ -26,14 +27,76 @@ function cl(n: number): string {
 }
 
 // ── 피그테일 색상 라벨 표시 변환 ──────────────────────────────
-const DISPLAY_LABEL_MAP: Record<string, string> = { '연청': '청록', '연등': '분홍' }
+const DISPLAY_LABEL_MAP: Record<string, string> = { '연청': 'AQUA', '연등': 'rose' }
 function displayLabel(label: string): string {
-  // "pigtail-연청" → "pigtail-청록"
+  // "pigtail-연청" → "pigtail-AQUA"  (가공파일이 이미 매핑된 경우 pass-through)
   return label.replace(/^(pigtail-)(.+)$/, (_, pfx, color) => pfx + (DISPLAY_LABEL_MAP[color] ?? color))
 }
 
+// ── 수요기반 분석 ─────────────────────────────────────────────
+interface DemandEntry {
+  제안량:     number  // meters
+  생산비중:   number  // 0-1
+  판매트렌드: number  // growth rate
+}
+
+function computeDemand(
+  salesAgg:    SalesAggResult,
+  codeToCable: Record<string, CodeCableEntry>,
+  years: string[],  // 2-digit step3 years e.g. ["23","24","25"]
+): Map<string, DemandEntry> {
+  if (!years.length) return new Map()
+  const latestYr = '20' + years[years.length - 1]
+  const prevYr   = years.length >= 2 ? '20' + years[years.length - 2] : null
+  const prev2Yr  = years.length >= 3 ? '20' + years[years.length - 3] : null
+
+  const acc = new Map<string, { suggestSum: number; salesSum: number; ratioWtd: number; trendWtd: number }>()
+
+  for (const prod of salesAgg.byProduct) {
+    const entry = codeToCable[prod.code]
+    if (!entry || entry.length <= 0) continue
+    const latest = prod.byYear[latestYr]
+    if (!latest || latest.sales === 0) continue
+
+    const s     = latest.sales
+    const ratio = latest.production / s
+
+    let trend = 0
+    const sPrev2 = prev2Yr ? (prod.byYear[prev2Yr]?.sales ?? 0) : 0
+    const sPrev  = prevYr  ? (prod.byYear[prevYr]?.sales  ?? 0) : 0
+    if (sPrev2 > 0)     trend = Math.pow(s / sPrev2, 0.5) - 1
+    else if (sPrev > 0) trend = s / sPrev - 1
+
+    const suggest = s * (1 + trend) * ratio * entry.length
+    const key = entry.key
+    if (!acc.has(key)) acc.set(key, { suggestSum: 0, salesSum: 0, ratioWtd: 0, trendWtd: 0 })
+    const a = acc.get(key)!
+    a.suggestSum += suggest
+    a.salesSum   += s
+    a.ratioWtd   += s * ratio
+    a.trendWtd   += s * trend
+  }
+
+  const result = new Map<string, DemandEntry>()
+  for (const [key, a] of acc) {
+    if (a.salesSum === 0) continue
+    result.set(key, {
+      제안량:     Math.round(a.suggestSum),
+      생산비중:   a.ratioWtd / a.salesSum,
+      판매트렌드: a.trendWtd / a.salesSum,
+    })
+  }
+  return result
+}
+
+function riskLabel(ratio: number): string {
+  if (ratio < 0.3) return '🔴 고위험'
+  if (ratio < 0.7) return '🟠 주의'
+  return '🟢 안전'
+}
+
 // ── 열 레이아웃 계산 ──────────────────────────────────────────
-function makeLayout(nYears: number) {
+function makeLayout(nYears: number, demandCols = false) {
   const C_NO   = 1, C_PAI = 2, C_TYPE = 3, C_PN = 4, C_NAME = 5, C_VENDOR = 6, C_LT = 7
   const C_ANN_FIRST = 8
   // annual(i) = C_ANN_FIRST + 2*i,  peak(i) = C_ANN_FIRST + 2*i + 1
@@ -46,8 +109,14 @@ function makeLayout(nYears: number) {
   const C_TGT   = C_ORD + 1                          // 2026목표 (입력)
   const C_REQ   = C_TGT + 1                          // 필요발주
   const C_NOTE  = C_REQ + 1                          // 비고
-  const TOTAL   = C_NOTE
-  return { C_NO, C_PAI, C_TYPE, C_PN, C_NAME, C_VENDOR, C_LT, C_ANN_FIRST, C_AVG, C_PEAK_AVG, C_SS, C_CUR, C_ORD, C_TGT, C_REQ, C_NOTE, TOTAL }
+  // 수요기반 분석 컬럼 (케이블 시트, salesAgg 있을 때만)
+  const C_SUGGEST  = demandCols ? C_NOTE + 1 : 0
+  const C_VS_AVG   = demandCols ? C_NOTE + 2 : 0
+  const C_RATIO    = demandCols ? C_NOTE + 3 : 0
+  const C_TREND    = demandCols ? C_NOTE + 4 : 0
+  const C_RISK     = demandCols ? C_NOTE + 5 : 0
+  const TOTAL      = demandCols ? C_RISK : C_NOTE
+  return { C_NO, C_PAI, C_TYPE, C_PN, C_NAME, C_VENDOR, C_LT, C_ANN_FIRST, C_AVG, C_PEAK_AVG, C_SS, C_CUR, C_ORD, C_TGT, C_REQ, C_NOTE, C_SUGGEST, C_VS_AVG, C_RATIO, C_TREND, C_RISK, TOTAL }
 }
 
 // ── 메인 시트 (케이블 사용내역 / 하우징 사용내역) ─────────────
@@ -60,13 +129,15 @@ function writeMainSheet(
   unit: string,
   typeLabel: string,
   safetyK: number,
+  demandMap?: Map<string, DemandEntry>,
 ) {
   if (!rows.length) return
   const ws = wb.addWorksheet(sheetName)
   ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 3 }]
 
   const nYears = years.length
-  const L = makeLayout(nYears)
+  const hasDemand = !!(demandMap && demandMap.size > 0)
+  const L = makeLayout(nYears, hasDemand)
   const YEAR_COLORS = ['2F5597', '2E75B6', '155480', '375623', '7030A0']
 
   const setCell = (r: number, c: number, val: ExcelJS.CellValue) => {
@@ -116,6 +187,7 @@ function writeMainSheet(
   band(2, L.C_CUR, L.C_ORD, '재고 현황', '7030A0')
   band(2, L.C_TGT, L.C_REQ, '✏ 발주 계획', 'C55A11')
   band(2, L.C_NOTE, L.C_NOTE, '비고', '595959')
+  if (hasDemand) band(2, L.C_SUGGEST, L.C_RISK, '🔍 수요기반 분석 (STEP 2 연동)', '1F3864')
 
   // ── 행 3: 헤더 ───────────────────────────────────────────
   ws.getRow(3).height = 42
@@ -144,6 +216,13 @@ function writeMainSheet(
   hdrCell(3, L.C_TGT,  `목표수량\n(${unit})`);  ws.getColumn(L.C_TGT).width = 13
   hdrCell(3, L.C_REQ,  `필요발주\n(${unit})`);  ws.getColumn(L.C_REQ).width = 13
   hdrCell(3, L.C_NOTE, '비고');                   ws.getColumn(L.C_NOTE).width = 20
+  if (hasDemand) {
+    hdrCell(3, L.C_SUGGEST, `수요기반\n제안량(${unit})`, 'BDD7EE', '1F3864'); ws.getColumn(L.C_SUGGEST).width = 14
+    hdrCell(3, L.C_VS_AVG,  `vs\n3개년평균`,              'BDD7EE', '1F3864'); ws.getColumn(L.C_VS_AVG).width  = 11
+    hdrCell(3, L.C_RATIO,   `생산비중\n(맥산)`,           'BDD7EE', '1F3864'); ws.getColumn(L.C_RATIO).width   = 10
+    hdrCell(3, L.C_TREND,   `판매\n트렌드`,               'BDD7EE', '1F3864'); ws.getColumn(L.C_TREND).width   = 10
+    hdrCell(3, L.C_RISK,    `수입의존\n위험도`,            'BDD7EE', '1F3864'); ws.getColumn(L.C_RISK).width    = 12
+  }
 
   // ── 데이터 행 ─────────────────────────────────────────────
   let no = 1
@@ -159,7 +238,11 @@ function writeMainSheet(
       if (numFmt) cell.numFmt = numFmt
     }
 
-    sc(L.C_NO, no++)
+    if (row.isSubRow) {
+      sc(L.C_NO, null)
+    } else {
+      sc(L.C_NO, no++)
+    }
     sc(L.C_PAI, row.pai)
     sc(L.C_TYPE, displayLabel(row.label))
     sc(L.C_PN, row.품번 || '(미등록)')
@@ -238,6 +321,46 @@ function writeMainSheet(
     const noteCell = setCell(ri, L.C_NOTE, '')
     if (evenFill) noteCell.fill = evenFill
     noteCell.alignment = { horizontal: 'left', vertical: 'middle' }
+
+    // 수요기반 분석 컬럼
+    if (hasDemand && demandMap) {
+      const d = demandMap.get(row.key)
+      if (d) {
+        // 제안량 (static)
+        const sugCell = setCell(ri, L.C_SUGGEST, d.제안량 || null)
+        sugCell.numFmt = '#,##0'; sugCell.alignment = { horizontal: 'right', vertical: 'middle' }
+        sugCell.font = { name: 'Arial', bold: true, size: 9, color: { argb: 'FF1F3864' } }
+        if (evenFill) sugCell.fill = evenFill
+
+        // vs3개년평균 (formula)
+        const vsCell = setCell(ri, L.C_VS_AVG, { formula: `IFERROR(${cl(L.C_SUGGEST)}${ri}/${cl(L.C_AVG)}${ri}-1,"")` })
+        vsCell.numFmt = '+0.0%;[Red]-0.0%'; vsCell.alignment = { horizontal: 'center', vertical: 'middle' }
+        if (evenFill) vsCell.fill = evenFill
+
+        // 생산비중 (static %)
+        const ratCell = setCell(ri, L.C_RATIO, d.생산비중 || null)
+        ratCell.numFmt = '0%'; ratCell.alignment = { horizontal: 'center', vertical: 'middle' }
+        ratCell.font = font({ color: d.생산비중 < 0.3 ? 'C00000' : d.생산비중 < 0.7 ? 'C55A11' : '375623' })
+        if (evenFill) ratCell.fill = evenFill
+
+        // 판매트렌드 (static %)
+        const trdCell = setCell(ri, L.C_TREND, d.판매트렌드 || null)
+        trdCell.numFmt = '+0.0%;[Red]-0.0%'; trdCell.alignment = { horizontal: 'center', vertical: 'middle' }
+        if (evenFill) trdCell.fill = evenFill
+
+        // 수입의존위험도 (text)
+        const rskCell = setCell(ri, L.C_RISK, riskLabel(d.생산비중))
+        rskCell.alignment = { horizontal: 'center', vertical: 'middle' }
+        if (evenFill) rskCell.fill = evenFill
+      } else {
+        for (const c of [L.C_SUGGEST, L.C_VS_AVG, L.C_RATIO, L.C_TREND, L.C_RISK]) {
+          const cell = setCell(ri, c, null)
+          cell.alignment = { horizontal: 'center', vertical: 'middle' }
+          if (evenFill) cell.fill = evenFill
+        }
+      }
+    }
+
     ws.getRow(ri).height = 17
   }
 
@@ -655,12 +778,14 @@ function writeAnomalySheet(wb: ExcelJS.Workbook) {
 
 // ── 진입점 ────────────────────────────────────────────────────
 export function buildStep3Workbook(
-  rows:      Step3Row[],
-  years:     string[],
-  mainColor: string,
-  safetyK:   number,
-  metadata:  Metadata,
-  inventory: Inventory,
+  rows:         Step3Row[],
+  years:        string[],
+  mainColor:    string,
+  safetyK:      number,
+  metadata:     Metadata,
+  inventory:    Inventory,
+  salesAgg?:    SalesAggResult,
+  codeToCable?: Record<string, CodeCableEntry>,
 ): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook()
   wb.creator = 'AJW 발주계획 시스템'
@@ -668,7 +793,11 @@ export function buildStep3Workbook(
   const cableRows   = rows.filter(r => r.type === 'cable')
   const housingRows = rows.filter(r => r.type === 'housing')
 
-  writeMainSheet(wb, '케이블 사용내역',  cableRows,   years, mainColor, 'm',  '케이블 종류', safetyK)
+  const demandMap = (salesAgg && codeToCable && Object.keys(codeToCable).length > 0)
+    ? computeDemand(salesAgg, codeToCable, years)
+    : undefined
+
+  writeMainSheet(wb, '케이블 사용내역',  cableRows,   years, mainColor, 'm',  '케이블 종류', safetyK, demandMap)
   writeMainSheet(wb, '하우징 사용내역',  housingRows, years, mainColor, 'EA', '하우징 타입', safetyK)
   writeBunhoSheet(wb, housingRows, years, mainColor, metadata.ferrule ?? {}, inventory.ferrule ?? {})
   writeMonthlySheet(wb, [...cableRows, ...housingRows], years, mainColor)

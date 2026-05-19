@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { buildStep3Plan, parseSalesAggExcel } from '../lib/step3Core'
-import type { Step3Row } from '../lib/step3Core'
+import type { Step3Row, CodeCableEntry } from '../lib/step3Core'
 import type { Metadata, Inventory, AppSettings } from '../lib/types'
+import type { SalesAggResult } from '../lib/aggregate/salesAgg'
 import { buildStep3Workbook } from '../lib/output/writeStep3Excel'
 import { downloadXlsx, today } from '../lib/download'
 import FileUploader from './FileUploader'
@@ -10,18 +11,20 @@ interface Props {
   metadata:  Metadata
   inventory: Inventory
   settings:  AppSettings
+  salesAgg?: SalesAggResult | null
 }
 
 const num = (v: number, unit = '') => v === 0 ? '—' : v.toLocaleString() + (unit ? ' ' + unit : '')
 
-export default function Step3({ metadata, inventory, settings }: Props) {
-  const [logs, setLogs]                 = useState<string[]>([])
-  const [running, setRunning]           = useState(false)
-  const [done, setDone]                 = useState(false)
-  const [gaongFile, setGaongFile]       = useState<File | null>(null)
-  const [salesAggFile, setSalesAggFile] = useState<File | null>(null)
-  const [rows, setRows]                 = useState<Step3Row[]>([])
-  const [years, setYears]               = useState<string[]>([])
+export default function Step3({ metadata, inventory, settings, salesAgg }: Props) {
+  const [logs, setLogs]                     = useState<string[]>([])
+  const [running, setRunning]               = useState(false)
+  const [done, setDone]                     = useState(false)
+  const [gaongFile, setGaongFile]           = useState<File | null>(null)
+  const [salesAggFile, setSalesAggFile]     = useState<File | null>(null)
+  const [rows, setRows]                     = useState<Step3Row[]>([])
+  const [years, setYears]                   = useState<string[]>([])
+  const [codeToCable, setCodeToCable]       = useState<Record<string, CodeCableEntry>>({})
 
   const run = async () => {
     if (!gaongFile) return alert('가공파일을 선택해주세요.')
@@ -36,6 +39,7 @@ export default function Step3({ metadata, inventory, settings }: Props) {
       setLogs(result.logs)
       setRows(result.rows)
       setYears(result.years)
+      setCodeToCable(result.codeToCable)
       setDone(true)
     } catch (e) {
       setLogs([`❌ 오류: ${e}`])
@@ -46,7 +50,7 @@ export default function Step3({ metadata, inventory, settings }: Props) {
 
   const exportExcel = async () => {
     if (!rows.length) return
-    const wb  = buildStep3Workbook(rows, years, settings.colors.main_header, settings.safety_stock_k ?? 1.5, metadata, inventory)
+    const wb  = buildStep3Workbook(rows, years, settings.colors.main_header, settings.safety_stock_k ?? 1.5, metadata, inventory, salesAgg ?? undefined, codeToCable)
     const buf = await wb.xlsx.writeBuffer()
     downloadXlsx(buf as ArrayBuffer, `발주계획_${today()}.xlsx`)
   }
@@ -107,7 +111,7 @@ export default function Step3({ metadata, inventory, settings }: Props) {
         )}
         {(done || logs.length > 0) && (
           <button
-            onClick={() => { setDone(false); setLogs([]); setGaongFile(null); setSalesAggFile(null); setRows([]); setYears([]) }}
+            onClick={() => { setDone(false); setLogs([]); setGaongFile(null); setSalesAggFile(null); setRows([]); setYears([]); setCodeToCable({}) }}
             className="px-4 py-2 text-sm border border-gray-300 rounded text-gray-600 hover:bg-gray-100 transition"
           >
             🗑 초기화

@@ -4,6 +4,7 @@ import type { YearStats, Metadata } from './types'
 const MM_KINDS = new Set(['om1','om1-pigtail','om3'])
 const PAI_ORDER: Record<string, number> = { '2.0mm': 0, '3.0mm': 1, '0.9mm': 2 }
 const PIGTAIL_COLORS = ['청','등','녹','적','황','자','갈','흑','백','회','연청','연등']
+const PIGTAIL_COLOR_MAP: Record<string, string> = { '연청': 'AQUA', '연등': 'rose' }
 
 function normalPai(p: unknown): string {
   const s = String(p ?? '').trim()
@@ -115,7 +116,7 @@ export function runStep1(fileBuffer: ArrayBuffer, metadata: Metadata): Step1Resu
       if (ct === 'PIGTAIL' && pc === '0.9mm') {
         let nc = 1; try { nc = parseInt(String(core)) || 1 } catch {}
         for (const color of PIGTAIL_COLORS.slice(0, nc)) {
-          const key = `${pc}|pigtail-${color}`; initKey(cableAgg, key)
+          const key = `${pc}|pigtail-${PIGTAIL_COLOR_MAP[color] ?? color}`; initKey(cableAgg, key)
           for (let i = 0; i < 12; i++) {
             const q = (row as unknown[])[9 + i]
             if (q) cableAgg[key][yr][i] += parseFloat(String(q)) * len
