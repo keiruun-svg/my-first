@@ -32,17 +32,23 @@ function extractYearFromHeader(h: string): string | null {
 export function parseSalesFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] {
   const wb = XLSX.read(buffer, { type: 'array' })
   const allRows: SalesRow[] = []
+  logs.push(`시트 목록: ${wb.SheetNames.join(', ')}`)
 
   for (const sheetName of wb.SheetNames) {
     const ws = wb.Sheets[sheetName]
-    if (!ws || !ws['!ref']) continue
+    if (!ws || !ws['!ref']) { logs.push(`  ${sheetName}: 빈 시트`); continue }
 
     // 원시 배열로 읽어서 헤더 행 위치 찾기
     const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null }) as unknown[][]
 
     // '품목명' 셀이 있는 행을 헤더 행으로 인식
     const hdrIdx = raw.findIndex(r => r.some(c => String(c ?? '').trim() === '품목명'))
-    if (hdrIdx < 0) continue
+    if (hdrIdx < 0) {
+      // 첫 행 컬럼 샘플 로그 (진단용)
+      const firstCols = (raw[0] ?? []).slice(0, 5).map(c => String(c ?? '').slice(0, 20)).join(' | ')
+      logs.push(`  ${sheetName}: 헤더없음 — 1행: [${firstCols}]`)
+      continue
+    }
 
     const headers = raw[hdrIdx].map(h => String(h ?? '').trim())
 
@@ -80,6 +86,10 @@ export function parseSalesFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] 
       range: hdrIdx,  // 헤더 행부터 읽기
     })
 
+    // 시트명에서 연도 추출 — 예: "4_판매 20230101_20231231" → '23'
+    const sheetYrMatch = sheetName.match(/20(\d{2})\d{4}/)
+    const sheetYr = sheetYrMatch ? sheetYrMatch[1] : null
+
     const isDetailed = dataRows.length > 0 && (
       dataRows[0]['월'] !== undefined ||
       dataRows[0]['거래처명'] !== undefined ||
@@ -95,7 +105,10 @@ export function parseSalesFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] 
       const qty = parseInt(String(row['수량'] ?? row['합계'] ?? '0')) || 0
       if (qty <= 0) continue
 
-      const yr = toYY(row['년'] ?? row['연도'] ?? row['year'])
+      // 년 컬럼 → 일자 앞 4자리 → 시트명 순서로 연도 추출
+      const dateStr = String(row['일자'] ?? row['일'] ?? '')
+      const dateYr = dateStr.length >= 4 ? toYY(dateStr.slice(0, 4)) : null
+      const yr = toYY(row['년'] ?? row['연도'] ?? row['year']) ?? dateYr ?? sheetYr
       if (!yr) continue
 
       const key = `${code}||${name}||${yr}`
@@ -124,6 +137,12 @@ export function parseProductionFile(buffer: ArrayBuffer, logs: string[]): SalesR
   const ws  = wb.Sheets[wb.SheetNames[0]]
   const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null })
   logs.push(`구매관리(맥산): ${raw.length.toLocaleString()}행 로드`)
+
+  // 진단: 첫 행 컬럼 확인
+  if (raw.length > 0) {
+    const firstKeys = Object.keys(raw[0]).slice(0, 6).join(', ')
+    logs.push(`  컬럼: [${firstKeys}]`)
+  }
 
   const rows: SalesRow[] = []
   for (const row of raw) {
