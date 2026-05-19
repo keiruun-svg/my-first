@@ -510,7 +510,7 @@ function writeBunhoSheet(
     if (evenFill2) avgCell.fill = evenFill2
 
     const ssCell2 = ws.getCell(ri, C_SS)
-    ssCell2.value = { formula: `ROUND(${cl(C_AVG)}${ri}*${cl(C_LT)}${ri}/30,0)` }
+    ssCell2.value = { formula: `ROUND(${cl(C_AVG)}${ri}/12*${cl(C_LT)}${ri}/30,0)` }
     ssCell2.font  = font({ bold: true }); ssCell2.border = ALL_BORDERS; ssCell2.numFmt = '#,##0'
     ssCell2.fill  = fill('FFF2CC'); ssCell2.alignment = { horizontal: 'right', vertical: 'middle' }
 
