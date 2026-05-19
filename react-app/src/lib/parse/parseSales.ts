@@ -17,51 +17,105 @@ function toYY(raw: unknown): string | null {
   return null
 }
 
-/** 전체 판매량.xlsx
- *  형식 A (연간 합산): 품목코드, 품목명, 년, 수량
- *  형식 B (판매현황 분석): 거래처명, 품목코드, 품목명, 년, 월, 수량, 공급가액 — 자동 감지 후 연간 합산
+/** 컬럼 헤더에서 연도 추출 — "23년\n판매(EA)", "24년 판매(EA)" 등 */
+function extractYearFromHeader(h: string): string | null {
+  const m = h.replace(/\r\n/g, '\n').match(/^(\d{2})년[\s\S]*판매\(EA\)/)
+  return m ? m[1] : null
+}
+
+/**
+ * 전체 판매량.xlsx 지원 형식
+ *  형식 A (연간 합산):  품목코드, 품목명, 년, 수량
+ *  형식 B (월별 상세):  거래처명, 품목코드, 품목명, 년, 월, 수량, 공급가액 — 연간 합산
+ *  형식 C (가로 집계):  판매현황분석 출력 파일 — 타이틀 행 + "23년\n판매(EA)" 형태 컬럼 — 자동 감지
  */
 export function parseSalesFile(buffer: ArrayBuffer, logs: string[]): SalesRow[] {
-  const wb  = XLSX.read(buffer, { type: 'array' })
-  const allRaw: Record<string, unknown>[] = []
-  for (const name of wb.SheetNames) {
-    const ws = wb.Sheets[name]
+  const wb = XLSX.read(buffer, { type: 'array' })
+  const allRows: SalesRow[] = []
+
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName]
     if (!ws || !ws['!ref']) continue
-    allRaw.push(...XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null }))
+
+    // 원시 배열로 읽어서 헤더 행 위치 찾기
+    const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null }) as unknown[][]
+
+    // '품목명' 셀이 있는 행을 헤더 행으로 인식
+    const hdrIdx = raw.findIndex(r => r.some(c => String(c ?? '').trim() === '품목명'))
+    if (hdrIdx < 0) continue
+
+    const headers = raw[hdrIdx].map(h => String(h ?? '').trim())
+
+    // 형식 C 판별 — 헤더에 "XX년 판매(EA)" 패턴 컬럼이 있는 경우
+    const yearCols: Array<{ yr: string; idx: number }> = []
+    headers.forEach((h, idx) => {
+      const yr = extractYearFromHeader(h)
+      if (yr) yearCols.push({ yr, idx })
+    })
+
+    if (yearCols.length > 0) {
+      // 형식 C: 가로 집계형
+      const nameIdx = headers.findIndex(h => h === '품목명')
+      const codeIdx = headers.findIndex(h => h === '품목코드')
+      let cnt = 0
+      for (let i = hdrIdx + 1; i < raw.length; i++) {
+        const row = raw[i]
+        const name = String(row[nameIdx] ?? '').trim()
+        const code = codeIdx >= 0 ? String(row[codeIdx] ?? '').trim() : ''
+        if (!name) continue
+        for (const { yr, idx } of yearCols) {
+          const qty = parseInt(String(row[idx] ?? '0')) || 0
+          if (qty <= 0) continue
+          allRows.push({ code, name, year: yr, qty })
+          cnt++
+        }
+      }
+      logs.push(`  ${sheetName}: 가로집계형 감지 (${yearCols.map(c => '20' + c.yr + '년').join('/')}) → ${cnt.toLocaleString()}건`)
+      continue
+    }
+
+    // 형식 A / B: 세로형 (년/연도 컬럼 + 수량 컬럼)
+    const dataRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
+      defval: null,
+      range: hdrIdx,  // 헤더 행부터 읽기
+    })
+
+    const isDetailed = dataRows.length > 0 && (
+      dataRows[0]['월'] !== undefined ||
+      dataRows[0]['거래처명'] !== undefined ||
+      dataRows[0]['거래처'] !== undefined
+    )
+
+    const agg: Record<string, { code: string; name: string; qty: number }> = {}
+    for (const row of dataRows) {
+      const code = String(row['품목코드'] ?? '').trim()
+      const name = String(row['품목명'] ?? row['제품명'] ?? '').trim()
+      if (!name) continue
+
+      const qty = parseInt(String(row['수량'] ?? row['합계'] ?? '0')) || 0
+      if (qty <= 0) continue
+
+      const yr = toYY(row['년'] ?? row['연도'] ?? row['year'])
+      if (!yr) continue
+
+      const key = `${code}||${name}||${yr}`
+      if (!agg[key]) agg[key] = { code, name, qty: 0 }
+      agg[key].qty += qty
+    }
+
+    const sheetRows = Object.entries(agg).map(([key, v]) => {
+      const [,, yr] = key.split('||')
+      return { code: v.code, name: v.name, year: yr, qty: v.qty }
+    })
+
+    if (sheetRows.length > 0) {
+      allRows.push(...sheetRows)
+      logs.push(`  ${sheetName}: ${isDetailed ? '월별→연간 합산' : '연간 직접'} ${sheetRows.length.toLocaleString()}건`)
+    }
   }
-  logs.push(`전체 판매량: ${allRaw.length.toLocaleString()}행 로드`)
 
-  // 형식 감지 — '월' 컬럼 또는 '거래처명' 컬럼이 있으면 판매현황 분석 파일
-  const isDetailed = allRaw.length > 0 && (
-    allRaw[0]['월'] !== undefined || allRaw[0]['거래처명'] !== undefined || allRaw[0]['거래처'] !== undefined
-  )
-  if (isDetailed) logs.push('  → 판매현황 분석 파일 감지 — 월별 데이터를 연간 합산합니다')
-
-  const agg: Record<string, { code: string; name: string; qty: number }> = {}
-
-  for (const row of allRaw) {
-    const code = String(row['품목코드'] ?? '').trim()
-    const name = String(row['품목명'] ?? row['제품명'] ?? '').trim()
-    if (!name) continue
-
-    const qty = parseInt(String(row['수량'] ?? '0')) || 0
-    if (qty <= 0) continue
-
-    const yr = toYY(row['년'] ?? row['연도'] ?? row['year'])
-    if (!yr) continue
-
-    const key = `${code}||${name}||${yr}`
-    if (!agg[key]) agg[key] = { code, name, qty: 0 }
-    agg[key].qty += qty
-  }
-
-  const rows: SalesRow[] = Object.entries(agg).map(([key, v]) => {
-    const [,, yr] = key.split('||')
-    return { code: v.code, name: v.name, year: yr, qty: v.qty }
-  })
-
-  logs.push(`  → OJC 포함 전체 ${rows.length.toLocaleString()}건 (${isDetailed ? '월별→연간 합산' : '연간 직접'})`)
-  return rows
+  logs.push(`전체 판매량 합산: ${allRows.length.toLocaleString()}건`)
+  return allRows
 }
 
 /** 구매관리(맥산).xlsx — 컬럼: 품목코드, 품목명, 입고일자, 수량 */
