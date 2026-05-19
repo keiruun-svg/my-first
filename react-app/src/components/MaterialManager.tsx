@@ -11,8 +11,10 @@ interface Props {
 }
 
 interface PreviewRow {
+  kind: 'cable' | 'housing'
   key: string; pai: string; type: string
   품번: string; 품명: string; 구매처: string; 리드타임: string
+  현재고: number; 기발주: number
   isNew: boolean
 }
 
@@ -30,7 +32,7 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
 
   // 품번 Excel 업로드 상태
   const [pnPanel,    setPnPanel]    = useState(false)
-  const [preview,    setPreview]    = useState<{ kind: 'cable' | 'housing'; rows: PreviewRow[] } | null>(null)
+  const [preview,    setPreview]    = useState<{ rows: PreviewRow[] } | null>(null)
   const [previewErr, setPreviewErr] = useState('')
   const pnFileRef = useRef<HTMLInputElement>(null)
 
@@ -70,56 +72,84 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
 
   // ── 저장 ───────────────────────────────────────────────────────
   const flash = (type: typeof saved) => { setSaved(type); setTimeout(() => setSaved(''), 2000) }
-  const saveAll  = () => { saveMetadata(metadata); saveInventory(inventory); flash('both') }
+  const saveAll = () => { saveMetadata(metadata); saveInventory(inventory); flash('both') }
 
-  // ── 품번 Excel 템플릿 다운로드 ────────────────────────────────
-  function downloadTemplate() {
-    const isCable = tab === 'cable'
-    const keys    = isCable ? Object.keys(metadata.cable).sort() : Object.keys(metadata.housing).sort()
-    const label   = isCable ? '케이블종류' : '하우징타입'
-    const getCm   = (k: string): CableMeta => metadata.cable[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
-    const getHm   = (k: string): HousingComp => { const c = metadata.housing[k]; return (Array.isArray(c) ? c[0] : c) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null } }
-    const header  = ['파이', label, '품번', '품명', '구매처', '리드타임(일)']
-    const rows    = keys.length ? keys.map(k => {
-      const [pai, type] = k.split('|')
-      const m = isCable ? getCm(k) : getHm(k)
-      return [pai, type, m.품번 ?? '', m.품명 ?? '', m.구매처 ?? '', m.리드타임 ?? '']
-    }) : [['A1', '예시종류', '', '', '', '60']]
-    const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
-    ws['!cols'] = [10, 20, 16, 30, 16, 12].map(w => ({ wch: w }))
+  // ── 양식 다운로드 (케이블 + 하우징 2시트) ─────────────────────
+  function downloadForm() {
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, isCable ? '케이블' : '하우징')
-    XLSX.writeFile(wb, `품번관리_${isCable ? '케이블' : '하우징'}_템플릿.xlsx`)
+
+    // 케이블 시트
+    const cableKeys   = Object.keys(metadata.cable).sort()
+    const cableHeader = ['파이', '케이블종류', '품번', '품명', '구매처', '리드타임(일)', '현재고(m)', '기발주(m)']
+    const cableRows   = cableKeys.length
+      ? cableKeys.map(k => {
+          const [pai, type] = k.split('|')
+          const m   = metadata.cable[k] ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
+          const inv = inventory.cable[k] ?? { 현재고: 0, 기발주: 0 }
+          return [pai, type, m.품번 ?? '', m.품명 ?? '', m.구매처 ?? '', m.리드타임 ?? '', inv.현재고 ?? 0, inv.기발주 ?? 0]
+        })
+      : [['A1.6', '예시종류', '', '', '', '60', 0, 0]]
+    const cableWs = XLSX.utils.aoa_to_sheet([cableHeader, ...cableRows])
+    cableWs['!cols'] = [8, 20, 16, 30, 16, 12, 12, 12].map(w => ({ wch: w }))
+    XLSX.utils.book_append_sheet(wb, cableWs, '케이블')
+
+    // 하우징 시트
+    const housingKeys   = Object.keys(metadata.housing).sort()
+    const housingHeader = ['파이', '하우징타입', '품번', '품명', '구매처', '리드타임(일)', '현재고(EA)', '기발주(EA)']
+    const housingRows   = housingKeys.length
+      ? housingKeys.map(k => {
+          const [pai, type] = k.split('|')
+          const cm  = metadata.housing[k]
+          const m   = (Array.isArray(cm) ? cm[0] : cm) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
+          const civRaw = inventory.housing[k]
+          const inv    = (Array.isArray(civRaw) ? civRaw[0] : civRaw) ?? { 현재고: 0, 기발주: 0 }
+          return [pai, type, m.품번 ?? '', m.품명 ?? '', m.구매처 ?? '', m.리드타임 ?? '', inv.현재고 ?? 0, inv.기발주 ?? 0]
+        })
+      : [['A1.6', '예시타입', '', '', '', '60', 0, 0]]
+    const housingWs = XLSX.utils.aoa_to_sheet([housingHeader, ...housingRows])
+    housingWs['!cols'] = [8, 20, 16, 30, 16, 12, 12, 12].map(w => ({ wch: w }))
+    XLSX.utils.book_append_sheet(wb, housingWs, '하우징')
+
+    XLSX.writeFile(wb, '자재관리_양식.xlsx')
   }
 
-  // ── 품번 Excel 업로드 파싱 ────────────────────────────────────
+  // ── 양식 Excel 업로드 파싱 (케이블 + 하우징 동시) ────────────
   function handlePnUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return
     e.target.value = ''; setPreviewErr('')
     const reader = new FileReader()
     reader.onload = ev => {
       try {
-        const wb = XLSX.read(ev.target?.result, { type: 'array' })
-        const sheetName = tab === 'cable' ? '케이블' : '하우징'
-        const ws = wb.Sheets[sheetName] ?? wb.Sheets[wb.SheetNames[0]]
-        if (!ws) { setPreviewErr('시트를 찾을 수 없습니다.'); return }
-        const raw = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' }) as string[][]
-        if (raw.length < 2) { setPreviewErr('데이터 행이 없습니다.'); return }
+        const wb   = XLSX.read(ev.target?.result, { type: 'array' })
         const parsed: PreviewRow[] = []
-        for (let i = 1; i < raw.length; i++) {
-          const r = raw[i]
-          const pai  = String(r[0] ?? '').trim()
-          const type = String(r[1] ?? '').trim()
-          if (!pai || !type) continue
-          const key    = `${pai}|${type}`
-          const exists = tab === 'cable' ? !!metadata.cable[key] : !!metadata.housing[key]
-          parsed.push({ key, pai, type,
-            품번: String(r[2] ?? '').trim(), 품명: String(r[3] ?? '').trim(),
-            구매처: String(r[4] ?? '').trim(), 리드타임: String(r[5] ?? '').trim(),
-            isNew: !exists })
+
+        for (const kind of ['cable', 'housing'] as const) {
+          const sheetName = kind === 'cable' ? '케이블' : '하우징'
+          const ws = wb.Sheets[sheetName]
+          if (!ws) continue
+          const raw = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' }) as string[][]
+          for (let i = 1; i < raw.length; i++) {
+            const r    = raw[i]
+            const pai  = String(r[0] ?? '').trim()
+            const type = String(r[1] ?? '').trim()
+            if (!pai || !type) continue
+            const key    = `${pai}|${type}`
+            const exists = kind === 'cable' ? !!metadata.cable[key] : !!metadata.housing[key]
+            parsed.push({
+              kind, key, pai, type,
+              품번:     String(r[2] ?? '').trim(),
+              품명:     String(r[3] ?? '').trim(),
+              구매처:   String(r[4] ?? '').trim(),
+              리드타임: String(r[5] ?? '').trim(),
+              현재고:   Number(r[6]) || 0,
+              기발주:   Number(r[7]) || 0,
+              isNew: !exists,
+            })
+          }
         }
-        if (!parsed.length) { setPreviewErr('유효한 데이터가 없습니다.'); return }
-        setPreview({ kind: tab, rows: parsed })
+
+        if (!parsed.length) { setPreviewErr('유효한 데이터가 없습니다. 케이블/하우징 시트를 확인하세요.'); return }
+        setPreview({ rows: parsed })
       } catch { setPreviewErr('파일을 읽는 중 오류가 발생했습니다.') }
     }
     reader.readAsArrayBuffer(file)
@@ -127,23 +157,33 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
 
   function applyPreview() {
     if (!preview) return
-    const next = { ...metadata }
-    if (preview.kind === 'cable') {
-      const cable = { ...next.cable }
-      for (const r of preview.rows)
-        cable[r.key] = { 품번: r.품번, 품명: r.품명, 구매처: r.구매처, 리드타임: r.리드타임 || null }
-      next.cable = cable
-    } else {
-      const housing = { ...next.housing }
-      for (const r of preview.rows) {
-        const cur  = housing[r.key]
-        const base = (Array.isArray(cur) ? cur[0] : cur) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
-        housing[r.key] = { ...base, 품번: r.품번, 품명: r.품명, 구매처: r.구매처, 리드타임: r.리드타임 || null }
+    const nextMeta = { ...metadata }
+    const nextInv  = { ...inventory }
+    const cable    = { ...nextMeta.cable }
+    const housing  = { ...nextMeta.housing }
+    const cableInv   = { ...nextInv.cable }
+    const housingInv = { ...nextInv.housing }
+
+    for (const r of preview.rows) {
+      if (r.kind === 'cable') {
+        cable[r.key]    = { 품번: r.품번, 품명: r.품명, 구매처: r.구매처, 리드타임: r.리드타임 || null }
+        const prev      = cableInv[r.key] ?? { 현재고: 0, 기발주: 0 }
+        cableInv[r.key] = { ...prev, 현재고: r.현재고, 기발주: r.기발주 }
+      } else {
+        const curMeta  = housing[r.key]
+        const baseMeta = (Array.isArray(curMeta) ? curMeta[0] : curMeta) ?? { 품번:'', 품명:'', 구매처:'', 리드타임:null }
+        housing[r.key] = { ...baseMeta, 품번: r.품번, 품명: r.품명, 구매처: r.구매처, 리드타임: r.리드타임 || null }
+        const curInv   = housingInv[r.key]
+        const baseInv  = (Array.isArray(curInv) ? curInv[0] : curInv) ?? { 현재고: 0, 기발주: 0 }
+        housingInv[r.key] = { ...baseInv, 현재고: r.현재고, 기발주: r.기발주 }
       }
-      next.housing = housing
     }
-    setMetadata(next); saveMetadata(next)
-    setPreview(null); flash('meta')
+
+    nextMeta.cable = cable; nextMeta.housing = housing
+    nextInv.cable  = cableInv; nextInv.housing = housingInv
+    setMetadata(nextMeta); saveMetadata(nextMeta)
+    setInventory(nextInv); saveInventory(nextInv)
+    setPreview(null); flash('both')
   }
 
   // ── ERP 재고 파일 파싱 ────────────────────────────────────────
@@ -254,15 +294,15 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
         <div className="flex items-center gap-2">
           {CAN_WRITE && (
             <>
-              <button onClick={downloadTemplate}
+              <button onClick={downloadForm}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-300 rounded bg-white hover:bg-gray-50 transition">
-                📤 템플릿 다운로드
+                📤 양식 다운로드
               </button>
               <button onClick={() => { setPnPanel(v => !v); setErpPanel(false) }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded transition ${
                   pnPanel ? 'border-[#2E75B6] bg-blue-50 text-[#2E75B6]' : 'border-[#2E75B6] text-[#2E75B6] bg-white hover:bg-blue-50'
                 }`}>
-                📥 품번 일괄 업로드
+                📥 양식 업로드
               </button>
             </>
           )}
@@ -275,16 +315,20 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
         </div>
       </div>
 
-      {/* ── 품번 Excel 업로드 패널 ──────────────────────────── */}
+      {/* ── 양식 Excel 업로드 패널 ──────────────────────────── */}
       {pnPanel && CAN_WRITE && (
         <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-blue-800">
-              품번 일괄 업로드 — {tab === 'cable' ? '케이블' : '하우징'}
+              양식 업로드 — 케이블 + 하우징 동시 적용
             </span>
             <button onClick={() => { setPnPanel(false); setPreview(null); setPreviewErr('') }}
               className="text-xs text-gray-400 hover:text-gray-600">✕</button>
           </div>
+          <p className="text-xs text-blue-600">
+            양식 다운로드로 받은 <b>자재관리_양식.xlsx</b> 파일을 수정 후 업로드하세요.
+            케이블·하우징 시트의 품번·품명·구매처·리드타임·현재고·기발주가 모두 반영됩니다.
+          </p>
           {previewErr && <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded">{previewErr}</div>}
           {!preview ? (
             <button onClick={() => pnFileRef.current?.click()}
@@ -293,28 +337,35 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
             </button>
           ) : (
             <div className="space-y-2">
-              <div className="text-xs text-blue-700">
-                {preview.rows.length}개 행 —
-                기존 <b>{preview.rows.filter(r => !r.isNew).length}</b>개 업데이트 /
-                신규 <b>{preview.rows.filter(r => r.isNew).length}</b>개 추가
+              <div className="text-xs text-blue-700 flex gap-4">
+                <span>케이블 <b>{preview.rows.filter(r => r.kind==='cable').length}</b>행</span>
+                <span>하우징 <b>{preview.rows.filter(r => r.kind==='housing').length}</b>행</span>
+                <span>신규 <b className="text-green-600">{preview.rows.filter(r => r.isNew).length}</b>건 / 업데이트 <b className="text-blue-600">{preview.rows.filter(r => !r.isNew).length}</b>건</span>
               </div>
-              <div className="overflow-x-auto max-h-52 overflow-y-auto rounded border border-blue-100">
+              <div className="overflow-x-auto max-h-60 overflow-y-auto rounded border border-blue-100">
                 <table className="text-xs w-full bg-white">
                   <thead className="sticky top-0 bg-blue-100 text-blue-800">
-                    <tr>{['파이', tab==='cable'?'케이블종류':'하우징타입','품번','품명','구매처','LT','구분'].map(h=>(
-                      <th key={h} className="px-3 py-1.5 text-left font-semibold">{h}</th>
+                    <tr>{['구분','파이','종류','품번','품명','구매처','LT','현재고','기발주','상태'].map(h=>(
+                      <th key={h} className="px-2 py-1.5 text-left font-semibold whitespace-nowrap">{h}</th>
                     ))}</tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {preview.rows.map(r => (
-                      <tr key={r.key} className={r.isNew ? 'bg-green-50' : ''}>
-                        <td className="px-3 py-1 font-mono text-gray-500">{r.pai}</td>
-                        <td className="px-3 py-1 font-semibold">{r.type}</td>
-                        <td className="px-3 py-1">{r.품번 || <span className="text-red-400">미입력</span>}</td>
-                        <td className="px-3 py-1">{r.품명 || '—'}</td>
-                        <td className="px-3 py-1">{r.구매처 || '—'}</td>
-                        <td className="px-3 py-1">{r.리드타임 || '—'}</td>
-                        <td className="px-3 py-1">{r.isNew ? <span className="text-green-600 font-semibold">신규</span> : <span className="text-blue-600">업데이트</span>}</td>
+                      <tr key={`${r.kind}-${r.key}`} className={r.isNew ? 'bg-green-50' : ''}>
+                        <td className="px-2 py-1">
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${r.kind==='cable'?'bg-blue-100 text-blue-700':'bg-purple-100 text-purple-700'}`}>
+                            {r.kind==='cable'?'케이블':'하우징'}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1 font-mono text-gray-500">{r.pai}</td>
+                        <td className="px-2 py-1 font-semibold">{r.type}</td>
+                        <td className="px-2 py-1">{r.품번 || <span className="text-red-400">미입력</span>}</td>
+                        <td className="px-2 py-1 max-w-[120px] truncate" title={r.품명}>{r.품명 || '—'}</td>
+                        <td className="px-2 py-1">{r.구매처 || '—'}</td>
+                        <td className="px-2 py-1">{r.리드타임 || '—'}</td>
+                        <td className="px-2 py-1 text-right font-mono">{r.현재고.toLocaleString()}</td>
+                        <td className="px-2 py-1 text-right font-mono">{r.기발주.toLocaleString()}</td>
+                        <td className="px-2 py-1">{r.isNew ? <span className="text-green-600 font-semibold">신규</span> : <span className="text-blue-600">업데이트</span>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -375,23 +426,33 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
               <div className="overflow-x-auto max-h-52 overflow-y-auto rounded border border-yellow-100">
                 <table className="text-xs w-full bg-white">
                   <thead className="sticky top-0 bg-yellow-100">
-                    <tr><th className={thCls}>품목코드</th><th className={thCls}>품목명</th><th className={thCls}>구분</th>
-                        <th className={thR}>{importSubTab==='total'?'총수량':selectedWh}</th><th className={thCls}>매칭</th></tr>
+                    <tr>
+                      <th className={thCls}>품목코드</th>
+                      <th className={thCls}>품목명</th>
+                      <th className={thCls}>파이</th>
+                      <th className={thCls}>종류</th>
+                      <th className={thCls}>구분</th>
+                      <th className={thR}>{importSubTab==='total'?'총수량':selectedWh}</th>
+                      <th className={thCls}>매칭</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {matched.map((r, i) => {
                       const qty = importSubTab==='total' ? r.total : (r.byWh[selectedWh]??0)
+                      const [pai, type] = (r.metaKey ?? '').split('|')
                       return (
                         <tr key={i} className={i%2===0?'bg-white':'bg-gray-50'}>
                           <td className="px-3 py-1 font-mono text-gray-500">{r.code}</td>
-                          <td className="px-3 py-1 max-w-xs truncate" title={r.name}>{r.name}</td>
+                          <td className="px-3 py-1 max-w-[140px] truncate" title={r.name}>{r.name}</td>
+                          <td className="px-3 py-1 font-mono text-gray-500">{pai ?? '—'}</td>
+                          <td className="px-3 py-1 font-semibold">{type ?? '—'}</td>
                           <td className="px-3 py-1">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.matchType==='cable'?'bg-blue-50 text-blue-700':'bg-purple-50 text-purple-700'}`}>
                               {r.matchType==='cable'?'케이블':'하우징'}
                             </span>
                           </td>
                           <td className="px-3 py-1 text-right font-mono font-semibold">{qty.toLocaleString()}</td>
-                          <td className="px-3 py-1 text-xs text-green-600">✓ {r.metaKey}</td>
+                          <td className="px-3 py-1 text-xs text-green-600">✓</td>
                         </tr>
                       )
                     })}
@@ -400,7 +461,9 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
                       return (
                         <tr key={`u-${i}`} className="opacity-40">
                           <td className="px-3 py-1 font-mono text-gray-500">{r.code}</td>
-                          <td className="px-3 py-1 max-w-xs truncate" title={r.name}>{r.name}</td>
+                          <td className="px-3 py-1 max-w-[140px] truncate" title={r.name}>{r.name}</td>
+                          <td className="px-3 py-1 text-gray-400">—</td>
+                          <td className="px-3 py-1 text-gray-400">—</td>
                           <td className="px-3 py-1 text-xs text-gray-400">—</td>
                           <td className="px-3 py-1 text-right font-mono text-gray-400">{qty.toLocaleString()}</td>
                           <td className="px-3 py-1 text-xs text-gray-400">미매칭</td>
@@ -449,7 +512,6 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
                 <tr key={key} className={missing ? 'bg-red-50' : i%2===0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="px-3 py-1 font-mono text-gray-500 whitespace-nowrap">{pai}</td>
                   <td className="px-3 py-1.5 font-semibold whitespace-nowrap">{type}</td>
-                  {/* 품번 필드 (품번·품명·구매처·LT) */}
                   {(['품번','품명','구매처','리드타임'] as const).map(f => (
                     <td key={f} className="px-1 py-1">
                       <input
@@ -463,7 +525,6 @@ export default function MaterialManager({ metadata, setMetadata, inventory, setI
                       />
                     </td>
                   ))}
-                  {/* 재고 필드 */}
                   <td className="px-1 py-1">
                     <input type="number" min="0" value={inv.현재고}
                       onChange={e => tab==='cable' ? updateCableInv(key,'현재고',e.target.value) : updateHousingInv(key,'현재고',e.target.value)}
