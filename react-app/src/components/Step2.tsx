@@ -4,7 +4,7 @@ import { aggregateSales } from '../lib/aggregate/salesAgg'
 import { saveSalesAgg } from '../lib/supabase'
 import { writeSalesAgg } from '../lib/output/writeSalesAgg'
 import { downloadXlsx, today } from '../lib/download'
-import type { SalesAggResult, SalesProductEntry } from '../lib/aggregate/salesAgg'
+import type { SalesAggResult } from '../lib/aggregate/salesAgg'
 import FileUploader from './FileUploader'
 
 interface Props {
@@ -12,15 +12,6 @@ interface Props {
   setSalesAgg: (s: SalesAggResult) => void
 }
 
-const KIND_LABEL: Record<string, string> = {
-  'a1': 'A1 (SM)', 'a1-청': 'A1 청색', 'a1-녹': 'A1 녹색', 'a1-적': 'A1 적색', 'a1-자': 'A1 자색',
-  'b3': 'B3 (SM)', 'om1': 'OM1 (MM)', 'om3': 'OM3 (MM)',
-  'drop': 'DROP', 'pigtail': 'PIGTAIL', 'om1-pigtail': 'PIGTAIL (MM)',
-  'a2': 'Optical Cable',
-}
-
-const kindLabel = (k: string) => KIND_LABEL[k] ?? k.toUpperCase()
-const num = (v: number) => v === 0 ? '—' : v.toLocaleString()
 
 export default function Step2({ salesAgg, setSalesAgg }: Props) {
   const [logs, setLogs]                     = useState<string[]>([])
@@ -56,7 +47,6 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
     downloadXlsx(await writeSalesAgg(salesAgg), `판매분석_${today()}.xlsx`)
   }
 
-  const years = salesAgg?.years ?? []
 
   return (
     <div className="space-y-4">
@@ -119,47 +109,7 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
         </div>
       )}
 
-      {salesAgg && years.length > 0 && (
-        <ProductDetail byProduct={salesAgg.byProduct} years={years} />
-      )}
     </div>
   )
 }
 
-// ── 품목별 상세 테이블 ──────────────────────────────────────────
-function ProductDetail({ byProduct, years }: { byProduct: SalesProductEntry[]; years: string[] }) {
-  return (
-    <div className="overflow-x-auto border border-gray-200 rounded">
-      <table className="text-xs w-full">
-        <thead className="bg-gray-50 sticky top-0">
-          <tr>
-            <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">품목코드</th>
-            <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">품목명</th>
-            <th className="px-3 py-2 text-left border-b font-semibold text-gray-600">타입</th>
-            {years.map(yr => (
-              <th key={yr} className="px-3 py-2 text-right border-b font-semibold text-gray-600">{yr}년 판매</th>
-            ))}
-            {years.map(yr => (
-              <th key={`p-${yr}`} className="px-3 py-2 text-right border-b font-semibold text-blue-600">{yr}년 생산</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {byProduct.map((p, i) => (
-            <tr key={p.code || p.name} className={i % 2 === 0 ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 hover:bg-gray-100'}>
-              <td className="px-3 py-1.5 font-mono text-gray-500 text-xs">{p.code || '—'}</td>
-              <td className="px-3 py-1.5 max-w-xs truncate" title={p.name}>{p.name}</td>
-              <td className="px-3 py-1.5 text-gray-500">{kindLabel(p.kind)}</td>
-              {years.map(yr => (
-                <td key={yr} className="px-3 py-1.5 text-right">{num(p.byYear[yr]?.sales ?? 0)}</td>
-              ))}
-              {years.map(yr => (
-                <td key={`p-${yr}`} className="px-3 py-1.5 text-right text-blue-700">{num(p.byYear[yr]?.production ?? 0)}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
