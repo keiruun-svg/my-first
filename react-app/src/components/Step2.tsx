@@ -1,6 +1,6 @@
-import { useState, Fragment } from 'react'
+import { useState } from 'react'
 import { parseSalesFile, parseProductionFile } from '../lib/parse/parseSales'
-import { aggregateSales, forecastProduction } from '../lib/aggregate/salesAgg'
+import { aggregateSales } from '../lib/aggregate/salesAgg'
 import { saveSalesAgg } from '../lib/supabase'
 import { writeSalesAgg } from '../lib/output/writeSalesAgg'
 import { downloadXlsx, today } from '../lib/download'
@@ -20,11 +20,6 @@ const KIND_LABEL: Record<string, string> = {
 }
 
 const kindLabel = (k: string) => KIND_LABEL[k] ?? k.toUpperCase()
-const pct = (v: number) => `${Math.round(v * 100)}%`
-const cagr = (v: number) => {
-  const s = Math.round(v * 100)
-  return s === 0 ? '0%' : s > 0 ? `+${s}%` : `${s}%`
-}
 const num = (v: number) => v === 0 ? '—' : v.toLocaleString()
 
 export default function Step2({ salesAgg, setSalesAgg }: Props) {
@@ -33,7 +28,6 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
   const [done, setDone]                     = useState(false)
   const [salesFile, setSalesFile]           = useState<File | null>(null)
   const [purchaseFile, setPurchaseFile]     = useState<File | null>(null)
-  const [view, setView]                     = useState<'type' | 'product'>('type')
 
   const run = async () => {
     if (!salesFile) return alert('전체 판매량 파일을 선택해주세요.')
@@ -62,12 +56,7 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
     downloadXlsx(await writeSalesAgg(salesAgg), `판매분석_${today()}.xlsx`)
   }
 
-  const years      = salesAgg?.years ?? []
-  const latestYr   = years[years.length - 1]
-  const nextYrLabel = latestYr ? `${Number(latestYr) + 1}년` : ''
-  const forecast   = salesAgg && latestYr
-    ? forecastProduction(salesAgg, String(Number(latestYr) + 1), latestYr)
-    : {}
+  const years = salesAgg?.years ?? []
 
   return (
     <div className="space-y-4">
@@ -131,117 +120,8 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
       )}
 
       {salesAgg && years.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex gap-1 text-sm">
-            {(['type', 'product'] as const).map(v => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={`px-3 py-1.5 rounded font-medium border transition ${
-                  view === v
-                    ? 'bg-[#2E75B6] text-white border-[#2E75B6]'
-                    : 'bg-white text-gray-600 border-gray-300 hover:border-[#2E75B6]'
-                }`}
-              >
-                {v === 'type' ? '① 타입별 요약' : '② 품목별 상세'}
-              </button>
-            ))}
-          </div>
-
-          {view === 'type' && (
-            <TypeSummary
-              byType={salesAgg.byType}
-              salesCagr={salesAgg.salesCagr}
-              years={years}
-              forecast={forecast}
-              nextYrLabel={nextYrLabel}
-            />
-          )}
-          {view === 'product' && (
-            <ProductDetail byProduct={salesAgg.byProduct} years={years} />
-          )}
-        </div>
+        <ProductDetail byProduct={salesAgg.byProduct} years={years} />
       )}
-    </div>
-  )
-}
-
-// ── 타입별 요약 테이블 ──────────────────────────────────────────
-function TypeSummary({
-  byType, salesCagr, years, forecast, nextYrLabel,
-}: {
-  byType:       SalesAggResult['byType']
-  salesCagr:    SalesAggResult['salesCagr']
-  years:        string[]
-  forecast:     Record<string, number>
-  nextYrLabel:  string
-}) {
-  const kinds = Object.keys(byType).sort()
-
-  return (
-    <div className="overflow-x-auto border border-gray-200 rounded">
-      <table className="text-xs w-full whitespace-nowrap">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>타입</th>
-            {years.map(yr => (
-              <th key={yr} className="px-2 py-1 text-center border-b font-semibold text-gray-600" colSpan={3}>
-                {yr}년
-              </th>
-            ))}
-            <th className="px-3 py-2 text-center border-b font-semibold text-blue-700" rowSpan={2}>판매<br/>CAGR</th>
-            {nextYrLabel && (
-              <th className="px-3 py-2 text-center border-b font-semibold text-orange-700" rowSpan={2}>
-                B안 예측<br/>{nextYrLabel}
-              </th>
-            )}
-          </tr>
-          <tr>
-            {years.map(yr => (
-              <Fragment key={yr}>
-                <th className="px-2 py-1 text-right border-b text-gray-500 font-normal">판매</th>
-                <th className="px-2 py-1 text-right border-b text-gray-500 font-normal">생산</th>
-                <th className="px-2 py-1 text-right border-b text-gray-500 font-normal">생산%</th>
-              </Fragment>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {kinds.map((kind, i) => {
-            const entry = byType[kind]
-            const c = salesCagr[kind] ?? 0
-            const f = forecast[kind]
-            return (
-              <tr key={kind} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                <td className="px-3 py-1.5 font-medium text-gray-800">{kindLabel(kind)}</td>
-                {years.map(yr => {
-                  const e = entry[yr]
-                  return (
-                    <Fragment key={yr}>
-                      <td className="px-2 py-1.5 text-right">{num(e?.sales ?? 0)}</td>
-                      <td className="px-2 py-1.5 text-right text-blue-700">{num(e?.production ?? 0)}</td>
-                      <td className="px-2 py-1.5 text-right text-gray-500">
-                        {e?.sales ? pct(e.ratio) : '—'}
-                      </td>
-                    </Fragment>
-                  )
-                })}
-                <td className={`px-3 py-1.5 text-center font-semibold ${c >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
-                  {cagr(c)}
-                </td>
-                {nextYrLabel && (
-                  <td className="px-3 py-1.5 text-right font-semibold text-orange-700">
-                    {f ? f.toLocaleString() : '—'}
-                  </td>
-                )}
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      <div className="px-3 py-2 text-xs text-gray-400 border-t">
-        ※ B안 예측 = 최근년 판매 × (1 + 판매CAGR) × 최근년 생산비중 | 단위: 완제품 수량(EA) | STEP 3에서 자재량으로 변환
-      </div>
     </div>
   )
 }

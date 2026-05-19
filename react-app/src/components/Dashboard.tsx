@@ -161,56 +161,6 @@ export default function Dashboard({ metadata, inventory, salesAgg, onNavigate }:
         </div>
       </div>
 
-      {/* ── OJC 판매 CAGR 요약 (salesAgg 있을 때만) ────────────── */}
-      {hasSalesAgg && cagrEntries.length > 0 && (
-        <div className="border border-gray-200 rounded-lg p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-1">OJC 타입별 판매 추이</h2>
-          <p className="text-xs text-gray-400 mb-4">{salesAgg!.years[0]} ~ {latestYear}년 데이터 기준</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-gray-50 text-gray-500">
-                  <th className="px-3 py-2 text-left font-medium">OJC 타입</th>
-                  {salesAgg!.years.map(yr => (
-                    <th key={yr} className="px-3 py-2 text-right font-medium">{yr}년</th>
-                  ))}
-                  <th className="px-3 py-2 text-right font-medium">전년비</th>
-                  <th className="px-3 py-2 text-right font-medium">판매 CAGR</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {cagrEntries.map(({ kind, cagr }) => {
-                  const prev   = salesAgg!.byType[kind]?.[prevYear]?.sales ?? 0
-                  const latest = salesAgg!.byType[kind]?.[latestYear]?.sales ?? 0
-                  const yoy    = prev > 0 ? (latest - prev) / prev : null
-                  return (
-                    <tr key={kind} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 font-medium text-gray-800">{kind}</td>
-                      {salesAgg!.years.map(yr => (
-                        <td key={yr} className="px-3 py-2 text-right font-mono text-gray-700">
-                          {(salesAgg!.byType[kind]?.[yr]?.sales ?? 0).toLocaleString()}
-                        </td>
-                      ))}
-                      <td className="px-3 py-2 text-right font-semibold">
-                        {yoy === null ? '—' : (
-                          <span className={yoy >= 0 ? 'text-blue-600' : 'text-red-500'}>
-                            {yoy >= 0 ? '+' : ''}{Math.round(yoy * 100)}%
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right font-semibold">
-                        <span className={cagr >= 0 ? 'text-blue-600' : 'text-red-500'}>
-                          {cagr >= 0 ? '+' : ''}{Math.round(cagr * 100)}%
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
     </div>
   )
