@@ -400,9 +400,10 @@ function writeMainSheet(
 
 const CONN_TYPES = ['LC/PC', 'LC/APC', 'SC/PC', 'SC/APC', 'FC/PC', 'FC/APC'] as const
 
-// ── 품번별 발주 집계 시트 (하우징 + 페롤 섹션) ────────────────
+// ── 품번별 발주 집계 시트 (케이블 + 하우징 + 페롤 섹션) ─────────
 function writeBunhoSheet(
   wb: ExcelJS.Workbook,
+  cableRows:   Step3Row[],
   housingRows: Step3Row[],
   years: string[],
   mainColor: string,
@@ -413,33 +414,8 @@ function writeBunhoSheet(
   ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 3 }]
   const nY = years.length
 
-  // 품번별 합산
-  type BunhoEntry = {
-    품명: string; 구매처: string; 리드타임: number
-    현재고: number; 기발주: number
-    annByYear: number[]  // nY 항목
-  }
-  const byBn = new Map<string, BunhoEntry>()
-
-  for (const row of housingRows) {
-    const bn = (row.품번 || '').trim()
-    if (!bn) continue
-    if (!byBn.has(bn)) {
-      byBn.set(bn, {
-        품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임,
-        현재고: 0, 기발주: 0, annByYear: new Array(nY).fill(0),
-      })
-    }
-    const e = byBn.get(bn)!
-    e.현재고 += row.현재고
-    e.기발주 += row.기발주
-    for (let i = 0; i < nY; i++) {
-      e.annByYear[i] += row.byYear[years[i]]?.annual ?? 0
-    }
-  }
-
-  const C_NO = 1, C_PN = 2, C_NAME = 3, C_VENDOR = 4, C_LT = 5
-  const C_ANN_FIRST = 6
+  const C_NO = 1, C_PN = 2, C_NAME = 3, C_VENDOR = 4, C_LT = 5, C_UNIT = 6
+  const C_ANN_FIRST = 7
   const C_AVG  = C_ANN_FIRST + nY
   const C_SS   = C_AVG  + 1
   const C_CUR  = C_SS   + 1
@@ -463,11 +439,20 @@ function writeBunhoSheet(
     cell.fill = fill(bg); cell.border = ALL_BORDERS
     cell.alignment = { horizontal: 'center', vertical: 'middle' }
   }
+  const sectionHeader = (label: string, bg: string) => {
+    ws.mergeCells(ri, 1, ri, TOTAL)
+    const cell = ws.getCell(ri, 1)
+    cell.value = label
+    cell.font  = { name: 'Arial', bold: true, size: 9, color: { argb: 'FFFFFFFF' } }
+    cell.fill  = fill(bg); cell.border = ALL_BORDERS
+    cell.alignment = { horizontal: 'center', vertical: 'middle' }
+    ws.getRow(ri).height = 16; ri++
+  }
 
   // 타이틀
   ws.mergeCells(1, 1, 1, TOTAL)
   const titleCell = ws.getCell(1, 1)
-  titleCell.value = '2026 연간 발주 계획 — 품번별 집계 (하우징 공용 부품 합산)'
+  titleCell.value = '2026 연간 발주 계획 — 품번별 집계'
   titleCell.font = { name: 'Arial', bold: true, size: 13, color: { argb: 'FFFFFFFF' } }
   titleCell.fill = fill(mainColor)
   titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
@@ -476,7 +461,7 @@ function writeBunhoSheet(
   // 구역 밴드
   ws.getRow(2).height = 18
   const YEAR_COLORS = ['2F5597', '2E75B6', '155480', '375623', '7030A0']
-  band2(2, C_NO, C_LT, '기본 정보', '374151')
+  band2(2, C_NO, C_UNIT, '기본 정보', '374151')
   for (let i = 0; i < nY; i++)
     band2(2, C_ANN_FIRST + i, C_ANN_FIRST + i, `20${years[i]}년 연간`, YEAR_COLORS[i % YEAR_COLORS.length])
   band2(2, C_AVG,  C_AVG,  `${nY}개년 평균`, '375623')
@@ -488,29 +473,35 @@ function writeBunhoSheet(
   // 헤더
   ws.getRow(3).height = 42
   hdr(3, C_NO, 'NO', 5); hdr(3, C_PN, '품번', 16); hdr(3, C_NAME, '품명', 38)
-  hdr(3, C_VENDOR, '구매처', 14); hdr(3, C_LT, `리드타임\n(일)`, 10)
-  for (let i = 0; i < nY; i++) hdr(3, C_ANN_FIRST + i, `20${years[i]}년\n연간(EA)`, 12)
-  hdr(3, C_AVG, `${nY}개년\n평균(EA)`, 12); hdr(3, C_SS, `안전재고\n(EA)`, 12)
-  hdr(3, C_CUR, `현재고\n(EA)`, 10); hdr(3, C_ORD, `기발주\n(참고)`, 10)
-  hdr(3, C_TGT, `목표수량\n(EA)`, 12); hdr(3, C_REQ, `필요발주\n(EA)`, 12)
+  hdr(3, C_VENDOR, '구매처', 14); hdr(3, C_LT, `리드타임\n(일)`, 10); hdr(3, C_UNIT, '단위', 7)
+  for (let i = 0; i < nY; i++) hdr(3, C_ANN_FIRST + i, `20${years[i]}년\n연간`, 12)
+  hdr(3, C_AVG, `${nY}개년\n평균`, 12); hdr(3, C_SS, `안전재고`, 12)
+  hdr(3, C_CUR, `현재고`, 10); hdr(3, C_ORD, `기발주\n(참고)`, 10)
+  hdr(3, C_TGT, `목표수량`, 12); hdr(3, C_REQ, `필요발주`, 12)
   hdr(3, C_NOTE, '비고', 20)
 
   let ri = 4; let no = 1
-  for (const [bn, d] of [...byBn.entries()].sort()) {
-    const evenFill2: ExcelJS.Fill | undefined = (ri % 2 === 0) ? fill('F5F5F5') : undefined
+
+  // 데이터 행 공통 렌더러
+  const renderBunhoRow = (
+    bn: string, 품명: string, 구매처: string, 리드타임: number,
+    unit: string, annByYear: number[], 현재고: number, 기발주: number,
+    bgRow?: string, note?: string,
+  ) => {
+    const evenFill2: ExcelJS.Fill | undefined = bgRow ? fill(bgRow) : ((ri % 2 === 0) ? fill('F5F5F5') : undefined)
 
     const sc = (c: number, val: ExcelJS.CellValue, right = false, numFmt?: string) => {
       const cell = ws.getCell(ri, c)
       cell.value = val; cell.font = font(); cell.border = ALL_BORDERS
       if (evenFill2) cell.fill = evenFill2
-      cell.alignment = { horizontal: right ? 'right' : (c <= 1 || c === 5 ? 'center' : 'left'), vertical: 'middle' }
+      cell.alignment = { horizontal: right ? 'right' : (c <= 1 || c === C_LT || c === C_UNIT ? 'center' : 'left'), vertical: 'middle' }
       if (numFmt) cell.numFmt = numFmt
     }
 
-    sc(C_NO, no++); sc(C_PN, bn); sc(C_NAME, d.품명); sc(C_VENDOR, d.구매처); sc(C_LT, d.리드타임, true, '#,##0')
-    for (let i = 0; i < nY; i++) sc(C_ANN_FIRST + i, d.annByYear[i] || null, true, '#,##0')
+    sc(C_NO, no++); sc(C_PN, bn); sc(C_NAME, 품명); sc(C_VENDOR, 구매처)
+    sc(C_LT, 리드타임, true, '#,##0'); sc(C_UNIT, unit)
+    for (let i = 0; i < nY; i++) sc(C_ANN_FIRST + i, annByYear[i] || null, true, '#,##0')
 
-    // N개년 평균
     const annCols = Array.from({ length: nY }, (_, i) => `${cl(C_ANN_FIRST + i)}${ri}`).join(',')
     const avgCell = ws.getCell(ri, C_AVG)
     avgCell.value = { formula: `ROUND(AVERAGE(${annCols}),0)` }
@@ -518,21 +509,18 @@ function writeBunhoSheet(
     avgCell.alignment = { horizontal: 'right', vertical: 'middle' }
     if (evenFill2) avgCell.fill = evenFill2
 
-    // 안전재고 = ROUND(평균 × LT/30, 0)
     const ssCell2 = ws.getCell(ri, C_SS)
     ssCell2.value = { formula: `ROUND(${cl(C_AVG)}${ri}*${cl(C_LT)}${ri}/30,0)` }
     ssCell2.font  = font({ bold: true }); ssCell2.border = ALL_BORDERS; ssCell2.numFmt = '#,##0'
     ssCell2.fill  = fill('FFF2CC'); ssCell2.alignment = { horizontal: 'right', vertical: 'middle' }
 
-    sc(C_CUR, d.현재고 || null, true, '#,##0'); sc(C_ORD, d.기발주 || null, true, '#,##0')
+    sc(C_CUR, 현재고 || null, true, '#,##0'); sc(C_ORD, 기발주 || null, true, '#,##0')
 
-    // 2026목표 — 입력셀
     const tgtCell2 = ws.getCell(ri, C_TGT)
     tgtCell2.value = null; tgtCell2.font = font({ bold: true, color: '0000FF' })
     tgtCell2.fill = fill('FFFFC0'); tgtCell2.border = INPUT_BORDERS()
     tgtCell2.numFmt = '#,##0'; tgtCell2.alignment = { horizontal: 'right', vertical: 'middle' }
 
-    // 필요발주 = MAX(목표 - 현재고 - 기발주 + 안전재고, 0)
     const reqCell2 = ws.getCell(ri, C_REQ)
     reqCell2.value = {
       formula: `IFERROR(MAX(${cl(C_TGT)}${ri}-${cl(C_CUR)}${ri}-${cl(C_ORD)}${ri}+${cl(C_SS)}${ri},0),"")`,
@@ -542,15 +530,49 @@ function writeBunhoSheet(
     if (evenFill2) reqCell2.fill = evenFill2
 
     const noteCell2 = ws.getCell(ri, C_NOTE)
-    noteCell2.value = ''; noteCell2.font = font(); noteCell2.border = ALL_BORDERS
+    noteCell2.value = note ?? ''; noteCell2.font = font(); noteCell2.border = ALL_BORDERS
     if (evenFill2) noteCell2.fill = evenFill2
+    noteCell2.alignment = { horizontal: 'left', vertical: 'middle' }
 
     ws.getRow(ri).height = 17; ri++
   }
 
+  // ── 케이블 섹션 ───────────────────────────────────────────
+  // 현재고/기발주는 같은 품번 = 동일 실물 재고이므로 첫 번째 등장 값만 사용
+  type BunhoEntry = { 품명: string; 구매처: string; 리드타임: number; 현재고: number; 기발주: number; annByYear: number[] }
+  const byCable = new Map<string, BunhoEntry>()
+  for (const row of cableRows) {
+    const bn = (row.품번 || '').trim(); if (!bn) continue
+    if (!byCable.has(bn)) byCable.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0) })
+    const e = byCable.get(bn)!
+    for (let i = 0; i < nY; i++) e.annByYear[i] += row.byYear[years[i]]?.annual ?? 0
+  }
+  if (byCable.size > 0) {
+    sectionHeader('▼ 케이블 (m)', mainColor)
+    for (const [bn, d] of [...byCable.entries()].sort())
+      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'm', d.annByYear, d.현재고, d.기발주)
+    ri++
+  }
+
+  // ── 하우징 섹션 ───────────────────────────────────────────
+  // 같은 품번이 여러 하우징 타입에 공통 부품으로 등록될 수 있음
+  // 연간 사용량: 타입별로 합산(올바름) / 현재고·기발주: 첫 등장값만(합산하면 N배 과대 계상)
+  const byHousing = new Map<string, BunhoEntry>()
+  for (const row of housingRows) {
+    const bn = (row.품번 || '').trim(); if (!bn) continue
+    if (!byHousing.has(bn)) byHousing.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0) })
+    const e = byHousing.get(bn)!
+    for (let i = 0; i < nY; i++) e.annByYear[i] += row.byYear[years[i]]?.annual ?? 0
+  }
+  if (byHousing.size > 0) {
+    sectionHeader('▼ 하우징 공용 부품 (EA)', '7030A0')
+    for (const [bn, d] of [...byHousing.entries()].sort())
+      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'EA', d.annByYear, d.현재고, d.기발주)
+    ri++
+  }
+
   // ── 페롤 섹션 ─────────────────────────────────────────────
-  // 커넥터 타입별 하우징 수량 합산 (파이 무관)
-  const connAnn = new Map<string, number[]>()  // ct → annByYear[nY]
+  const connAnn = new Map<string, number[]>()
   for (const row of housingRows) {
     const type = row.key.split('|')[1] ?? ''
     const m = type.match(/^(LC\/PC|LC\/APC|SC\/PC|SC\/APC|FC\/PC|FC\/APC)/)
@@ -561,70 +583,15 @@ function writeBunhoSheet(
     for (let i = 0; i < nY; i++) arr[i] += row.byYear[years[i]]?.annual ?? 0
   }
 
-  // 페롤 섹션이 있을 때만 구분선 + 데이터 행 추가
   const ferruleEntries = CONN_TYPES.filter(ct => ferruleMeta[ct]?.품번 && connAnn.has(ct))
   if (ferruleEntries.length > 0) {
-    // 구분선
-    ri++
-    ws.mergeCells(ri, 1, ri, TOTAL)
-    const sepCell = ws.getCell(ri, 1)
-    sepCell.value = '▼ 페롤 (커넥터 타입별 공용 — 파이 무관 합산)'
-    sepCell.font  = { name: 'Arial', bold: true, size: 9, color: { argb: 'FFFFFFFF' } }
-    sepCell.fill  = fill('375623'); sepCell.border = ALL_BORDERS
-    sepCell.alignment = { horizontal: 'center', vertical: 'middle' }
-    ws.getRow(ri).height = 16; ri++
-
+    sectionHeader('▼ 페롤 (커넥터 타입별 공용 — 파이 무관 합산) (EA)', '375623')
     for (const ct of ferruleEntries) {
       const fm  = ferruleMeta[ct]!
       const fiv = ferruleInv[ct] ?? { 현재고: 0, 기발주: 0 }
       const ann = connAnn.get(ct)!
       const lt  = (() => { const n = parseInt(String(fm.리드타임 ?? '')); return isNaN(n) ? 60 : n })()
-      const evenFillF: ExcelJS.Fill = fill('F0FFF4')
-
-      const scF = (c: number, val: ExcelJS.CellValue, right = false, numFmt?: string) => {
-        const cell = ws.getCell(ri, c)
-        cell.value = val; cell.font = font(); cell.border = ALL_BORDERS; cell.fill = evenFillF
-        cell.alignment = { horizontal: right ? 'right' : (c <= 1 || c === C_LT ? 'center' : 'left'), vertical: 'middle' }
-        if (numFmt) cell.numFmt = numFmt
-      }
-
-      scF(C_NO, no++); scF(C_PN, fm.품번); scF(C_NAME, fm.품명)
-      scF(C_VENDOR, fm.구매처); scF(C_LT, lt, true, '#,##0')
-      for (let i = 0; i < nY; i++) scF(C_ANN_FIRST + i, ann[i] || null, true, '#,##0')
-
-      const annColsF = Array.from({ length: nY }, (_, i) => `${cl(C_ANN_FIRST + i)}${ri}`).join(',')
-      const avgCellF = ws.getCell(ri, C_AVG)
-      avgCellF.value = { formula: `ROUND(AVERAGE(${annColsF}),0)` }
-      avgCellF.font = font(); avgCellF.border = ALL_BORDERS; avgCellF.numFmt = '#,##0'
-      avgCellF.fill = evenFillF; avgCellF.alignment = { horizontal: 'right', vertical: 'middle' }
-
-      const ssCellF = ws.getCell(ri, C_SS)
-      ssCellF.value = { formula: `ROUND(${cl(C_AVG)}${ri}*${cl(C_LT)}${ri}/30,0)` }
-      ssCellF.font = font({ bold: true }); ssCellF.border = ALL_BORDERS
-      ssCellF.numFmt = '#,##0'; ssCellF.fill = fill('FFF2CC')
-      ssCellF.alignment = { horizontal: 'right', vertical: 'middle' }
-
-      scF(C_CUR, fiv.현재고 || null, true, '#,##0')
-      scF(C_ORD, fiv.기발주 || null, true, '#,##0')
-
-      const tgtCellF = ws.getCell(ri, C_TGT)
-      tgtCellF.value = null; tgtCellF.font = font({ bold: true, color: '0000FF' })
-      tgtCellF.fill = fill('FFFFC0'); tgtCellF.border = INPUT_BORDERS()
-      tgtCellF.numFmt = '#,##0'; tgtCellF.alignment = { horizontal: 'right', vertical: 'middle' }
-
-      const reqCellF = ws.getCell(ri, C_REQ)
-      reqCellF.value = { formula: `IFERROR(MAX(${cl(C_TGT)}${ri}+${cl(C_SS)}${ri},0),"")` }
-      reqCellF.font = font({ bold: true, color: 'C00000' }); reqCellF.border = ALL_BORDERS
-      reqCellF.numFmt = '#,##0'; reqCellF.fill = evenFillF
-      reqCellF.alignment = { horizontal: 'right', vertical: 'middle' }
-
-      // 비고 — 커넥터 타입 표시
-      const noteCellF = ws.getCell(ri, C_NOTE)
-      noteCellF.value = ct; noteCellF.font = { name: 'Arial', size: 8, color: { argb: 'FF375623' } }
-      noteCellF.border = ALL_BORDERS; noteCellF.fill = evenFillF
-      noteCellF.alignment = { horizontal: 'left', vertical: 'middle' }
-
-      ws.getRow(ri).height = 17; ri++
+      renderBunhoRow(fm.품번!, fm.품명 ?? '', fm.구매처 ?? '', lt, 'EA', ann, fiv.현재고 ?? 0, fiv.기발주 ?? 0, 'F0FFF4', ct)
     }
   }
 }
@@ -799,7 +766,7 @@ export function buildStep3Workbook(
 
   writeMainSheet(wb, '케이블 사용내역',  cableRows,   years, mainColor, 'm',  '케이블 종류', safetyK, demandMap)
   writeMainSheet(wb, '하우징 사용내역',  housingRows, years, mainColor, 'EA', '하우징 타입', safetyK)
-  writeBunhoSheet(wb, housingRows, years, mainColor, metadata.ferrule ?? {}, inventory.ferrule ?? {})
+  writeBunhoSheet(wb, cableRows, housingRows, years, mainColor, metadata.ferrule ?? {}, inventory.ferrule ?? {})
   writeMonthlySheet(wb, [...cableRows, ...housingRows], years, mainColor)
   writeAnomalySheet(wb)
 
