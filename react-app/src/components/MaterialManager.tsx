@@ -808,6 +808,58 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
         </table>
       </div>
 
+      {/* ── 하우징 공용 부품 분석 ───────────────────────────── */}
+      {tab === 'housing' && housingKeys.length > 0 && (() => {
+        // 품번 → { 품명, 등록된 하우징 타입 목록 }
+        const shared = new Map<string, { 품명: string; types: string[] }>()
+        for (const key of housingKeys) {
+          const [pai, type] = key.split('|')
+          const comps = getHousingComps(key)
+          for (const comp of comps) {
+            const bn = (comp.품번 || '').trim()
+            if (!bn) continue
+            if (!shared.has(bn)) shared.set(bn, { 품명: comp.품명 ?? '', types: [] })
+            shared.get(bn)!.types.push(`${pai} ${type}`)
+          }
+        }
+        const multiRows = [...shared.entries()]
+          .filter(([, v]) => v.types.length > 1)
+          .sort((a, b) => b[1].types.length - a[1].types.length)
+        if (!multiRows.length) return null
+        return (
+          <div className="border border-purple-200 rounded-lg bg-purple-50 p-4 space-y-2">
+            <div className="text-sm font-semibold text-purple-800">
+              🔗 공용 부품 현황 — 여러 하우징 타입에 동일 품번이 등록된 부품
+              <span className="ml-2 text-xs font-normal text-purple-600">(발주 집계 시 해당 타입 수요 합산됨)</span>
+            </div>
+            <div className="overflow-x-auto rounded border border-purple-100">
+              <table className="text-xs w-full bg-white">
+                <thead>
+                  <tr className="bg-purple-100">
+                    <th className={thCls}>품번</th>
+                    <th className={thCls}>품명</th>
+                    <th className="px-3 py-2 text-xs font-bold text-gray-700 border-b-2 border-gray-200 bg-purple-100 text-center">타입 수</th>
+                    <th className={thCls}>등록된 하우징 타입</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {multiRows.map(([bn, v]) => (
+                    <tr key={bn} className="hover:bg-purple-50">
+                      <td className="px-3 py-1.5 font-mono text-gray-600">{bn}</td>
+                      <td className="px-3 py-1.5 text-gray-800">{v.품명 || '—'}</td>
+                      <td className="px-3 py-1.5 text-center">
+                        <span className="bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded-full">{v.types.length}</span>
+                      </td>
+                      <td className="px-3 py-1.5 text-gray-600">{v.types.join(', ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ── 저장 ────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
         <button onClick={saveAll}
