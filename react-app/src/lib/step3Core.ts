@@ -115,24 +115,36 @@ export function buildStep3Plan(
   }
   logs.push(`감지된 연도: ${years.map(y => '20'+y+'년').join(', ')}`)
 
-  // ── 원본 케이블 시트에서 품목코드 → 자재 키 매핑 ──────────────
-  // cols: 0=품목코드, 3=케이블종류, 4=파이, 5=코어수, 6=케이블길이
+  // ── 품목코드 → 자재 키 매핑: 코드매핑 시트 우선, 없으면 원본 케이블 시트 ──
+  // 코드매핑 cols: 0=품목코드, 1=케이블종류, 2=파이, 3=코어수, 4=길이(m), 5=집계키
+  // 원본 케이블 cols: 0=품목코드, 3=케이블종류, 4=파이, 5=코어수, 6=케이블길이
   const codeToCable: Record<string, CodeCableEntry> = {}
-  for (const yr of years) {
-    const rawSheet = `${yr}년_케이블`
-    if (names.has(rawSheet)) {
-      const rawRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[rawSheet], { header: 1, defval: null }) as unknown[][]
-      for (const row of rawRows.slice(1)) {
-        const code = String(row[0] ?? '').trim()
-        if (!code || codeToCable[code]) continue
-        const kind = String(row[3] ?? '').trim()
-        const pai  = String(row[4] ?? '').trim()
-        const core = Number(row[5]) || 1
-        const len  = Number(row[6]) || 0
-        if (!kind || !pai || len <= 0) continue
-        const label = kindToLabel(kind, core)
-        if (!label) continue
-        codeToCable[code] = { key: `${pai}|${label}`, length: len }
+  if (names.has('코드매핑')) {
+    const mapRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets['코드매핑'], { header: 1, defval: null }) as unknown[][]
+    for (const row of mapRows.slice(1)) {
+      const code = String(row[0] ?? '').trim()
+      const key  = String(row[5] ?? '').trim()
+      const len  = Number(row[4]) || 0
+      if (!code || !key || len <= 0) continue
+      codeToCable[code] = { key, length: len }
+    }
+  } else {
+    for (const yr of years) {
+      const rawSheet = `${yr}년_케이블`
+      if (names.has(rawSheet)) {
+        const rawRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[rawSheet], { header: 1, defval: null }) as unknown[][]
+        for (const row of rawRows.slice(1)) {
+          const code = String(row[0] ?? '').trim()
+          if (!code || codeToCable[code]) continue
+          const kind = String(row[3] ?? '').trim()
+          const pai  = String(row[4] ?? '').trim()
+          const core = Number(row[5]) || 1
+          const len  = Number(row[6]) || 0
+          if (!kind || !pai || len <= 0) continue
+          const label = kindToLabel(kind, core)
+          if (!label) continue
+          codeToCable[code] = { key: `${pai}|${label}`, length: len }
+        }
       }
     }
   }
@@ -161,21 +173,32 @@ export function buildStep3Plan(
     }
 
     // ── 하우징 집계 ─────────────────────────────────────────
-    // cols: 0=타입명(e.g. "2.0mm - LC/PC 청색"), 1~12=월별, 13=연간합계, 14=월최대
+    // 신형: col[0]=타입, col[1]=파이, col[2]=단위, col[3~14]=월별, col[15]=연간합계, col[16]=월최대
+    // 구형: col[0]=전체명("2.0mm - LC/PC 청색"), col[1~12]=월별, col[13]=연간합계, col[14]=월최대
     const hSheet = `${yr}년_하우징_집계`
     if (names.has(hSheet)) {
       const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[hSheet], { header: 1, defval: null }) as unknown[][]
+      const isNew = rows.length > 0 && String((rows[0] as unknown[])[1] ?? '').trim() === '파이'
       for (const row of rows.slice(1)) {
-        const fullLabel = String(row[0] ?? '').trim()
-        const monthly   = Array.from({ length: 12 }, (_, i) => Number(row[1 + i]) || 0)
-        const annual    = Number(row[13]) || 0
-        const peak      = Number(row[14]) || 0
-        if (!fullLabel || annual <= 0) continue
-        const sep  = fullLabel.indexOf(' - ')
-        const pai  = sep > 0 ? fullLabel.slice(0, sep) : ''
-        const type = sep > 0 ? fullLabel.slice(sep + 3) : fullLabel
-        if (!pai) continue
-        const key = `${pai}|${type}`
+        let pai: string, type: string, monthly: number[], annual: number, peak: number
+        if (isNew) {
+          type    = String(row[0] ?? '').trim()
+          pai     = String(row[1] ?? '').trim()
+          monthly = Array.from({ length: 12 }, (_, i) => Number(row[3 + i]) || 0)
+          annual  = Number(row[15]) || 0
+          peak    = Number(row[16]) || 0
+        } else {
+          const fullLabel = String(row[0] ?? '').trim()
+          const sep = fullLabel.indexOf(' - ')
+          pai  = sep > 0 ? fullLabel.slice(0, sep) : ''
+          type = sep > 0 ? fullLabel.slice(sep + 3) : fullLabel
+          monthly = Array.from({ length: 12 }, (_, i) => Number(row[1 + i]) || 0)
+          annual  = Number(row[13]) || 0
+          peak    = Number(row[14]) || 0
+        }
+        if (!type || !pai || annual <= 0) continue
+        const key       = `${pai}|${type}`
+        const fullLabel = `${pai} - ${type}`
         if (!housingMap[key]) housingMap[key] = mkRow('housing', key, fullLabel, pai, 'EA')
         housingMap[key].byYear[yr] = { annual, peak, monthly }
       }
