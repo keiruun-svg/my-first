@@ -99,8 +99,8 @@ function riskLabel(ratio: number): string {
 function makeLayout(nYears: number, demandCols = false) {
   const C_NO   = 1, C_PAI = 2, C_TYPE = 3, C_PN = 4, C_NAME = 5, C_VENDOR = 6, C_LT = 7
   const C_ANN_FIRST = 8
-  // annual(i) = C_ANN_FIRST + 2*i,  peak(i) = C_ANN_FIRST + 2*i + 1
-  const C_AVG      = C_ANN_FIRST + 2 * nYears       // N개년 평균연간
+  // annual(i) = C_ANN_FIRST + 3*i,  peak(i) = C_ANN_FIRST + 3*i + 1,  peakMon(i) = C_ANN_FIRST + 3*i + 2
+  const C_AVG      = C_ANN_FIRST + 3 * nYears       // N개년 평균연간
   const C_PEAK_AVG = C_AVG + 1                       // N개년 피크평균
   // growth rates: C_PEAK_AVG+1 .. C_PEAK_AVG+(nYears-1)
   const C_SS    = C_PEAK_AVG + nYears                // 안전재고
@@ -116,7 +116,10 @@ function makeLayout(nYears: number, demandCols = false) {
   const C_TREND    = demandCols ? C_NOTE + 4 : 0
   const C_RISK     = demandCols ? C_NOTE + 5 : 0
   const TOTAL      = demandCols ? C_RISK : C_NOTE
-  return { C_NO, C_PAI, C_TYPE, C_PN, C_NAME, C_VENDOR, C_LT, C_ANN_FIRST, C_AVG, C_PEAK_AVG, C_SS, C_CUR, C_ORD, C_TGT, C_REQ, C_NOTE, C_SUGGEST, C_VS_AVG, C_RATIO, C_TREND, C_RISK, TOTAL }
+  const annC = (i: number) => C_ANN_FIRST + 3 * i
+  const pkC  = (i: number) => C_ANN_FIRST + 3 * i + 1
+  const pmC  = (i: number) => C_ANN_FIRST + 3 * i + 2
+  return { C_NO, C_PAI, C_TYPE, C_PN, C_NAME, C_VENDOR, C_LT, C_ANN_FIRST, C_AVG, C_PEAK_AVG, C_SS, C_CUR, C_ORD, C_TGT, C_REQ, C_NOTE, C_SUGGEST, C_VS_AVG, C_RATIO, C_TREND, C_RISK, TOTAL, annC, pkC, pmC }
 }
 
 // ── 메인 시트 (케이블 사용내역 / 하우징 사용내역) ─────────────
@@ -166,6 +169,10 @@ function writeMainSheet(
     cell.alignment = { horizontal: 'center', vertical: 'middle' }
   }
 
+  // ── 안전재고 계수 k 설정 셀 (테이블 우측, 헤더 행에 배치) ──
+  const C_K = L.TOTAL + 2
+  ws.getColumn(C_K).width = 10
+
   // ── 행 1: 타이틀 ─────────────────────────────────────────
   ws.mergeCells(1, 1, 1, L.TOTAL)
   const title = ws.getCell(1, 1)
@@ -178,9 +185,15 @@ function writeMainSheet(
   // ── 행 2: 구역 밴드 ──────────────────────────────────────
   ws.getRow(2).height = 18
   band(2, L.C_NO, L.C_LT, '기본 정보', '374151')
+  // k 라벨
+  const kLabelCell = ws.getCell(2, C_K)
+  kLabelCell.value = '안전재고\n계수 k'
+  kLabelCell.font = { name: 'Arial', bold: true, size: 9, color: { argb: 'FFFFFFFF' } }
+  kLabelCell.fill = fill('C00000')
+  kLabelCell.border = ALL_BORDERS
+  kLabelCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
   for (let i = 0; i < nYears; i++) {
-    const c1 = L.C_ANN_FIRST + 2 * i
-    band(2, c1, c1 + 1, `20${years[i]}년`, YEAR_COLORS[i % YEAR_COLORS.length])
+    band(2, L.annC(i), L.pmC(i), `20${years[i]}년`, YEAR_COLORS[i % YEAR_COLORS.length])
   }
   band(2, L.C_AVG, L.C_PEAK_AVG + (nYears - 1), '📊 트렌드 분석', '375623')
   band(2, L.C_SS, L.C_SS, '⚠ 안전재고', 'C00000')
@@ -199,9 +212,9 @@ function writeMainSheet(
   ws.getColumn(4).width = 16; ws.getColumn(5).width = 38; ws.getColumn(6).width = 12; ws.getColumn(7).width = 10
 
   for (let i = 0; i < nYears; i++) {
-    const c = L.C_ANN_FIRST + 2 * i
-    hdrCell(3, c,     `연간(${unit})\n${years[i]}년`); ws.getColumn(c).width = 12
-    hdrCell(3, c + 1, `피크(${unit})\n${years[i]}년`); ws.getColumn(c + 1).width = 12
+    hdrCell(3, L.annC(i), `연간(${unit})\n${years[i]}년`); ws.getColumn(L.annC(i)).width = 12
+    hdrCell(3, L.pkC(i),  `피크(${unit})\n${years[i]}년`); ws.getColumn(L.pkC(i)).width  = 12
+    hdrCell(3, L.pmC(i),  `피크월\n${years[i]}년`);        ws.getColumn(L.pmC(i)).width  = 7
   }
   hdrCell(3, L.C_AVG,      `${nYears}개년\n평균연간`); ws.getColumn(L.C_AVG).width = 12
   hdrCell(3, L.C_PEAK_AVG, `${nYears}개년\n피크평균`); ws.getColumn(L.C_PEAK_AVG).width = 12
@@ -216,6 +229,16 @@ function writeMainSheet(
   hdrCell(3, L.C_TGT,  `목표수량\n(${unit})`);  ws.getColumn(L.C_TGT).width = 13
   hdrCell(3, L.C_REQ,  `필요발주\n(${unit})`);  ws.getColumn(L.C_REQ).width = 13
   hdrCell(3, L.C_NOTE, '비고');                   ws.getColumn(L.C_NOTE).width = 20
+  // k 입력셀 (행 3)
+  const kCell = ws.getCell(3, C_K)
+  kCell.value = safetyK
+  kCell.font = font({ bold: true, color: '0000FF' })
+  kCell.fill = fill('FFFFC0')
+  kCell.border = INPUT_BORDERS()
+  kCell.numFmt = '0.0'
+  kCell.alignment = { horizontal: 'center', vertical: 'middle' }
+  const kRef = `$${cl(C_K)}$3`  // 절대 참조
+
   if (hasDemand) {
     hdrCell(3, L.C_SUGGEST, `수요기반\n제안량(${unit})`, 'BDD7EE', '1F3864'); ws.getColumn(L.C_SUGGEST).width = 14
     hdrCell(3, L.C_VS_AVG,  `vs\n3개년평균`,              'BDD7EE', '1F3864'); ws.getColumn(L.C_VS_AVG).width  = 11
@@ -250,19 +273,25 @@ function writeMainSheet(
     sc(L.C_VENDOR, row.구매처 || '')
     sc(L.C_LT, row.리드타임, true, '#,##0')
 
-    // 연도별 연간+피크
+    // 연도별 연간+피크+피크월
     for (let i = 0; i < nYears; i++) {
-      const yr  = years[i]
-      const ann = row.byYear[yr]?.annual || null
-      const pk  = row.byYear[yr]?.peak   || null
-      sc(L.C_ANN_FIRST + 2 * i,     ann, true, '#,##0')
-      sc(L.C_ANN_FIRST + 2 * i + 1, pk,  true, '#,##0')
+      const yr      = years[i]
+      const ann     = row.byYear[yr]?.annual || null
+      const pk      = row.byYear[yr]?.peak   || null
+      const monthly = row.byYear[yr]?.monthly ?? []
+      const maxVal  = monthly.length ? Math.max(...monthly) : 0
+      const peakMon = maxVal > 0 ? monthly.indexOf(maxVal) + 1 : null
+      sc(L.annC(i), ann, true, '#,##0')
+      sc(L.pkC(i),  pk,  true, '#,##0')
+      const pmCell = setCell(ri, L.pmC(i), peakMon ? `${peakMon}월` : null)
+      if (evenFill) pmCell.fill = evenFill
+      pmCell.alignment = { horizontal: 'center', vertical: 'middle' }
     }
 
     // 연간 평균 — 공식 (연간 합계 평균)
     {
-      const annCols = Array.from({ length: nYears }, (_, i) => `${cl(L.C_ANN_FIRST + 2 * i)}${ri}`).join(',')
-      const pkCols  = Array.from({ length: nYears }, (_, i) => `${cl(L.C_ANN_FIRST + 2 * i + 1)}${ri}`).join(',')
+      const annCols = Array.from({ length: nYears }, (_, i) => `${cl(L.annC(i))}${ri}`).join(',')
+      const pkCols  = Array.from({ length: nYears }, (_, i) => `${cl(L.pkC(i))}${ri}`).join(',')
       const avgAnn = setCell(ri, L.C_AVG, { formula: `ROUND(AVERAGE(${annCols}),0)` })
       avgAnn.numFmt = '#,##0'; avgAnn.alignment = { horizontal: 'right', vertical: 'middle' }
       if (evenFill) avgAnn.fill = evenFill
@@ -274,7 +303,7 @@ function writeMainSheet(
     // 증감률 (연도 쌍별)
     for (let i = 0; i < nYears - 1; i++) {
       const c    = L.C_PEAK_AVG + 1 + i
-      const cAnn = cl(L.C_ANN_FIRST + 2 * i); const cAnn2 = cl(L.C_ANN_FIRST + 2 * (i + 1))
+      const cAnn = cl(L.annC(i)); const cAnn2 = cl(L.annC(i + 1))
       const gr = setCell(ri, c, { formula: `IFERROR((${cAnn2}${ri}-${cAnn}${ri})/${cAnn}${ri},"")` })
       gr.numFmt = '0.0%;[Red]-0.0%'; gr.alignment = { horizontal: 'center', vertical: 'middle' }
       if (evenFill) gr.fill = evenFill
@@ -283,7 +312,7 @@ function writeMainSheet(
     // 안전재고 = ROUND(피크평균 × LT/30, 0)
     {
       const ssCell = ws.getCell(ri, L.C_SS)
-      ssCell.value = { formula: `ROUND(${cl(L.C_PEAK_AVG)}${ri}*${cl(L.C_LT)}${ri}/30,0)` }
+      ssCell.value = { formula: `ROUND(${cl(L.C_PEAK_AVG)}${ri}*${cl(L.C_LT)}${ri}/30*${kRef},0)` }
       ssCell.font  = { name: 'Arial', bold: true, size: 9 }
       ssCell.fill  = fill('FFF2CC')
       ssCell.border = ALL_BORDERS
@@ -376,8 +405,8 @@ function writeMainSheet(
   sumLabelCell.alignment = { horizontal: 'center', vertical: 'middle' }
 
   for (let i = 0; i < nYears; i++) {
-    for (let d = 0; d < 2; d++) {
-      const c = L.C_ANN_FIRST + 2 * i + d
+    for (let d = 0; d < 2; d++) {  // annual + peak only (피크월 합산 제외)
+      const c = L.annC(i) + d
       const sc2 = ws.getCell(sumRow, c)
       sc2.value = { formula: `SUM(${cl(c)}4:${cl(c)}${lastDataRow})` }
       sc2.font  = { name: 'Arial', bold: true, size: 9, color: { argb: 'FFFFFFFF' } }
