@@ -4,7 +4,31 @@ import ExcelJS from 'exceljs'
 import { downloadXlsx } from '../lib/download'
 
 // ── 타입 ──────────────────────────────────────────────────────────────
-interface LotEntry { lot: string | null; qty: number }
+interface LotEntry { lot: string | null; qty: number; autoLoc?: boolean }
+
+// ── ZZ-ZZ 품목 자동 로케이션 배정 ──────────────────────────────────────
+function assignLocation(name: string): string | null {
+  const n = name.toLowerCase()
+  if (n.includes('drop-cable') || n.includes('drop optical cable') || n.includes('drop cable'))
+    return 'D1'
+  if (n.includes('dx-mm'))   return 'D2-MM'
+  if (n.includes('dojc-mm')) return 'DO-MM'
+  if (n.includes('dojc'))    return 'LG-DO'
+  if (n.includes('sojc'))    return 'LG-SO'
+  if (n.includes('mojc'))    return 'LG-MO'
+  if (n.includes('adapter') || n.includes('어댑터') || n.includes('감쇠기') || n.includes('attenuator'))
+    return 'EX'
+  if (n.includes('열수축슬리브') || n.includes('splice protection sleeve'))
+    return 'EX'
+  if (n.includes('ojc housing kit') || n.includes('housing kit')) return 'M1'
+  if (n.includes('ferrule'))                                       return 'M1'
+  if (n.includes('pigtail'))                                       return 'PI-TA'
+  if (n.includes('optical cable parts') || n.includes('optical cable part')) return 'O1'
+  if (n.includes('optical cable 0.9'))   return 'K9-PI'
+  if (n.includes('optical cable'))       return 'K1'
+  if (n.includes('ojc'))                 return 'KT'
+  return null
+}
 
 interface ReconRow {
   code:       string
@@ -31,28 +55,48 @@ function resolveBaseCode(empCode: string, ecountCodes: Set<string>): string {
 }
 
 // ── ① EMP 재고현황 파싱 (.xls) ─────────────────────────────────────────
-// 행1=헤더, 상품코드별 재고수량 합산
+// 헤더 행 자동 감지, 로케이션 컬럼 활용, ZZ-ZZ → 품명 기반 자동 배정
 function parseEmpStock(buf: ArrayBuffer): Map<string, LotEntry[]> {
   const wb = XLSX.read(buf, { type: 'array' })
   const ws = wb.Sheets[wb.SheetNames[0]]
   const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null }) as unknown[][]
-  if (rows.length < 2) return new Map()
 
-  const header = (rows[0] as string[]).map(h => String(h ?? '').trim())
+  // 헤더 행 탐색 (상품코드 포함 행)
+  let headerRow = -1
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const r = rows[i] as unknown[]
+    if (r.some(c => String(c ?? '').includes('상품코드') || String(c ?? '').includes('품목코드'))) {
+      headerRow = i; break
+    }
+  }
+  if (headerRow < 0) return new Map()
+
+  const header  = (rows[headerRow] as unknown[]).map(h => String(h ?? '').trim())
   const codeIdx = header.findIndex(h => h.includes('상품코드') || h.includes('품목코드'))
-  const qtyIdx  = header.findIndex(h => h.includes('재고수량') || h.includes('수량'))
   const nameIdx = header.findIndex(h => h.includes('상품명') || h.includes('품목명') || h.includes('품명'))
+  const qtyIdx  = header.findIndex(h => h.includes('재고수량') || h === '수량')
+  const locoIdx = header.findIndex(h => h.includes('다중로케이션') || h.includes('로케이션') || h.includes('위치코드'))
   if (codeIdx < 0 || qtyIdx < 0) return new Map()
 
   const result = new Map<string, LotEntry[]>()
-  for (const row of rows.slice(1)) {
+  for (const row of rows.slice(headerRow + 1)) {
     const code = String(row[codeIdx] ?? '').trim()
     const qty  = Number(row[qtyIdx]) || 0
-    const name = nameIdx >= 0 ? String(row[nameIdx] ?? '').trim() : ''
     if (!code) continue
+    const rawLoc = locoIdx >= 0 ? String(row[locoIdx] ?? '').trim() : ''
+    const isZZ   = !rawLoc || rawLoc.startsWith('ZZ-') || rawLoc === '00-DK-00-00'
+    let lot: string | null
+    let autoLoc = false
+    if (isZZ) {
+      const name    = nameIdx >= 0 ? String(row[nameIdx] ?? '').trim() : ''
+      const assigned = assignLocation(name)
+      lot     = assigned ?? 'ZZ (미배정)'
+      autoLoc = true
+    } else {
+      lot = rawLoc
+    }
     if (!result.has(code)) result.set(code, [])
-    result.get(code)!.push({ lot: null, qty })
-    void name
+    result.get(code)!.push({ lot, qty, autoLoc })
   }
   return result
 }
@@ -130,16 +174,18 @@ function buildReconRows(
   shipMap:   Map<string, number>,
 ): ReconRow[] {
   const ecountCodes = new Set(ecountRaw.keys())
-  // EMP 코드를 기본코드로 집계
+  // EMP 코드를 기본코드로 집계, 로케이션별 하위 행 보존
   const empByBase = new Map<string, { lots: LotEntry[]; total: number }>()
-  for (const [empCode, lots] of empRaw.entries()) {
-    const base = resolveBaseCode(empCode, ecountCodes)
-    const total = lots.reduce((s, l) => s + l.qty, 0)
-    const lotLabel = empCode !== base ? empCode.slice(base.length).trim() || null : null
+  for (const [empCode, rows] of empRaw.entries()) {
+    const base      = resolveBaseCode(empCode, ecountCodes)
+    const lotSuffix = empCode !== base ? empCode.slice(base.length).trim() : null
     if (!empByBase.has(base)) empByBase.set(base, { lots: [], total: 0 })
     const entry = empByBase.get(base)!
-    entry.total += total
-    entry.lots.push({ lot: lotLabel, qty: total })
+    for (const r of rows) {
+      const label = [lotSuffix, r.lot].filter(Boolean).join(' / ') || null
+      entry.lots.push({ lot: label, qty: r.qty })
+      entry.total += r.qty
+    }
   }
 
   // 출고 수불도 기본코드로 집계
@@ -421,8 +467,14 @@ export default function InventoryReconciliationTab() {
                   </tr>
                   {expanded.has(r.code) && r.lots.map((lot, i) => (
                     <tr key={`${r.code}-lot-${i}`} className={`border-t border-gray-50 ${STATUS_BG[r.status]} opacity-75`}>
-                      <td className="px-3 py-1 pl-8 font-mono text-xs text-gray-500">
-                        └ {lot.lot ?? '(기본)'}
+                      <td className="px-3 py-1 pl-8 font-mono text-xs">
+                        <span className="text-gray-400">└ </span>
+                        <span className={lot.autoLoc ? 'text-orange-500 italic' : 'text-gray-500'}>
+                          {lot.lot ?? '(기본)'}
+                        </span>
+                        {lot.autoLoc && (
+                          <span className="ml-1 text-[10px] text-orange-400 bg-orange-50 rounded px-1">자동배정</span>
+                        )}
                       </td>
                       <td className="px-3 py-1 text-right text-xs text-gray-500">{lot.qty.toLocaleString()}</td>
                       <td colSpan={7} />
