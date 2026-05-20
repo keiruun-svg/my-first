@@ -15,6 +15,8 @@ import Settings from './components/Settings'
 import PartNumberGenerator from './components/PartNumberGenerator'
 import SalesAnalysisTab from './components/SalesAnalysisTab'
 import Dashboard from './components/Dashboard'
+import InventoryReconciliationTab from './components/InventoryReconciliationTab'
+import ImportTab from './components/ImportTab'
 
 const ALL_TABS = [
   { id: 'home',      label: '🏠 홈',                       devOnly: false },
@@ -24,6 +26,8 @@ const ALL_TABS = [
   { id: 'sales',     label: '🔍 판매 현황 분석',           devOnly: false },
   { id: 'partnum',   label: '🏷 품번 생성기',              devOnly: false },
   { id: 'material',  label: '📦 자재 관리',                devOnly: false },
+  { id: 'recon',     label: '🗂 재고 관리',                devOnly: false },
+  { id: 'import',    label: '🚢 수입 관리',                devOnly: false },
   { id: 'settings',  label: '⚙️ 파라미터 & 양식 설정',   devOnly: false },
 ] as const
 
@@ -177,6 +181,12 @@ export default function App() {
             metadata={metadata}     setMetadata={setMetadata}
             inventory={inventory}   setInventory={setInventory}
           />
+        )}
+        {activeTab === 'recon' && (
+          <InventoryReconciliationTab />
+        )}
+        {activeTab === 'import' && (
+          <ImportTab />
         )}
         {activeTab === 'settings' && (
           <Settings
