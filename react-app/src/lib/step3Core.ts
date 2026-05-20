@@ -234,7 +234,10 @@ export function buildStep3Plan(
     const cCagr       = (kindCagr && cKind) ? (kindCagr[cKind] ?? 0) : 0
     row.appliedCagr    = cCagr
     row.forecastAnnual = cCagr !== 0 ? Math.round(row.latestAnnual * (1 + cCagr)) : row.latestAnnual
-    row.안전재고 = Math.round((row.forecastAnnual / 12) * (row.리드타임 / 30) * safetyK)
+    const cPeakVals    = row.years.map(yr => row.byYear[yr]?.peak ?? 0)
+    const cPeakAvg     = cPeakVals.length > 0 ? cPeakVals.reduce((s, v) => s + v, 0) / cPeakVals.length : 0
+    const cForecastPeak = row.latestAnnual > 0 ? cPeakAvg * (row.forecastAnnual / row.latestAnnual) : cPeakAvg
+    row.안전재고 = Math.round(cForecastPeak * (row.리드타임 / 30) * safetyK)
     row.현재고   = Number(inv['현재고'] ?? 0)
     row.기발주   = Number(inv['기발주'] ?? 0)
     row.발주필요량 = Math.max(0, row.forecastAnnual + row.안전재고 - row.현재고 - row.기발주)
@@ -261,7 +264,9 @@ export function buildStep3Plan(
       row.품명     = String(comp['품명']   ?? '')
       row.구매처   = String(comp['구매처'] ?? '')
       row.리드타임 = ltDays(comp['리드타임'], ltDefault)
-      row.안전재고 = Math.round((baseRow.forecastAnnual / 12) * (row.리드타임 / 30) * safetyK)
+      const hPeakVals = baseRow.years.map(yr => baseRow.byYear[yr]?.peak ?? 0)
+      const hPeakAvg  = hPeakVals.length > 0 ? hPeakVals.reduce((s, v) => s + v, 0) / hPeakVals.length : 0
+      row.안전재고 = Math.round(hPeakAvg * (row.리드타임 / 30) * safetyK)
       row.현재고   = Number(inv['현재고'] ?? 0)
       row.기발주   = Number(inv['기발주'] ?? 0)
       row.발주필요량 = Math.max(0, baseRow.forecastAnnual + row.안전재고 - row.현재고 - row.기발주)
@@ -281,7 +286,7 @@ export function buildStep3Plan(
   const nHComp = allRows.filter(r => r.type === 'housing').length
   const nMissing = allRows.filter(r => !r.품번).length
   logs.push(`집계 완료 — 케이블 ${nC}타입 / 하우징 ${nH}타입 (부품 ${nHComp}항목)`)
-  logs.push(`안전재고 계수 k=${safetyK} (안전재고 = 월평균 × LT/30 × ${safetyK})`)
+  logs.push(`안전재고 계수 k=${safetyK} (안전재고 = 피크평균 × LT/30 × ${safetyK})`)
   if (kindCagr && Object.keys(kindCagr).length) {
     const nApplied = allRows.filter(r => r.appliedCagr !== 0).length
     logs.push(`판매CAGR 적용: 케이블 ${nApplied}타입에 반영 (하우징은 최근년 실적 기준)`)

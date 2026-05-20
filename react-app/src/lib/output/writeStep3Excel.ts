@@ -438,6 +438,7 @@ function writeBunhoSheet(
   mainColor: string,
   ferruleMeta: Metadata['ferrule'],
   ferruleInv:  Inventory['ferrule'],
+  safetyK: number,
 ) {
   const ws = wb.addWorksheet('📦 품번별 발주 집계')
   ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 3 }]
@@ -445,14 +446,15 @@ function writeBunhoSheet(
 
   const C_NO = 1, C_PN = 2, C_NAME = 3, C_VENDOR = 4, C_LT = 5, C_UNIT = 6
   const C_ANN_FIRST = 7
-  const C_AVG  = C_ANN_FIRST + nY
-  const C_SS   = C_AVG  + 1
-  const C_CUR  = C_SS   + 1
-  const C_ORD  = C_CUR  + 1
-  const C_TGT  = C_ORD  + 1
-  const C_REQ  = C_TGT  + 1
-  const C_NOTE = C_REQ  + 1
-  const TOTAL  = C_NOTE
+  const C_AVG      = C_ANN_FIRST + nY
+  const C_PEAK_AVG = C_AVG  + 1
+  const C_SS       = C_PEAK_AVG + 1
+  const C_CUR      = C_SS   + 1
+  const C_ORD      = C_CUR  + 1
+  const C_TGT      = C_ORD  + 1
+  const C_REQ      = C_TGT  + 1
+  const C_NOTE     = C_REQ  + 1
+  const TOTAL      = C_NOTE
 
   const hdr = (r: number, c: number, v: string, w?: number) => {
     const cell = ws.getCell(r, c)
@@ -493,18 +495,21 @@ function writeBunhoSheet(
   band2(2, C_NO, C_UNIT, '기본 정보', '374151')
   for (let i = 0; i < nY; i++)
     band2(2, C_ANN_FIRST + i, C_ANN_FIRST + i, `20${years[i]}년 연간`, YEAR_COLORS[i % YEAR_COLORS.length])
-  band2(2, C_AVG,  C_AVG,  `${nY}개년 평균`, '375623')
-  band2(2, C_SS,   C_SS,   '안전재고',       'C00000')
-  band2(2, C_CUR,  C_ORD,  '재고 현황',      '7030A0')
-  band2(2, C_TGT,  C_REQ,  '✏ 발주 계획',   'C55A11')
-  band2(2, C_NOTE, C_NOTE, '비고',           '595959')
+  band2(2, C_AVG,      C_AVG,      `${nY}개년 연간평균`, '375623')
+  band2(2, C_PEAK_AVG, C_PEAK_AVG, `${nY}개년 피크평균`, 'C55A11')
+  band2(2, C_SS,       C_SS,       '안전재고',           'C00000')
+  band2(2, C_CUR,      C_ORD,      '재고 현황',          '7030A0')
+  band2(2, C_TGT,      C_REQ,      '✏ 발주 계획',       'C55A11')
+  band2(2, C_NOTE,     C_NOTE,     '비고',               '595959')
 
   // 헤더
   ws.getRow(3).height = 42
   hdr(3, C_NO, 'NO', 5); hdr(3, C_PN, '품번', 16); hdr(3, C_NAME, '품명', 38)
   hdr(3, C_VENDOR, '구매처', 14); hdr(3, C_LT, `리드타임\n(일)`, 10); hdr(3, C_UNIT, '단위', 7)
   for (let i = 0; i < nY; i++) hdr(3, C_ANN_FIRST + i, `20${years[i]}년\n연간`, 12)
-  hdr(3, C_AVG, `${nY}개년\n평균`, 12); hdr(3, C_SS, `안전재고`, 12)
+  hdr(3, C_AVG,      `${nY}개년\n연간평균`,  12)
+  hdr(3, C_PEAK_AVG, `${nY}개년\n피크평균`,  12)
+  hdr(3, C_SS,       `안전재고\n(피크×LT/30×k)`, 14)
   hdr(3, C_CUR, `현재고`, 10); hdr(3, C_ORD, `기발주\n(참고)`, 10)
   hdr(3, C_TGT, `목표수량`, 12); hdr(3, C_REQ, `필요발주`, 12)
   hdr(3, C_NOTE, '합산 출처 (가공파일 대조용)', 45)
@@ -514,7 +519,7 @@ function writeBunhoSheet(
   // 데이터 행 공통 렌더러
   const renderBunhoRow = (
     bn: string, 품명: string, 구매처: string, 리드타임: number,
-    unit: string, annByYear: number[], 현재고: number, 기발주: number,
+    unit: string, annByYear: number[], peakByYear: number[], 현재고: number, 기발주: number,
     bgRow?: string, note?: string,
   ) => {
     const evenFill2: ExcelJS.Fill | undefined = bgRow ? fill(bgRow) : ((ri % 2 === 0) ? fill('F5F5F5') : undefined)
@@ -538,8 +543,15 @@ function writeBunhoSheet(
     avgCell.alignment = { horizontal: 'right', vertical: 'middle' }
     if (evenFill2) avgCell.fill = evenFill2
 
+    const peakAvg = peakByYear.length > 0 ? peakByYear.reduce((s, v) => s + v, 0) / peakByYear.length : 0
+    const pkAvgCell = ws.getCell(ri, C_PEAK_AVG)
+    pkAvgCell.value = Math.round(peakAvg)
+    pkAvgCell.font = font(); pkAvgCell.border = ALL_BORDERS; pkAvgCell.numFmt = '#,##0'
+    pkAvgCell.fill = fill('FCE4D6')
+    pkAvgCell.alignment = { horizontal: 'right', vertical: 'middle' }
+
     const ssCell2 = ws.getCell(ri, C_SS)
-    ssCell2.value = { formula: `ROUND(${cl(C_AVG)}${ri}/12*${cl(C_LT)}${ri}/30,0)` }
+    ssCell2.value = { formula: `ROUND(${cl(C_PEAK_AVG)}${ri}*${cl(C_LT)}${ri}/30*${safetyK},0)` }
     ssCell2.font  = font({ bold: true }); ssCell2.border = ALL_BORDERS; ssCell2.numFmt = '#,##0'
     ssCell2.fill  = fill('FFF2CC'); ssCell2.alignment = { horizontal: 'right', vertical: 'middle' }
 
@@ -578,21 +590,24 @@ function writeBunhoSheet(
 
   // ── 케이블 섹션 ───────────────────────────────────────────
   // 현재고/기발주는 같은 품번 = 동일 실물 재고이므로 첫 번째 등장 값만 사용
-  type BunhoEntry = { 품명: string; 구매처: string; 리드타임: number; 현재고: number; 기발주: number; annByYear: number[]; srcs: Map<string, number> }
+  type BunhoEntry = { 품명: string; 구매처: string; 리드타임: number; 현재고: number; 기발주: number; annByYear: number[]; peakByYear: number[]; srcs: Map<string, number> }
   const byCable = new Map<string, BunhoEntry>()
   const latestYr = years[nY - 1]
   for (const row of cableRows) {
     const bn = (row.품번 || '').trim(); if (!bn) continue
-    if (!byCable.has(bn)) byCable.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0), srcs: new Map() })
+    if (!byCable.has(bn)) byCable.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0), peakByYear: new Array(nY).fill(0), srcs: new Map() })
     const e = byCable.get(bn)!
     const srcKey = `${row.pai} ${row.label}`
     e.srcs.set(srcKey, (e.srcs.get(srcKey) ?? 0) + (row.byYear[latestYr]?.annual ?? 0))
-    for (let i = 0; i < nY; i++) e.annByYear[i] += row.byYear[years[i]]?.annual ?? 0
+    for (let i = 0; i < nY; i++) {
+      e.annByYear[i]  += row.byYear[years[i]]?.annual ?? 0
+      e.peakByYear[i] += row.byYear[years[i]]?.peak   ?? 0
+    }
   }
   if (byCable.size > 0) {
     sectionHeader('▼ 케이블 (m)', mainColor)
     for (const [bn, d] of [...byCable.entries()].sort())
-      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'm', d.annByYear, d.현재고, d.기발주, undefined, d.srcs.size > 1 ? buildSrcNote(d.srcs) : '')
+      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'm', d.annByYear, d.peakByYear, d.현재고, d.기발주, undefined, d.srcs.size > 1 ? buildSrcNote(d.srcs) : '')
     ri++
   }
 
@@ -603,30 +618,39 @@ function writeBunhoSheet(
   const byHousing = new Map<string, BunhoEntry>()
   for (const row of housingRows) {
     const bn = (row.품번 || '').trim(); if (!bn) continue
-    if (!byHousing.has(bn)) byHousing.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0), srcs: new Map() })
+    if (!byHousing.has(bn)) byHousing.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0), peakByYear: new Array(nY).fill(0), srcs: new Map() })
     const e = byHousing.get(bn)!
     const srcKey = `${row.pai} ${row.label}`
     e.srcs.set(srcKey, (e.srcs.get(srcKey) ?? 0) + (row.byYear[latestYr]?.annual ?? 0))
-    for (let i = 0; i < nY; i++) e.annByYear[i] += row.byYear[years[i]]?.annual ?? 0
+    for (let i = 0; i < nY; i++) {
+      e.annByYear[i]  += row.byYear[years[i]]?.annual ?? 0
+      e.peakByYear[i] += row.byYear[years[i]]?.peak   ?? 0
+    }
   }
   if (byHousing.size > 0) {
     sectionHeader('▼ 하우징 공용 부품 (EA)', '7030A0')
     for (const [bn, d] of [...byHousing.entries()].sort())
-      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'EA', d.annByYear, d.현재고, d.기발주, undefined, buildSrcNote(d.srcs))
+      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'EA', d.annByYear, d.peakByYear, d.현재고, d.기발주, undefined, buildSrcNote(d.srcs))
     ri++
   }
 
   // ── 페롤 섹션 ─────────────────────────────────────────────
-  const connAnn = new Map<string, number[]>()
+  const connAnn  = new Map<string, number[]>()
+  const connPeak = new Map<string, number[]>()
   for (const row of housingRows) {
     if (row.isSubRow) continue  // 다중 부품 하우징의 2번째+ 행은 제외 (같은 annual이 N번 합산되는 것 방지)
     const type = row.key.split('|')[1] ?? ''
     const m = type.match(/^(LC\/PC|LC\/APC|SC\/PC|SC\/APC|FC\/PC|FC\/APC)/)
     if (!m) continue
     const ct = m[1]
-    if (!connAnn.has(ct)) connAnn.set(ct, new Array(nY).fill(0))
-    const arr = connAnn.get(ct)!
-    for (let i = 0; i < nY; i++) arr[i] += row.byYear[years[i]]?.annual ?? 0
+    if (!connAnn.has(ct))  connAnn.set(ct,  new Array(nY).fill(0))
+    if (!connPeak.has(ct)) connPeak.set(ct, new Array(nY).fill(0))
+    const annArr  = connAnn.get(ct)!
+    const peakArr = connPeak.get(ct)!
+    for (let i = 0; i < nY; i++) {
+      annArr[i]  += row.byYear[years[i]]?.annual ?? 0
+      peakArr[i] += row.byYear[years[i]]?.peak   ?? 0
+    }
   }
 
   const ferruleEntries = CONN_TYPES.filter(ct => ferruleMeta[ct]?.품번 && connAnn.has(ct))
@@ -635,9 +659,10 @@ function writeBunhoSheet(
     for (const ct of ferruleEntries) {
       const fm  = ferruleMeta[ct]!
       const fiv = ferruleInv[ct] ?? { 현재고: 0, 기발주: 0 }
-      const ann = connAnn.get(ct)!
+      const ann  = connAnn.get(ct)!
+      const peak = connPeak.get(ct) ?? new Array(nY).fill(0)
       const lt  = (() => { const n = parseInt(String(fm.리드타임 ?? '')); return isNaN(n) ? 60 : n })()
-      renderBunhoRow(fm.품번!, fm.품명 ?? '', fm.구매처 ?? '', lt, 'EA', ann, fiv.현재고 ?? 0, fiv.기발주 ?? 0, 'F0FFF4', ct)
+      renderBunhoRow(fm.품번!, fm.품명 ?? '', fm.구매처 ?? '', lt, 'EA', ann, peak, fiv.현재고 ?? 0, fiv.기발주 ?? 0, 'F0FFF4', ct)
     }
   }
 }
@@ -812,7 +837,7 @@ export function buildStep3Workbook(
 
   writeMainSheet(wb, '케이블 사용내역',  cableRows,   years, mainColor, 'm',  '케이블 종류', safetyK, demandMap)
   writeMainSheet(wb, '하우징 사용내역',  housingRows, years, mainColor, 'EA', '하우징 타입', safetyK)
-  writeBunhoSheet(wb, cableRows, housingRows, years, mainColor, metadata.ferrule ?? {}, inventory.ferrule ?? {})
+  writeBunhoSheet(wb, cableRows, housingRows, years, mainColor, metadata.ferrule ?? {}, inventory.ferrule ?? {}, safetyK)
   writeMonthlySheet(wb, [...cableRows, ...housingRows], years, mainColor)
   writeAnomalySheet(wb)
 
