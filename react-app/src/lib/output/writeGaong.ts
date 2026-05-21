@@ -237,12 +237,10 @@ function writeSummarySheet(
     aggsByYear: (AggEntry | undefined)[],
   ): (string | number | null)[] => {
     const row: (string | number | null)[] = [label, pai, unit]
-    let prevAnnual: number | null = null
     for (const entry of aggsByYear) {
       const annual = entry ? entry.monthly.reduce((a, b) => a + b, 0) : null
       const peak   = entry ? Math.max(...entry.monthly) : null
       row.push(annual || null, peak || null)
-      prevAnnual = annual
     }
     if (hasGrowth) {
       const last    = aggsByYear[years.length - 1]

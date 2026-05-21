@@ -36,8 +36,7 @@ export default function Dashboard({ metadata, inventory, salesAgg, onNavigate }:
 
   // ── OJC 판매 CAGR 요약 ───────────────────────────────────────
   const latestYear = salesAgg?.years[salesAgg.years.length - 1] ?? ''
-  const prevYear   = salesAgg?.years[salesAgg.years.length - 2] ?? ''
-  const cagrEntries = salesAgg
+const cagrEntries = salesAgg
     ? Object.entries(salesAgg.salesCagr)
         .map(([kind, cagr]) => ({
           kind,

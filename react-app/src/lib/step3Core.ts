@@ -208,7 +208,7 @@ export function buildStep3Plan(
   // ── 가공파일에 없지만 자재 관리에 품번 등록된 케이블 추가 (사용량 0) ──
   for (const [key, metaVal] of Object.entries(metadata.cable ?? {})) {
     if (cableMap[key]) continue
-    const m = metaVal as Record<string, unknown>
+    const m = metaVal as unknown as Record<string, unknown>
     if (!String(m['품번'] ?? '').trim()) continue
     const [pai, label] = key.split('|', 2)
     if (!pai || !label) continue

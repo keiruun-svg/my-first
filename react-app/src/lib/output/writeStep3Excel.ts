@@ -204,8 +204,7 @@ function writeMainSheet(
 
   // ── 행 3: 헤더 ───────────────────────────────────────────
   ws.getRow(3).height = 42
-  const COL_WIDTHS: number[] = [5, 8, 20, 16, 38, 12, 10]
-  hdrCell(3, L.C_NO, 'NO'); hdrCell(3, L.C_PAI, '파이'); hdrCell(3, L.C_TYPE, typeLabel)
+hdrCell(3, L.C_NO, 'NO'); hdrCell(3, L.C_PAI, '파이'); hdrCell(3, L.C_TYPE, typeLabel)
   hdrCell(3, L.C_PN, '품번'); hdrCell(3, L.C_NAME, '품명'); hdrCell(3, L.C_VENDOR, '구매처')
   hdrCell(3, L.C_LT, `리드타임\n(일)`)
   ws.getColumn(1).width = 5; ws.getColumn(2).width = 8; ws.getColumn(3).width = 20

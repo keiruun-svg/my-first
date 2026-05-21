@@ -58,7 +58,7 @@ export function deriveCore(name: string): number {
   return 1
 }
 
-export function deriveKind(name: string, spec: string, core: number): string {
+export function deriveKind(name: string, spec: string, _core: number): string {
   if (name.startsWith('PIGTAIL'))
     return /-MM\b|-MM-|MM\(OM3\)/.test(name) ? 'om1-pigtail' : 'pigtail'
   if (name.startsWith('DROP'))                return 'drop'
