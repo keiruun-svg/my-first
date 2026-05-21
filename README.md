@@ -1,9 +1,45 @@
-# 📦 AJW 생산자재 발주계획 시스템
+# 📦 AJW 운영 도우미 웹
 
-**(주)에이제이월드 SCM팀 — 생산자재 발주계획 자동화 웹앱**
+**(주)에이제이월드 SCM팀 — 운영 도우미 웹 개발**
 
-ERP 구매현황 파일을 업로드하면 자재별 사용량 집계 → 판매 분석 → 연간 발주계획 Excel을 자동 생성합니다.  
-Streamlit / Python 버전에서 **React + TypeScript + Vite** 로 전면 재구축되었습니다.
+| 단계 | 내용 | 상태 |
+|------|------|------|
+| 1단계 | 생산 자재 발주 계획 자동 생성 | ✅ 완료 |
+| 2단계 | 수입 관리 + 재고 관리 고도화 | 🔲 진행 예정 |
+| 3단계 | 완제품 수입 어시스턴트 | 🔲 진행 예정 |
+
+---
+
+## 빠른 시작
+
+```bash
+# 1. 의존성 설치
+cd react-app
+npm install
+
+# 2. 환경변수 설정
+cp .env.example .env.local
+# .env.local 파일을 열어 실제 값 입력
+
+# 3. Supabase DB 초기화
+# Supabase 콘솔 > SQL Editor에서 supabase/schema.sql 전체 실행
+
+# 4. 개발 서버 실행
+npm run dev
+# → http://localhost:5173
+```
+
+---
+
+## 환경변수 (react-app/.env.local)
+
+```env
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_KEY=your-anon-key
+VITE_ADMIN_PASS=자재관리탭_비밀번호
+```
+
+> `.env.example` 파일을 복사해서 사용. 실제 키는 Supabase 콘솔 **Project Settings > API** 에서 확인.
 
 ---
 
@@ -13,9 +49,26 @@ Streamlit / Python 버전에서 **React + TypeScript + Vite** 로 전면 재구�
 |------|------|
 | 프론트엔드 | React 19, TypeScript 6, Vite 8 |
 | 스타일 | Tailwind CSS 4 |
-| Excel 생성 | ExcelJS 4 (서식·수식 포함 xlsx 생성) |
+| Excel 생성 | ExcelJS 4 |
 | Excel 파싱 | SheetJS (xlsx 0.18) |
-| 백엔드 / DB | Supabase (PostgreSQL — 설정·메타데이터·재고 영속화) |
+| 백엔드 / DB | Supabase (PostgreSQL) + localStorage fallback |
+
+---
+
+## 탭 구성
+
+| 탭 | 기능 |
+|----|------|
+| 🏠 홈 | 대시보드 — 등록 자재 현황·재고 요약 |
+| 📤 STEP 1 | ERP 파일 가공 → 가공파일.xlsx 생성 |
+| 📈 STEP 2 | 판매·생산 파일 분석 → 판매분석.xlsx 생성 |
+| 📊 STEP 3 | 발주계획 생성 → 발주계획.xlsx 생성 |
+| 🔍 판매 현황 분석 | 품목별·채널별 판매 추이 열람 |
+| 🏷 품번 생성기 | OJC 광점퍼코드 품번 자동 생성 |
+| 📦 자재 관리 | 품번·품명·구매처·리드타임·현재고·기발주 등록 (관리자 전용) |
+| 🗂 재고 관리 | EMP ↔ 이카운트 재고 대사 (4파일 업로드) |
+| 🚢 수입 관리 | EMP 코드 생성 + 발주·입고 관리 (2단계 구현 예정) |
+| ⚙️ 파라미터 설정 | 안전재고 계수(k)·리드타임 기본값·색상 테마 |
 
 ---
 
@@ -28,40 +81,64 @@ ERP 구매현황.xlsx
 ┌──────────────────┐
 │  STEP 1          │  ERP 파싱 → 케이블 종류·파이·코어수·길이 분류
 │  ERP 파일 가공   │  → 연도별 월별 사용량 집계
-│                  │  출력: 가공파일.xlsx (집계 시트 + 원본 시트)
+│                  │  출력: 가공파일.xlsx (집계 + 코드매핑 + 요약 시트)
 └────────┬─────────┘
-         │ 가공파일.xlsx
+         │
          ▼
 ┌──────────────────┐
 │  STEP 2          │  판매·생산 파일 업로드
 │  판매 분석       │  → OJC 제품 필터링 → 타입별 CAGR 계산
-│                  │  → 생산비중·수입의존도 분석
-│                  │  출력: 판매분석.xlsx (7개 시트)
+│                  │  출력: 판매분석.xlsx
 └────────┬─────────┘
-         │ 가공파일.xlsx  +  판매분석.xlsx (선택)
+         │ 가공파일.xlsx + 판매분석.xlsx (선택)
          ▼
 ┌──────────────────┐
-│  STEP 3          │  안전재고 계산 (월평균 × LT/30 × k)
-│  발주계획 생성   │  CAGR 반영 예측량 → 필요발주량 산정
-│                  │  STEP 2 연동 시 수요기반 분석 5컬럼 추가
-│                  │  출력: 발주계획.xlsx (5개 시트)
+│  STEP 3          │  안전재고 = 3개년 피크평균 × (LT/30) × k
+│  발주계획 생성   │  발주필요량 = max(0, 예측연간 + 안전재고 - 현재고 - 기발주)
+│                  │  출력: 발주계획.xlsx (4개 시트)
 └──────────────────┘
 ```
 
 ---
 
-## 탭 구성
+## 안전재고 계산식
 
-| 탭 | 기능 |
-|----|------|
-| 🏠 홈 | 대시보드 — 등록 자재 현황·재고 요약 |
-| 📤 STEP 1 | ERP 파일 가공 → 가공파일.xlsx 생성 |
-| 📈 STEP 2 | 판매·생산 파일 분석 → 판매분석.xlsx 생성 |
-| 📊 STEP 3 | 가공파일 업로드 → 발주계획.xlsx 생성 |
-| 🔍 판매 현황 분석 | 품목별·채널별 판매 추이 열람 |
-| 🏷 품번 생성기 | OJC 품번 자동 생성 규칙 적용 |
-| 📦 자재 관리 | 품번·품명·구매처·리드타임·현재고·기발주 등록 (관리자) |
-| ⚙️ 파라미터 설정 | 안전재고 계수(k)·리드타임 기본값·색상 테마 |
+```
+안전재고 = 3개년 피크평균 × (리드타임 / 30) × k
+
+  3개년 피크평균 = 각 연도 월별 최대값의 평균
+  k            = 안전재고 계수 (기본값 1.5, 설정 탭에서 변경)
+  리드타임     = 자재별 등록값 (미등록 시 기본값 사용, 단위: 일)
+```
+
+---
+
+## 발주계획.xlsx 시트 구성
+
+| 시트 | 내용 |
+|------|------|
+| 케이블 사용내역 | 케이블 타입별 연도별 연간·피크 사용량, 안전재고, 발주 필요량 |
+| 하우징 사용내역 | 하우징 타입별 동일 구성 |
+| 📦 품번별 발주 집계 | 품번별 합산 (케이블·하우징·페롤 섹션) + k 입력 셀 |
+| 2026 월별 발주계획 | 과거 계절 패턴 기반 월별 자동 분배 |
+
+---
+
+## Supabase 스키마
+
+`supabase/schema.sql` 참고. 주요 테이블:
+
+| 테이블 | 용도 | 단계 |
+|--------|------|------|
+| `app_data` | 설정·메타·재고·판매 캐시 (키-값) | 1단계 ✅ |
+| `recon_history` | 재고 대사 이력 | 2단계 |
+| `vendors` | 수입 업체 코드 | 2단계 |
+| `import_orders` | 수입 발주 현황 | 2단계 |
+| `import_receipts` | 분할입고 기록 | 2단계 |
+
+> `app_data` 테이블의 `id` 값: `settings` / `metadata` / `inventory` / `sales` / `sales_agg` / `ojc_products`
+
+**쓰기 권한**: `CAN_WRITE = import.meta.env.DEV` — 개발 모드에서만 Supabase 쓰기 가능, 프로덕션은 읽기 전용.
 
 ---
 
@@ -69,135 +146,49 @@ ERP 구매현황.xlsx
 
 ```
 react-app/src/
-├── App.tsx                     # 탭 라우팅, Supabase 초기 로드
+├── App.tsx
 ├── components/
-│   ├── Step1.tsx               # STEP 1 UI
-│   ├── Step2.tsx               # STEP 2 UI
-│   ├── Step3.tsx               # STEP 3 UI (+ salesAgg 수요 분석 연동)
-│   ├── Dashboard.tsx           # 홈 대시보드
-│   ├── MaterialManager.tsx     # 자재 관리 (메타 + 재고)
-│   ├── SalesAnalysisTab.tsx    # 판매 현황 분석
-│   ├── Settings.tsx            # 파라미터 설정
-│   ├── PartNumberGenerator.tsx # 품번 생성기
-│   └── FileUploader.tsx        # 공용 파일 업로드 컴포넌트
-│
+│   ├── Step1.tsx / Step2.tsx / Step3.tsx
+│   ├── Dashboard.tsx
+│   ├── SalesAnalysisTab.tsx
+│   ├── PartNumberGenerator.tsx
+│   ├── MaterialManager.tsx
+│   ├── InventoryReconciliationTab.tsx  # 재고 대사
+│   ├── ImportTab.tsx                   # 수입 관리 (2단계)
+│   ├── Settings.tsx
+│   └── FileUploader.tsx
 └── lib/
-    ├── types.ts                # 공용 타입 (Metadata, Inventory, AppSettings)
-    ├── supabase.ts             # Supabase 클라이언트 + CRUD 헬퍼
-    ├── step1Core.ts            # STEP 1 — ERP 파싱 및 집계 로직
-    ├── step2Core.ts            # STEP 2 — 판매 분석 오케스트레이션
-    ├── step3Core.ts            # STEP 3 — 발주계획 계산 (CodeCableEntry 포함)
-    ├── ojcFilter.ts            # OJC 완제품 판별 (품명 패턴 매칭)
-    ├── ojcAutoDetect.ts        # OJC 품번 자동 감지
-    ├── download.ts             # xlsx 파일 다운로드 유틸
+    ├── types.ts / supabase.ts
+    ├── step1Core.ts / step2Core.ts / step3Core.ts
+    ├── ojcFilter.ts / ojcAutoDetect.ts / download.ts
     ├── aggregate/
-    │   ├── salesAgg.ts         # 타입별 판매·생산 집계, CAGR 계산
-    │   └── pivot.ts            # ERP 데이터 연도별 피벗
+    │   ├── salesAgg.ts   # CAGR 계산
+    │   └── pivot.ts
     ├── parse/
-    │   ├── parseERP.ts         # ERP 구매현황/구매조회 파싱
-    │   ├── parseSales.ts       # 판매 파일 파싱
-    │   ├── parseDetailedSales.ts
-    │   └── classify.ts         # 케이블 종류·코어수 분류 (deriveKind/deriveCore)
+    │   ├── parseERP.ts / parseSales.ts / parseDetailedSales.ts
+    │   └── classify.ts   # deriveKind / derivePai / deriveCore / deriveLength
     └── output/
-        ├── writeGaong.ts       # 가공파일.xlsx 생성 (STEP 1 출력)
-        ├── writeSalesAgg.ts    # 판매분석.xlsx 생성 (STEP 2 출력)
-        └── writeStep3Excel.ts  # 발주계획.xlsx 생성 (STEP 3 출력)
+        ├── writeGaong.ts       # 가공파일.xlsx
+        ├── writeSalesAgg.ts    # 판매분석.xlsx
+        └── writeStep3Excel.ts  # 발주계획.xlsx
+
+supabase/
+└── schema.sql   # DB 초기화 SQL (새 환경 세팅 시 실행)
+
+CLAUDE.md        # Claude Code 세션용 프로젝트 맥락 문서
 ```
 
 ---
 
-## STEP 3 — 발주계획.xlsx 시트 구성
-
-| 시트 | 내용 |
-|------|------|
-| 케이블 사용내역 | 케이블 타입별 연도별 연간·피크 사용량, 안전재고, 발주 필요량 |
-| 하우징 사용내역 | 하우징 타입별 동일 구성 |
-| 📦 품번별 발주 집계 | 하우징 품번별 합산 + 페롤(커넥터 타입별) 섹션 |
-| 2026 월별 발주계획 | 과거 계절 패턴 기반 월별 자동 분배 (연간목표 입력 시 자동 계산) |
-| ⚠ 이상항목 검토 | 사용량 급감·품번 미등록 등 주의 항목 |
-
-**STEP 2 결과(판매분석.xlsx)가 로드된 경우** 케이블 사용내역 시트에 수요기반 분석 5컬럼이 추가됩니다:
-
-| 컬럼 | 산식 |
-|------|------|
-| 수요기반 제안량 | Σ (판매실적 × (1+트렌드) × 생산비중 × 자재단가) |
-| vs 3개년평균 | 제안량 / 3개년평균 − 1 |
-| 생산비중 | 맥산 생산량 / 전체 판매량 (가중평균) |
-| 판매트렌드 | 2개년 CAGR (없으면 1개년 증감률) |
-| 수입의존위험도 | 🔴 고위험(<30%) / 🟠 주의(<70%) / 🟢 안전 |
-
----
-
-## 안전재고 계산식
-
-```
-안전재고 = 월평균사용량 × (리드타임 / 30) × k
-
-  월평균사용량 = 최근년 연간사용량 / 12
-  k            = 안전재고 계수 (기본값 1.5, 설정 탭에서 변경)
-  리드타임     = 자재별 등록값 (미등록 시 기본값 사용)
-```
-
-STEP 2 판매CAGR이 연동된 경우 케이블의 월평균사용량은 예측량(`latestAnnual × (1 + CAGR)`) 기준으로 계산됩니다.
-
----
-
-## 개발 환경 실행
+## 개발 명령어
 
 ```bash
 cd react-app
-npm install
-npm run dev
+npm run dev      # 개발 서버
+npm run build    # 프로덕션 빌드
+npm run lint     # ESLint
+npx tsc --noEmit # 타입 체크
 ```
-
-접속: http://localhost:5173
-
-### 환경 변수
-
-`react-app/.env.local` 파일 생성:
-
-```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-VITE_ADMIN_PASS=자재관리탭_비밀번호
-```
-
-### 빌드
-
-```bash
-npm run build   # dist/ 폴더 생성
-npm run preview # 빌드 결과 로컬 미리보기
-```
-
----
-
-## Supabase 데이터 구조
-
-| 테이블 | 내용 |
-|--------|------|
-| `settings` | 안전재고 계수·리드타임 기본값·색상 테마 |
-| `metadata` | 케이블·하우징·페롤별 품번·품명·구매처·리드타임 |
-| `inventory` | 케이블·하우징·페롤별 현재고·기발주 |
-| `sales_analysis` | STEP 2 판매 분석 결과 캐시 |
-| `sales_agg` | 타입별 판매·생산 CAGR 집계 캐시 |
-| `ojc_products` | OJC 품번 생성기용 제품 목록 |
-
----
-
-## 주요 분류 로직
-
-### 케이블 종류 (`classify.ts`)
-- `deriveKind(name, spec, core)` — 품명/규격에서 a1 / b3 / om1 / om3 / drop / pigtail / a2 분류
-- `deriveCore(name)` — 품명에서 코어수(1/2/4/8…) 추출
-- A1 케이블은 색상(청/녹/적/자)별로 세분류
-
-### OJC 판별 (`ojcFilter.ts`)
-- 품명 패턴 매칭으로 광점퍼코드 완제품 구분
-- 맥산 생산분 / 수입 완제품 구분 → 생산비중 계산
-
-### 피그테일 집계 (`writeGaong.ts`)
-- 0.9mm 피그테일은 코어수만큼 색상별 분리 집계
-- 색상 매핑: 연청 → 청록, 연등 → 분홍
 
 ---
 
