@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import * as XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
-import { downloadXlsx } from '../lib/download'
+import { downloadXlsx, today } from '../lib/download'
 
 // ── 타입 ──────────────────────────────────────────────────────────────
 interface LotEntry { lot: string | null; qty: number; autoLoc?: boolean }
@@ -282,7 +282,7 @@ async function exportReconExcel(rows: ReconRow[], date: string): Promise<void> {
   sum.addRow(['⚠ EC만', ecOnly])
 
   const buf = await wb.xlsx.writeBuffer()
-  downloadXlsx(buf as ArrayBuffer, `재고대사_${date}.xlsx`)
+  downloadXlsx(buf as ArrayBuffer, `재고대사_${date}_${today()}.xlsx`)
 }
 
 // ── UI ────────────────────────────────────────────────────────────────

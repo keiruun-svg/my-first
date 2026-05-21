@@ -206,6 +206,21 @@ ZZ-ZZ 로케이션 자동배정: `assignLocation(품명)` — 15가지 규칙 (D
 - Excel 파싱: SheetJS `read()` → `utils.sheet_to_json(ws, { header: 1 })` → `unknown[][]`
 - Supabase 저장: `setState(x)` 먼저, `saveToSupabase(x)` 비동기 후행
 
+### Excel 다운로드 파일명 규칙
+
+데이터를 다루는 탭은 기본으로 Excel 다운로드 기능을 포함한다.
+
+파일명 형식: **`기능명_${today()}.xlsx`** (날짜+시간 필수)
+
+```typescript
+import { downloadXlsx, today } from '../lib/download'
+// today() → "YYYYMMDD_HHmm" 형식
+
+downloadXlsx(buffer, `발주계획_${today()}.xlsx`)   // 예: 발주계획_20260521_1430.xlsx
+```
+
+예외: `재고대사`는 기준일자 + 작성일 조합 → `재고대사_${date}_${today()}.xlsx`
+
 ---
 
 ## 현재 구현 상태 (2026-05-20)
