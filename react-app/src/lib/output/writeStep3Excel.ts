@@ -334,11 +334,11 @@ function writeMainSheet(
       tgtCell.alignment = { horizontal: 'right', vertical: 'middle' }
     }
 
-    // 필요발주 = IFERROR(목표 - 현재고 - 기발주, "")
+    // 필요발주 = MAX(목표 + 안전재고 - 현재고 - 기발주, 0)
     {
-      const tgt = cl(L.C_TGT); const cur = cl(L.C_CUR); const ord = cl(L.C_ORD)
+      const tgt = cl(L.C_TGT); const cur = cl(L.C_CUR); const ord = cl(L.C_ORD); const ss = cl(L.C_SS)
       const reqCell = ws.getCell(ri, L.C_REQ)
-      reqCell.value = { formula: `IFERROR(${tgt}${ri}-IFERROR(${cur}${ri},0)-IFERROR(${ord}${ri},0),"")` }
+      reqCell.value = { formula: `IFERROR(MAX(${tgt}${ri}+${ss}${ri}-IFERROR(${cur}${ri},0)-IFERROR(${ord}${ri},0),0),"")` }
       reqCell.font  = { name: 'Arial', bold: true, size: 9, color: { argb: 'FFC00000' } }
       reqCell.border = ALL_BORDERS
       reqCell.numFmt = '#,##0'
@@ -455,6 +455,7 @@ function writeBunhoSheet(
   const C_REQ      = C_TGT  + 1
   const C_NOTE     = C_REQ  + 1
   const TOTAL      = C_NOTE
+  const C_K        = TOTAL  + 2
 
   const hdr = (r: number, c: number, v: string, w?: number) => {
     const cell = ws.getCell(r, c)
@@ -501,6 +502,13 @@ function writeBunhoSheet(
   band2(2, C_CUR,      C_ORD,      '재고 현황',          '7030A0')
   band2(2, C_TGT,      C_REQ,      '✏ 발주 계획',       'C55A11')
   band2(2, C_NOTE,     C_NOTE,     '비고',               '595959')
+  // k 라벨
+  const kLabelCell2 = ws.getCell(2, C_K)
+  kLabelCell2.value = '안전재고\n계수 k'
+  kLabelCell2.font = { name: 'Arial', bold: true, size: 9, color: { argb: 'FFFFFFFF' } }
+  kLabelCell2.fill = fill('C00000'); kLabelCell2.border = ALL_BORDERS
+  kLabelCell2.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+  ws.getColumn(C_K).width = 10
 
   // 헤더
   ws.getRow(3).height = 42
@@ -513,6 +521,13 @@ function writeBunhoSheet(
   hdr(3, C_CUR, `현재고`, 10); hdr(3, C_ORD, `기발주\n(참고)`, 10)
   hdr(3, C_TGT, `목표수량`, 12); hdr(3, C_REQ, `필요발주`, 12)
   hdr(3, C_NOTE, '합산 출처 (가공파일 대조용)', 45)
+  // k 입력 셀
+  const kCell2 = ws.getCell(3, C_K)
+  kCell2.value = safetyK
+  kCell2.font = font({ bold: true, color: '0000FF' })
+  kCell2.fill = fill('FFFFC0'); kCell2.border = INPUT_BORDERS()
+  kCell2.numFmt = '0.0'; kCell2.alignment = { horizontal: 'center', vertical: 'middle' }
+  const kRef2 = `$${cl(C_K)}$3`
 
   let ri = 4; let no = 1
 
@@ -551,7 +566,7 @@ function writeBunhoSheet(
     pkAvgCell.alignment = { horizontal: 'right', vertical: 'middle' }
 
     const ssCell2 = ws.getCell(ri, C_SS)
-    ssCell2.value = { formula: `ROUND(${cl(C_PEAK_AVG)}${ri}*${cl(C_LT)}${ri}/30*${safetyK},0)` }
+    ssCell2.value = { formula: `ROUND(${cl(C_PEAK_AVG)}${ri}*${cl(C_LT)}${ri}/30*${kRef2},0)` }
     ssCell2.font  = font({ bold: true }); ssCell2.border = ALL_BORDERS; ssCell2.numFmt = '#,##0'
     ssCell2.fill  = fill('FFF2CC'); ssCell2.alignment = { horizontal: 'right', vertical: 'middle' }
 

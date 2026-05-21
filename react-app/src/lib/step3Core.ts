@@ -233,7 +233,7 @@ export function buildStep3Plan(
     const cKind       = labelToKind(row.label)
     const cCagr       = (kindCagr && cKind) ? (kindCagr[cKind] ?? 0) : 0
     row.appliedCagr    = cCagr
-    row.forecastAnnual = cCagr !== 0 ? Math.round(row.latestAnnual * (1 + cCagr)) : row.latestAnnual
+    row.forecastAnnual = cCagr !== 0 ? Math.max(0, Math.round(row.latestAnnual * (1 + cCagr))) : row.latestAnnual
     const cPeakVals    = row.years.map(yr => row.byYear[yr]?.peak ?? 0)
     const cPeakAvg     = cPeakVals.length > 0 ? cPeakVals.reduce((s, v) => s + v, 0) / cPeakVals.length : 0
     const cForecastPeak = row.latestAnnual > 0 ? cPeakAvg * (row.forecastAnnual / row.latestAnnual) : cPeakAvg
