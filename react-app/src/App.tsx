@@ -11,6 +11,7 @@ import Step1 from './components/Step1'
 import Step2 from './components/Step2'
 import Step3 from './components/Step3'
 import MaterialManager from './components/MaterialManager'
+import OjcRulesEditor from './components/OjcRulesEditor'
 import Settings from './components/Settings'
 import PartNumberGenerator from './components/PartNumberGenerator'
 import SalesAnalysisTab from './components/SalesAnalysisTab'
@@ -18,16 +19,13 @@ import Dashboard from './components/Dashboard'
 import InventoryReconciliationTab from './components/InventoryReconciliationTab'
 import ImportTab from './components/ImportTab'
 
-// 최상위 탭 (STEP 1/2/3은 'steps' 그룹으로 묶음)
 const NAV_TABS = [
-  { id: 'home',     label: '🏠 홈' },
-  { id: 'steps',    label: '📋 생산자재 발주계획' },
-  { id: 'sales',    label: '🔍 판매 현황 분석' },
-  { id: 'partnum',  label: '🏷 품번 생성기' },
-  { id: 'material', label: '🔐 관리자' },
-  { id: 'recon',    label: '🗂 재고 관리' },
-  { id: 'import',   label: '🚢 수입 관리' },
-  { id: 'settings', label: '⚙️ 파라미터 & 양식 설정' },
+  { id: 'home',   label: '🏠 홈' },
+  { id: 'steps',  label: '📋 생산자재 발주계획' },
+  { id: 'sales',  label: '🔍 판매 현황 분석' },
+  { id: 'recon',  label: '🗂 재고 대사' },
+  { id: 'import', label: '🚢 수입 관리' },
+  { id: 'admin',  label: '🔐 관리자' },
 ] as const
 
 const STEP_TABS = [
@@ -36,12 +34,23 @@ const STEP_TABS = [
   { id: 'step3', label: 'STEP 3 — 발주계획 생성' },
 ] as const
 
-type StepId  = typeof STEP_TABS[number]['id']
-type NavId   = typeof NAV_TABS[number]['id']
-type TabId   = Exclude<NavId, 'steps'> | StepId
+const ADMIN_TABS = [
+  { id: 'admin_material', label: '자재 관리' },
+  { id: 'admin_ojcrules', label: 'OJC 코드표' },
+  { id: 'admin_partnum',  label: '품번 생성기' },
+  { id: 'admin_settings', label: '설정' },
+] as const
+
+type StepId    = typeof STEP_TABS[number]['id']
+type AdminTabId = typeof ADMIN_TABS[number]['id']
+type NavId     = typeof NAV_TABS[number]['id']
+type TabId     = Exclude<NavId, 'steps' | 'admin'> | StepId | AdminTabId
 
 function isStepId(id: string): id is StepId {
-  return id === 'step1' || id === 'step2' || id === 'step3'
+  return STEP_TABS.some(t => t.id === id)
+}
+function isAdminTabId(id: string): id is AdminTabId {
+  return ADMIN_TABS.some(t => t.id === id)
 }
 
 const ADMIN_PASS = import.meta.env.VITE_ADMIN_PASS as string | undefined
@@ -52,11 +61,10 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [metadata, setMetadata] = useState<Metadata>({ cable: {}, housing: {}, ferrule: {} })
   const [inventory, setInventory] = useState<Inventory>({ cable: {}, housing: {}, ferrule: {} })
-  const [sales, setSales]           = useState<SalesAnalysis>({})
-  const [salesAgg, setSalesAgg]     = useState<SalesAggResult | null>(null)
+  const [sales, setSales]       = useState<SalesAnalysis>({})
+  const [salesAgg, setSalesAgg] = useState<SalesAggResult | null>(null)
   const [ojcProducts, setOjcProducts] = useState<OjcProduct[]>([])
 
-  // Admin gate — session-level unlock, resets on page reload
   const [adminUnlocked, setAdminUnlocked] = useState(false)
   const [showAdminGate, setShowAdminGate] = useState(false)
   const [pwInput, setPwInput] = useState('')
@@ -83,7 +91,6 @@ export default function App() {
     })
   }, [])
 
-  // Focus password input when modal opens
   useEffect(() => {
     if (showAdminGate) {
       setPwInput('')
@@ -93,13 +100,17 @@ export default function App() {
   }, [showAdminGate])
 
   function handleTabClick(tabId: TabId | NavId) {
-    if (tabId === 'material' && !adminUnlocked) {
-      pendingTabAfterUnlock.current = 'material'
+    if (tabId === 'admin' && !adminUnlocked) {
+      pendingTabAfterUnlock.current = isAdminTabId(activeTab) ? activeTab : 'admin_material'
       setShowAdminGate(true)
       return
     }
     if (tabId === 'steps') {
       setActiveTab(isStepId(activeTab) ? activeTab : 'step1')
+      return
+    }
+    if (tabId === 'admin') {
+      setActiveTab(isAdminTabId(activeTab) ? activeTab : 'admin_material')
       return
     }
     setActiveTab(tabId as TabId)
@@ -136,7 +147,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Title — matches Streamlit .main-title / .sub-title */}
       <div className="px-6 pt-6 pb-1 max-w-screen-2xl mx-auto">
         <div className="text-[1.6rem] font-bold text-[#1F3864] leading-tight mb-1">
           📦 AJW 생산자재 발주계획 시스템
@@ -150,7 +160,10 @@ export default function App() {
       <div className="border-b border-gray-200 sticky top-0 bg-white z-10">
         <div className="flex overflow-x-auto max-w-screen-2xl mx-auto px-4">
           {NAV_TABS.map(t => {
-            const isActive = t.id === 'steps' ? isStepId(activeTab) : activeTab === t.id
+            const isActive =
+              t.id === 'steps' ? isStepId(activeTab) :
+              t.id === 'admin' ? isAdminTabId(activeTab) :
+              activeTab === t.id
             return (
               <button
                 key={t.id}
@@ -168,7 +181,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Content — wide, no card wrapper */}
+      {/* Content */}
       <div className="max-w-screen-2xl mx-auto px-6 py-6">
         {activeTab === 'home' && (
           <Dashboard
@@ -179,9 +192,9 @@ export default function App() {
             onNavigate={(tab) => handleTabClick(tab as TabId)}
           />
         )}
+
         {isStepId(activeTab) && (
           <div>
-            {/* 생산자재 발주계획 서브탭 */}
             <div className="flex border-b border-gray-200 mb-6">
               {STEP_TABS.map(s => (
                 <button
@@ -202,34 +215,50 @@ export default function App() {
             {activeTab === 'step3' && <Step3 metadata={metadata} inventory={inventory} settings={settings} salesAgg={salesAgg} />}
           </div>
         )}
-        {activeTab === 'sales' && (
-          <SalesAnalysisTab />
-        )}
-        {activeTab === 'partnum' && (
-          <PartNumberGenerator
-            ojcProducts={ojcProducts}
-            setOjcProducts={(p) => { setOjcProducts(p); saveOjcProducts(p) }}
-          />
-        )}
-        {activeTab === 'material' && (
-          <MaterialManager
-            metadata={metadata}     setMetadata={setMetadata}
-            inventory={inventory}   setInventory={setInventory}
-          />
-        )}
-        {activeTab === 'recon' && (
-          <InventoryReconciliationTab />
-        )}
-        {activeTab === 'import' && (
-          <ImportTab />
-        )}
-        {activeTab === 'settings' && (
-          <Settings
-            settings={settings}   setSettings={setSettings}
-            metadata={metadata}   setMetadata={setMetadata}
-            inventory={inventory} setInventory={setInventory}
-            sales={sales}         salesAgg={salesAgg}
-          />
+
+        {activeTab === 'sales' && <SalesAnalysisTab />}
+        {activeTab === 'recon' && <InventoryReconciliationTab />}
+        {activeTab === 'import' && <ImportTab />}
+
+        {isAdminTabId(activeTab) && (
+          <div>
+            <div className="flex border-b border-gray-200 mb-6">
+              {ADMIN_TABS.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setActiveTab(s.id)}
+                  className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+                    activeTab === s.id
+                      ? 'border-[#2E75B6] text-[#2E75B6]'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            {activeTab === 'admin_material' && (
+              <MaterialManager
+                metadata={metadata}   setMetadata={setMetadata}
+                inventory={inventory} setInventory={setInventory}
+              />
+            )}
+            {activeTab === 'admin_ojcrules' && <OjcRulesEditor />}
+            {activeTab === 'admin_partnum' && (
+              <PartNumberGenerator
+                ojcProducts={ojcProducts}
+                setOjcProducts={(p) => { setOjcProducts(p); saveOjcProducts(p) }}
+              />
+            )}
+            {activeTab === 'admin_settings' && (
+              <Settings
+                settings={settings}   setSettings={setSettings}
+                metadata={metadata}   setMetadata={setMetadata}
+                inventory={inventory} setInventory={setInventory}
+                sales={sales}         salesAgg={salesAgg}
+              />
+            )}
+          </div>
         )}
       </div>
 
@@ -244,8 +273,7 @@ export default function App() {
               <div className="text-4xl">🔒</div>
               <div className="text-lg font-bold text-[#1F3864]">관리자 전용</div>
               <div className="text-sm text-gray-500 text-center">
-                자재 관리 탭은 관리자만 접근할 수 있습니다.<br />
-                비밀번호를 입력하세요.
+                관리자 탭은 비밀번호가 필요합니다.
               </div>
             </div>
             <input
