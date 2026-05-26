@@ -1,6 +1,6 @@
-# AJW 생산자재 발주계획 시스템 — CLAUDE.md
+# AJW SCM 어시스턴트 — CLAUDE.md
 
-AJW (주)에이제이월드 SCM팀 — 운영 도우미 웹 개발 1단계 - 생산 자재 발주 계획 자동 생성
+AJW (주)에이제이월드 SCM팀 — 운영 도우미 웹 (2단계 완료)
 
 ---
 
@@ -33,29 +33,37 @@ npx tsc --noEmit # 타입 체크만
 
 ```
 react-app/src/
-├── App.tsx                     # 탭 라우팅, 초기 Supabase 로드
+├── App.tsx                     # 탭 라우팅, NAV_TABS / STEP_TABS
 ├── components/
+│   ├── Dashboard.tsx           # 홈 대시보드
 │   ├── Step1.tsx               # STEP 1: ERP 파일 가공
 │   ├── Step2.tsx               # STEP 2: 판매 분석
 │   ├── Step3.tsx               # STEP 3: 발주계획 생성
-│   ├── Dashboard.tsx           # 홈 대시보드
 │   ├── SalesAnalysisTab.tsx    # 판매 현황 분석
-│   ├── PartNumberGenerator.tsx # OJC 품번 생성기
+│   ├── PartNumberGenerator.tsx # OJC 품번 생성기 (서브탭: auto/manual/rules/emp/location)
+│   ├── EmpCodeGenerator.tsx    # EMP 로트코드 생성기 (품번 생성기 서브탭)
+│   ├── EmpLocationGenerator.tsx # EMP 창고 로케이션 생성기 (품번 생성기 서브탭)
 │   ├── MaterialManager.tsx     # 자재 관리 (관리자 전용)
 │   ├── InventoryReconciliationTab.tsx  # 재고 대사 (EMP ↔ 이카운트)
-│   ├── ImportTab.tsx           # 수입 관리 (2단계 구현 예정)
+│   ├── ImportTab.tsx           # 수입 관리 (서브탭: 발주계획/간헐적수요/발주현황)
+│   ├── ImportOrdersView.tsx    # 발주 현황 (업체+차수 단위 등록·조회)
 │   └── Settings.tsx            # 파라미터 설정
 └── lib/
     ├── types.ts                # 공용 타입: AppSettings, Metadata, Inventory
-    ├── supabase.ts             # Supabase 클라이언트 + CRUD
+    ├── supabase.ts             # Supabase 클라이언트 + CRUD + localStorage 헬퍼
+    ├── download.ts             # downloadXlsx, today(), pickSaveFile
+    ├── assignLocation.ts       # assignLocation(품명) → 창고 코드 (15규칙)
+    ├── ojcFilter.ts            # classifyOjc, classifyOjcDetailed, COLOR_MAP_OJC
+    ├── ojcAutoDetect.ts
     ├── step1Core.ts / step2Core.ts / step3Core.ts
-    ├── ojcFilter.ts / ojcAutoDetect.ts
     ├── aggregate/
     │   ├── salesAgg.ts         # 타입별 판매·생산 집계, CAGR
     │   └── pivot.ts            # ERP → 연도별 피벗
     ├── parse/
     │   ├── parseERP.ts         # ERP 구매현황 파싱
     │   ├── parseSales.ts / parseDetailedSales.ts
+    │   ├── parseItemCodes.ts   # 이카운트/EMP 품목 리스트 파싱 → ItemCode[]
+    │   ├── parseStockFile.ts   # 이카운트 수불부/EMP 재고현황 자동감지 → Map<code, qty>
     │   └── classify.ts         # deriveKind, derivePai, deriveCore, deriveLength
     └── output/
         ├── writeGaong.ts       # 가공파일.xlsx (STEP 1)
@@ -65,20 +73,35 @@ react-app/src/
 
 ---
 
-## 탭 구조 (App.tsx ALL_TABS)
+## 탭 구조 (App.tsx)
+
+### NAV_TABS (상단 네비게이션)
 
 | id | 설명 |
 |---|---|
 | home | 홈 대시보드 |
-| step1 | ERP 파일 가공 → 가공파일.xlsx |
-| step2 | 판매 분석 → 판매분석.xlsx |
-| step3 | 발주계획 생성 → 발주계획.xlsx |
+| steps | 📋 생산자재 발주계획 (드롭다운 — STEP_TABS 하위) |
 | sales | 판매 현황 분석 |
 | partnum | OJC 품번 생성기 |
 | material | 자재 관리 (관리자 전용, 비밀번호 `VITE_ADMIN_PASS`) |
 | recon | 재고 관리 — EMP ↔ 이카운트 재고 대사 |
-| import | 수입 관리 (EMP 코드 생성 + 발주·입고) — 구현 예정 |
+| import | 수입 관리 (완제품 수입 발주계획 + 발주 현황) |
 | settings | 파라미터 & 양식 설정 |
+
+### STEP_TABS (생산자재 발주계획 하위)
+
+| id | 설명 |
+|---|---|
+| step1 | ERP 파일 가공 → 가공파일.xlsx |
+| step2 | 판매 분석 → 판매분석.xlsx |
+| step3 | 발주계획 생성 → 발주계획.xlsx |
+
+```typescript
+type StepId = 'step1' | 'step2' | 'step3'
+type NavId  = typeof NAV_TABS[number]['id']
+type TabId  = Exclude<NavId, 'steps'> | StepId
+function isStepId(id: string): id is StepId
+```
 
 ---
 
@@ -103,6 +126,46 @@ react-app/src/
 
 ---
 
+## 수입 관리 탭 (ImportTab)
+
+완제품 OJC 수입 관련 3개 서브탭.
+
+### 서브탭 1: 발주계획
+
+- 입력: 재고파일 (`parseStockFile` — 이카운트/EMP 자동감지) + 판매현황 파일
+- OJC 품목 필터 (`classifyOjc`) → 월간 집계 → 월간최고 기반 커버리지 계산
+- 커버리지 = 현재고 ÷ 월간최고 / 발주필요량 = (월간최고 × 목표개월) − 현재고
+- 간헐적 수요 필터: 판매 발생 월수 < 기준(기본 3개월) → 발주 대상 제외
+
+### 서브탭 2: 간헐적 수요
+
+- 간헐적 수요 품목만 별도 표시
+- 연도별 (판매횟수 / 판매총량 / 최고단월) 요약
+
+### 서브탭 3: 발주 현황 (ImportOrdersView)
+
+- 발주건 = 업체 + 연도(YY) + 차수 (예: `FLC 26-05차`)
+- 차수 자동 제안 (같은 업체·연도 마지막 차수 +1)
+- 입고 처리 → 실제입고일 기입 → 리드타임(일) 자동 계산
+- D-day 카운트다운 / 지연 시 빨강 표시
+
+**`ImportOrder` 타입**
+```typescript
+interface ImportOrder {
+  id:           string   // 고유 ID
+  vendorCode:   string   // 'FLC'
+  vendorName:   string   // 'FIBERCAN'
+  year:         string   // '26'
+  seq:          number   // 5
+  orderDate:    string   // 'YYYY-MM-DD'
+  expectedDate: string   // 'YYYY-MM-DD'
+  actualDate?:  string   // 입고 완료 시
+}
+// localStorage key: 'ajw_import_orders'
+```
+
+---
+
 ## Supabase
 
 **테이블: `app_data`** (단일 키-값)
@@ -115,9 +178,22 @@ react-app/src/
 | sales | SalesAnalysis |
 | sales_agg | SalesAggResult |
 | ojc_products | OjcProduct[] |
+| item_codes | ItemCode[] (이카운트/EMP 품목 리스트) |
 
-- `CAN_WRITE = import.meta.env.DEV` — **프로덕션은 읽기 전용**
-- Supabase 없을 때 localStorage 자동 폴백
+**테이블: `vendors`** (업체코드 관리)
+```
+code  text  PRIMARY KEY
+name  text
+```
+
+**localStorage 전용** (Supabase 미연동)
+```
+ajw_detailed_sales   DetailedSalesRow[]   # 판매현황 분석 → 수입 발주계획 공유
+ajw_import_orders    ImportOrder[]        # 완제품 수입 발주 현황
+```
+
+- `CAN_WRITE = true` — 관리자 게이트는 비밀번호(`VITE_ADMIN_PASS`)로 접근 제어
+- Supabase 연동 토글: `getSyncEnabled()` / `setSyncEnabled()` (localStorage)
 - `.env`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_KEY`, `VITE_ADMIN_PASS`
 
 ---
@@ -126,38 +202,33 @@ react-app/src/
 
 ```typescript
 interface Metadata {
-  cable:   Record<string, CableMeta>                   // key: "파이|종류"
-  housing: Record<string, HousingComp | HousingComp[]> // key: "파이|타입" (단일 or 다중 부품 배열)
-  ferrule: Record<string, FerruleMeta>                 // key: "LC/PC" 등
+  cable:   Record<string, CableMeta>
+  housing: Record<string, HousingComp | HousingComp[]>
+  ferrule: Record<string, FerruleMeta>
 }
 interface Inventory {
   cable:   Record<string, { 현재고: number; 기발주: number }>
   housing: Record<string, { 현재고: number; 기발주: number } | { 현재고: number; 기발주: number }[]>
   ferrule: Record<string, { 현재고: number; 기발주: number }>
 }
-// Step3Row — step3Core.ts에 정의 (types.ts 아님)
+```
+
+**Step3Row** (step3Core.ts)
+```typescript
 interface Step3Row {
-  type:           'cable' | 'housing'
-  key:            string
-  label:          string
-  pai:            string
-  unit:           string
-  byYear:         Record<string, { annual: number; peak: number; monthly: number[] }>
-  years:          string[]
-  latestAnnual:   number
-  latestPeak:     number
-  forecastAnnual: number  // latestAnnual × (1 + CAGR); CAGR 없으면 latestAnnual
-  appliedCagr:    number  // CAGR 미적용 시 0
-  품번:            string
-  품명:            string
-  구매처:          string
-  리드타임:        number
-  안전재고:        number
-  현재고:          number
-  기발주:          number
-  발주필요량:      number
-  isSubRow:       boolean  // 하우징 다중 부품의 2번째+ 행
+  type: 'cable' | 'housing'; key: string; label: string; pai: string; unit: string
+  byYear: Record<string, { annual: number; peak: number; monthly: number[] }>
+  years: string[]; latestAnnual: number; latestPeak: number
+  forecastAnnual: number; appliedCagr: number
+  품번: string; 품명: string; 구매처: string; 리드타임: number
+  안전재고: number; 현재고: number; 기발주: number; 발주필요량: number
+  isSubRow: boolean
 }
+```
+
+**ItemCode** (lib/supabase.ts, lib/parse/parseItemCodes.ts)
+```typescript
+interface ItemCode { code: string; name: string; spec: string }
 ```
 
 ---
@@ -167,7 +238,7 @@ interface Step3Row {
 `deriveKind(품명, 규격)` → 케이블 타입 키:
 `pigtail` / `om1-pigtail` / `drop` / `b3` (MOJC) / `om3` / `om1` / `a1` / `a1-청` / `a1-적` / `a1-녹` / `a1-자` / `a2`
 
-`derivePai()` → `'2.0mm'` / `'3.0mm'` / `'0.9mm'` (mm 포함 문자열)
+`derivePai()` → `'2.0mm'` / `'3.0mm'` / `'0.9mm'`
 `deriveCore()` → 1, 2, 4, 6, 8, 12, 24 등
 `deriveLength()` → 길이(m) 정수
 
@@ -195,7 +266,7 @@ interface Step3Row {
 
 공식: `EMP조정 = EMP재고 − 출고합산` / `EC조정 = EC재고 + 미출하` / `차이 = EMP조정 − EC조정`
 
-ZZ-ZZ 로케이션 자동배정: `assignLocation(품명)` — 15가지 규칙 (D1, D2, M1, EX 등)
+ZZ-ZZ 로케이션 자동배정: `assignLocation(품명)` in `lib/assignLocation.ts` — 15가지 규칙
 
 ---
 
@@ -208,80 +279,50 @@ ZZ-ZZ 로케이션 자동배정: `assignLocation(품명)` — 15가지 규칙 (D
 
 ### Excel 다운로드 파일명 규칙
 
-데이터를 다루는 탭은 기본으로 Excel 다운로드 기능을 포함한다.
-
-파일명 형식: **`기능명_${today()}.xlsx`** (날짜+시간 필수)
-
 ```typescript
 import { downloadXlsx, today } from '../lib/download'
-// today() → "YYYYMMDD_HHmm" 형식
+// today() → "YYYYMMDD_HHmm"
 
-downloadXlsx(buffer, `발주계획_${today()}.xlsx`)   // 예: 발주계획_20260521_1430.xlsx
+downloadXlsx(buffer, `발주계획_${today()}.xlsx`)
+// 예외: 재고대사 → `재고대사_${date}_${today()}.xlsx`
 ```
-
-예외: `재고대사`는 기준일자 + 작성일 조합 → `재고대사_${date}_${today()}.xlsx`
 
 ---
 
-## 현재 구현 상태 (2026-05-20)
+## 현재 구현 상태 (2026-05-26)
 
 | 탭 | 상태 |
 |---|---|
-| STEP 1/2/3 | 🔄 핵심 기능 구현 → 피드백 및 수정 중 |
+| STEP 1/2/3 (생산자재 발주계획) | 🔄 핵심 기능 구현 → 피드백 및 수정 중 |
 | 판매 현황 분석 | 🔄 핵심 기능 구현 → 피드백 및 수정 중 |
-| 품번 생성기 | ✅ 완료 |
+| 품번 생성기 | ✅ 완료 (서브탭: OJC 자동/수동/규칙편집/EMP코드/EMP로케이션) |
 | 자재 관리 | ✅ 완료 |
-| 재고 관리 (대사) | 🔄 핵심 기능 구현 → 피드백 및 수정 중 (고도화 2단계 예정) |
-| 수입 관리 | 🔲 플레이스홀더 (2단계 구현 예정) |
+| 재고 관리 (대사) | 🔄 핵심 기능 구현 → 피드백 수정 중 (이력 누적 고도화 예정) |
+| 수입 관리 | ✅ 완료 (발주계획/간헐적수요/발주현황 서브탭) |
 
-## 운영 도우미 웹 개발 2단계 (미구현)
+## 미구현 항목
 
-1. **수입 관리**: EMP 코드 생성기 + 업체코드 관리 (Supabase `vendors` 테이블) + 발주 현황 & 입고 관리 + 리드타임 분석
-2. **재고 관리 고도화**: Supabase `recon_history` 누적 저장 + 이력 차트
-3. **앱 리브랜딩**: "AJW SCM 어시스턴트" + STEP 1/2/3 드롭다운 네비게이션
-
-## 운영 도우미 웹 개발 3단계 (미구현)
-
-완제품 수입 어시스턴트 — 수입 관리 탭 내 서브섹션으로 구현
-
-1. **수요 패턴 분석**: 3년치 월별 판매 경향 → 정기/계절/간헐 수요 분류, 발주 타이밍 권고
-2. **수익성 분석**: 수입가 · 생산가 · 판매가 비교 → 수입 / 생산 / 철수 의사결정 지원
-
-데이터 소스:
-- 판매 데이터: `SalesAggResult` (STEP 2 저장값)
-- 현재고: 이카운트 수불부 또는 ERP 파일 업로드 (양쪽 호환)
-- 단가: 원가 파일 업로드 (파서 별도 개발 필요)
+| 항목 | 우선순위 |
+|---|---|
+| 재고 관리 고도화 | 중 — `recon_history` 누적 저장 + 불일치 추이 차트 |
+| EMP 로케이션 생성기 KT향 | 낮음 — KT향 품명 예시 필요 |
+| 리드타임 집계 분석 | 낮음 — 발주 이력 축적 후 |
+| 3단계 수익성 분석 | 낮음 — 원가 파일 파서 개발 필요 |
 
 ---
 
 ## 문서 유지보수 가이드
 
-### 어떤 작업을 했을 때 무엇을 업데이트하나
-
 | 작업 | 업데이트 대상 |
 |------|-------------|
 | 새 탭 추가 | CLAUDE.md 탭 구조 + 디렉토리 구조 + 구현 상태 |
 | 새 컴포넌트/파일 추가 | CLAUDE.md 디렉토리 구조 |
-| 타입 변경 (types.ts, step3Core.ts 등) | CLAUDE.md 핵심 타입 섹션 (반드시 파일 직접 읽어서 복사) |
-| 공식·계산 로직 변경 | CLAUDE.md 해당 섹션 + README.md |
-| 단계 완료 (2단계, 3단계 등) | CLAUDE.md 구현 상태 + memory/project.md 구현 현황 |
-| 파싱 규칙 변경 (입력 파일 컬럼 등) | CLAUDE.md 재고 대사 섹션 |
-| 환경변수 추가/변경 | CLAUDE.md Supabase 섹션 + .env.example + README.md |
-| Supabase 스키마 변경 | supabase/schema.sql + README.md |
+| 타입 변경 | CLAUDE.md 핵심 타입 섹션 (반드시 파일 직접 읽어서 복사) |
+| 공식·계산 로직 변경 | CLAUDE.md 해당 섹션 |
+| 단계 완료 | CLAUDE.md 구현 상태 + memory/project.md |
 
 ### Claude에게 요청하는 방법
 
-작업이 끝난 후 다음 중 하나를 말하면 됩니다:
-
-- **"문서 업데이트해줘"** — 이번 세션에서 변경된 내용을 CLAUDE.md와 memory/project.md에 반영
-- **"메모리 최신화해줘"** — memory/project.md의 구현 현황·작업 이력 갱신
+- **"문서 업데이트해줘"** — CLAUDE.md + memory/project.md 갱신
+- **"메모리 최신화해줘"** — memory/project.md 구현 현황·작업 이력 갱신
 - **"CLAUDE.md 검토해줘"** — 실제 코드와 대조해서 오래된 내용 찾기
-
-### 파일별 역할 요약
-
-| 파일 | 역할 | 업데이트 빈도 |
-|------|------|-------------|
-| `CLAUDE.md` | Claude 세션용 프로젝트 레퍼런스 (코드 구조·타입·로직) | 기능 추가·변경 시 |
-| `README.md` | 새 환경 세팅 가이드 (빠른 시작·탭 목록·워크플로우) | 큰 변경 시 |
-| `supabase/schema.sql` | DB 초기화 SQL | 스키마 변경 시 |
-| `memory/project.md` | 세션 간 컨텍스트 전달 (구현 현황·계획) | 단계 완료·계획 변경 시 |
