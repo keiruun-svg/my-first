@@ -5,8 +5,10 @@ import { loadOjcRules, saveOjcRules, loadItemCodes } from '../lib/supabase'
 import type { OjcProduct, ItemCode } from '../lib/supabase'
 import type { DetectedFields } from '../lib/ojcAutoDetect'
 import { analyzeProduct } from '../lib/ojcAutoDetect'
+import EmpCodeGenerator from './EmpCodeGenerator'
+import EmpLocationGenerator from './EmpLocationGenerator'
 
-type SubTab = 'auto' | 'manual' | 'rules'
+type SubTab = 'auto' | 'manual' | 'rules' | 'emp' | 'location'
 type Section = keyof OjcRules
 
 const SECTION_LABELS: Record<Section, string> = {
@@ -258,7 +260,13 @@ export default function PartNumberGenerator({ ojcProducts, setOjcProducts }: Pro
     <div>
       {/* 서브탭 */}
       <div className="flex border-b mb-6">
-        {([['auto', '자동 분석'], ['manual', '수동 선택'], ['rules', '규칙 편집']] as [SubTab, string][]).map(([id, lbl]) => (
+        {([
+        ['auto',     'OJC 품번 — 자동 분석'],
+        ['manual',   'OJC 품번 — 수동 선택'],
+        ['rules',    '규칙 편집'],
+        ['emp',      'EMP 코드 생성기'],
+        ['location', 'EMP 로케이션 생성기'],
+      ] as [SubTab, string][]).map(([id, lbl]) => (
           <button
             key={id}
             onClick={() => setSubTab(id)}
@@ -595,6 +603,9 @@ export default function PartNumberGenerator({ ojcProducts, setOjcProducts }: Pro
           </div>
         </div>
       )}
+
+      {subTab === 'emp'      && <EmpCodeGenerator />}
+      {subTab === 'location' && <EmpLocationGenerator />}
 
       {/* ── 규칙 편집 탭 ──────────────────────────────────── */}
       {subTab === 'rules' && (

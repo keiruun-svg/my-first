@@ -2,33 +2,10 @@ import { useState, useCallback } from 'react'
 import * as XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
 import { downloadXlsx, today } from '../lib/download'
+import { assignLocation } from '../lib/assignLocation'
 
 // ── 타입 ──────────────────────────────────────────────────────────────
 interface LotEntry { lot: string | null; qty: number; autoLoc?: boolean }
-
-// ── ZZ-ZZ 품목 자동 로케이션 배정 ──────────────────────────────────────
-function assignLocation(name: string): string | null {
-  const n = name.toLowerCase()
-  if (n.includes('drop-cable') || n.includes('drop optical cable') || n.includes('drop cable'))
-    return 'D1'
-  if (n.includes('dx-mm'))   return 'D2-MM'
-  if (n.includes('dojc-mm')) return 'DO-MM'
-  if (n.includes('dojc'))    return 'LG-DO'
-  if (n.includes('sojc'))    return 'LG-SO'
-  if (n.includes('mojc'))    return 'LG-MO'
-  if (n.includes('adapter') || n.includes('어댑터') || n.includes('감쇠기') || n.includes('attenuator'))
-    return 'EX'
-  if (n.includes('열수축슬리브') || n.includes('splice protection sleeve'))
-    return 'EX'
-  if (n.includes('ojc housing kit') || n.includes('housing kit')) return 'M1'
-  if (n.includes('ferrule'))                                       return 'M1'
-  if (n.includes('pigtail'))                                       return 'PI-TA'
-  if (n.includes('optical cable parts') || n.includes('optical cable part')) return 'O1'
-  if (n.includes('optical cable 0.9'))   return 'K9-PI'
-  if (n.includes('optical cable'))       return 'K1'
-  if (n.includes('ojc'))                 return 'KT'
-  return null
-}
 
 interface ReconRow {
   code:       string
