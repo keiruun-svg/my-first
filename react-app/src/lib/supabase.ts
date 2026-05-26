@@ -218,6 +218,26 @@ export async function syncToSupabase(
   return { 설정: r1, '품번 메타': r2, 재고: r3, '판매 분석': r4, '판매 집계': r5 }
 }
 
+// ── 발주 현황 (완제품 수입) ───────────────────────────────────────
+export interface ImportOrder {
+  id:           string   // 고유 ID
+  vendorCode:   string   // 'FLC'
+  vendorName:   string   // 'FIBERCAN'
+  year:         string   // '26'
+  seq:          number   // 5  →  표시: "FLC 26-05차"
+  orderDate:    string   // 'YYYY-MM-DD'
+  expectedDate: string   // 'YYYY-MM-DD'
+  actualDate?:  string   // 'YYYY-MM-DD' — 입고 완료 시 기입
+}
+
+export function loadImportOrders(): ImportOrder[] {
+  return lsGet<ImportOrder[]>('ajw_import_orders', [])
+}
+
+export function saveImportOrders(orders: ImportOrder[]): void {
+  lsSet('ajw_import_orders', orders)
+}
+
 // ── 피그테일 키 마이그레이션 ─────────────────────────────────────
 const PIGTAIL_KEY_RENAME: [string, string][] = [
   ['pigtail-연청', 'pigtail-AQUA'],

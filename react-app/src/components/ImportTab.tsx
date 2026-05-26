@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import ExcelJS from 'exceljs'
 import FileUploader from './FileUploader'
+import ImportOrdersView from './ImportOrdersView'
 import { parseStockFile } from '../lib/parse/parseStockFile'
 import { loadDetailedSales, saveDetailedSales, loadItemCodes } from '../lib/supabase'
 import type { ItemCode } from '../lib/supabase'
@@ -52,7 +53,7 @@ const STATUS_SORT: Record<RowStatus, number> = {
   urgent: 0, warning: 1, ok: 2, intermittent: 3, no_data: 4,
 }
 
-type SubTab = 'plan' | 'intermittent'
+type SubTab = 'plan' | 'intermittent' | 'orders'
 
 export default function ImportTab() {
   const [stockFile,    setStockFile]  = useState<File | null>(null)
@@ -294,159 +295,170 @@ export default function ImportTab() {
   return (
     <div className="p-6 space-y-5 max-w-full">
       <div>
-        <h2 className="text-lg font-semibold text-gray-800">🚢 완제품 수입 발주계획</h2>
-        <p className="text-sm text-gray-500 mt-0.5">현재고와 판매 데이터를 기반으로 수입 필요 품목을 자동 도출합니다.</p>
+        <h2 className="text-lg font-semibold text-gray-800">🚢 완제품 수입 관리</h2>
+        <p className="text-sm text-gray-500 mt-0.5">수입 발주계획 자동 도출 및 발주 현황 관리</p>
       </div>
 
-      {/* 설정 */}
-      <div className="bg-gray-50 border rounded-lg px-4 py-3 flex items-center gap-6 flex-wrap text-sm">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-700">목표 재고</span>
-          <input type="number" min={1} max={12} value={targetMonths}
-            onChange={e => setTarget(Math.max(1, parseInt(e.target.value) || 1))}
-            className="w-14 border rounded px-2 py-1 text-center" />
-          <span className="text-gray-500">개월</span>
-        </div>
-        <div className="flex items-center gap-2 border-l pl-6">
-          <span className="font-medium text-gray-700">간헐적 수요 기준</span>
-          <input type="number" min={1} max={36} value={minMonths}
-            onChange={e => setMinMonths(Math.max(1, parseInt(e.target.value) || 1))}
-            className="w-14 border rounded px-2 py-1 text-center" />
-          <span className="text-gray-500">개월 미만</span>
-        </div>
-        <span className="text-xs text-gray-400 border-l pl-6">
-          판매 발생 월 수가 기준 미만이면 간헐적 수요로 분류 → 발주 대상 제외
-        </span>
-      </div>
-
-      {/* 파일 업로드 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FileUploader
-          label="재고 파일 (이카운트 수불부 또는 EMP 재고현황 — 자동 감지)"
-          fileName={stockFile?.name ?? ''}
-          onFile={setStockFile}
-        />
-        <div className="space-y-1">
-          <FileUploader
-            label="판매 현황 파일 (이카운트 판매 현황)"
-            fileName={salesFile?.name ?? ''}
-            onFile={handleSalesFile}
-            optional={salesRows.length > 0}
-          />
-          {salesRows.length > 0 && (
-            <p className="text-xs text-green-600">
-              ✅ {salesRows.length.toLocaleString()}행 로드됨
-              {!salesFile && ' (판매 현황 분석 탭 데이터)'}
-            </p>
+      {/* 탭 바 — 항상 표시 */}
+      <div className="border-b flex gap-1">
+        <button className={tabCls('plan')} onClick={() => setSubTab('plan')}>
+          📋 발주계획
+        </button>
+        <button className={tabCls('intermittent')} onClick={() => setSubTab('intermittent')}>
+          🔮 간헐적 수요
+          {counts.intermittent > 0 && (
+            <span className="ml-1.5 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
+              {counts.intermittent}
+            </span>
           )}
-        </div>
+        </button>
+        <button className={tabCls('orders')} onClick={() => setSubTab('orders')}>
+          📦 발주 현황
+        </button>
       </div>
 
-      {/* 실행 버튼 */}
-      <button
-        onClick={handleRun}
-        disabled={loading || !stockFile || !salesRows.length}
-        className="px-6 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-      >
-        {loading ? '계산 중…' : '📊 발주계획 생성'}
-      </button>
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
-
-      {/* 결과 */}
-      {rows.length > 0 && (
-        <div className="space-y-3">
-          {/* 요약 배너 */}
-          <div className="flex items-center gap-3 bg-gray-50 border rounded-lg px-4 py-2.5 flex-wrap text-sm">
-            <span className="font-medium text-gray-700">총 {rows.length}개 품목</span>
-            {counts.urgent       > 0 && <span className="text-red-600 font-medium">🔴 발주필요 {counts.urgent}</span>}
-            {counts.warning      > 0 && <span className="text-yellow-600 font-medium">⚠️ 주의 {counts.warning}</span>}
-            {counts.ok           > 0 && <span className="text-green-600">✅ 재고충분 {counts.ok}</span>}
-            {counts.intermittent > 0 && <span className="text-purple-600">🔮 간헐적수요 {counts.intermittent}</span>}
-            {counts.no_data      > 0 && <span className="text-gray-400">— 이력없음 {counts.no_data}</span>}
-            <button
-              onClick={handleDownload}
-              className="ml-auto px-4 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition"
-            >
-              📥 Excel 다운로드
-            </button>
-          </div>
-
-          {/* 서브 탭 */}
-          <div className="border-b flex gap-1">
-            <button className={tabCls('plan')} onClick={() => setSubTab('plan')}>
-              📋 발주계획
-            </button>
-            <button className={tabCls('intermittent')} onClick={() => setSubTab('intermittent')}>
-              🔮 간헐적 수요
-              {counts.intermittent > 0 && (
-                <span className="ml-1.5 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
-                  {counts.intermittent}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* 발주계획 탭 */}
-          {subTab === 'plan' && (
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-[#1F3864] text-white text-xs">
-                    <th className="px-3 py-2 text-left whitespace-nowrap">카테고리</th>
-                    <th className="px-3 py-2 text-left whitespace-nowrap">품목코드</th>
-                    <th className="px-3 py-2 text-left whitespace-nowrap">품목명</th>
-                    <th className="px-3 py-2 text-left whitespace-nowrap">규격</th>
-                    <th className="px-3 py-2 text-right whitespace-nowrap">현재고</th>
-                    <th className="px-3 py-2 text-right whitespace-nowrap" title="전체 기간 중 판매 발생 월 수">판매월수</th>
-                    <th className="px-3 py-2 text-right whitespace-nowrap">월간최고</th>
-                    <th className="px-3 py-2 text-right whitespace-nowrap">커버리지</th>
-                    <th className="px-3 py-2 text-right whitespace-nowrap">발주필요량</th>
-                    <th className="px-3 py-2 text-center whitespace-nowrap">상태</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {rows.map((row, i) => {
-                    const s  = rowStatus(row, targetMonths, minMonths)
-                    const bg = STATUS_ROW_BG[s] || (i % 2 === 0 ? 'bg-white' : 'bg-gray-50')
-                    return (
-                      <tr key={row.code} className={bg}>
-                        <td className="px-3 py-1.5 text-xs text-gray-600 whitespace-nowrap">{row.category}</td>
-                        <td className="px-3 py-1.5 font-mono text-xs whitespace-nowrap">{row.code}</td>
-                        <td className="px-3 py-1.5 whitespace-nowrap">{row.name}</td>
-                        <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{row.spec}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">{row.stock.toLocaleString()}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
-                          {row.salesMonths > 0 ? row.salesMonths : '—'}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
-                          {row.peakMonthly > 0 ? row.peakMonthly.toLocaleString() : '—'}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">
-                          {row.peakMonthly > 0 ? row.coverage.toFixed(1) + '개월' : '—'}
-                        </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums font-medium">
-                          {row.orderNeeded > 0 ? row.orderNeeded.toLocaleString() : '—'}
-                        </td>
-                        <td className="px-3 py-1.5 text-center">
-                          <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[s]}`}>
-                            {STATUS_LABEL[s]}
-                          </span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+      {/* 발주계획 / 간헐적 수요 탭 */}
+      {subTab !== 'orders' && (
+        <div className="space-y-5">
+          {/* 설정 */}
+          <div className="bg-gray-50 border rounded-lg px-4 py-3 flex items-center gap-6 flex-wrap text-sm">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-700">목표 재고</span>
+              <input type="number" min={1} max={12} value={targetMonths}
+                onChange={e => setTarget(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-14 border rounded px-2 py-1 text-center" />
+              <span className="text-gray-500">개월</span>
             </div>
-          )}
+            <div className="flex items-center gap-2 border-l pl-6">
+              <span className="font-medium text-gray-700">간헐적 수요 기준</span>
+              <input type="number" min={1} max={36} value={minMonths}
+                onChange={e => setMinMonths(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-14 border rounded px-2 py-1 text-center" />
+              <span className="text-gray-500">개월 미만</span>
+            </div>
+            <span className="text-xs text-gray-400 border-l pl-6">
+              판매 발생 월 수가 기준 미만이면 간헐적 수요로 분류 → 발주 대상 제외
+            </span>
+          </div>
 
-          {/* 간헐적 수요 탭 */}
-          {subTab === 'intermittent' && (
-            <IntermittentView rows={intermittentRows} years={years} minMonths={minMonths} />
+          {/* 파일 업로드 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FileUploader
+              label="재고 파일 (이카운트 수불부 또는 EMP 재고현황 — 자동 감지)"
+              fileName={stockFile?.name ?? ''}
+              onFile={setStockFile}
+            />
+            <div className="space-y-1">
+              <FileUploader
+                label="판매 현황 파일 (이카운트 판매 현황)"
+                fileName={salesFile?.name ?? ''}
+                onFile={handleSalesFile}
+                optional={salesRows.length > 0}
+              />
+              {salesRows.length > 0 && (
+                <p className="text-xs text-green-600">
+                  ✅ {salesRows.length.toLocaleString()}행 로드됨
+                  {!salesFile && ' (판매 현황 분석 탭 데이터)'}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 실행 버튼 */}
+          <button
+            onClick={handleRun}
+            disabled={loading || !stockFile || !salesRows.length}
+            className="px-6 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          >
+            {loading ? '계산 중…' : '📊 발주계획 생성'}
+          </button>
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          {/* 결과 */}
+          {rows.length > 0 && (
+            <div className="space-y-3">
+              {/* 요약 배너 */}
+              <div className="flex items-center gap-3 bg-gray-50 border rounded-lg px-4 py-2.5 flex-wrap text-sm">
+                <span className="font-medium text-gray-700">총 {rows.length}개 품목</span>
+                {counts.urgent       > 0 && <span className="text-red-600 font-medium">🔴 발주필요 {counts.urgent}</span>}
+                {counts.warning      > 0 && <span className="text-yellow-600 font-medium">⚠️ 주의 {counts.warning}</span>}
+                {counts.ok           > 0 && <span className="text-green-600">✅ 재고충분 {counts.ok}</span>}
+                {counts.intermittent > 0 && <span className="text-purple-600">🔮 간헐적수요 {counts.intermittent}</span>}
+                {counts.no_data      > 0 && <span className="text-gray-400">— 이력없음 {counts.no_data}</span>}
+                <button
+                  onClick={handleDownload}
+                  className="ml-auto px-4 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition"
+                >
+                  📥 Excel 다운로드
+                </button>
+              </div>
+
+              {/* 발주계획 테이블 */}
+              {subTab === 'plan' && (
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="bg-[#1F3864] text-white text-xs">
+                        <th className="px-3 py-2 text-left whitespace-nowrap">카테고리</th>
+                        <th className="px-3 py-2 text-left whitespace-nowrap">품목코드</th>
+                        <th className="px-3 py-2 text-left whitespace-nowrap">품목명</th>
+                        <th className="px-3 py-2 text-left whitespace-nowrap">규격</th>
+                        <th className="px-3 py-2 text-right whitespace-nowrap">현재고</th>
+                        <th className="px-3 py-2 text-right whitespace-nowrap" title="전체 기간 중 판매 발생 월 수">판매월수</th>
+                        <th className="px-3 py-2 text-right whitespace-nowrap">월간최고</th>
+                        <th className="px-3 py-2 text-right whitespace-nowrap">커버리지</th>
+                        <th className="px-3 py-2 text-right whitespace-nowrap">발주필요량</th>
+                        <th className="px-3 py-2 text-center whitespace-nowrap">상태</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {rows.map((row, i) => {
+                        const s  = rowStatus(row, targetMonths, minMonths)
+                        const bg = STATUS_ROW_BG[s] || (i % 2 === 0 ? 'bg-white' : 'bg-gray-50')
+                        return (
+                          <tr key={row.code} className={bg}>
+                            <td className="px-3 py-1.5 text-xs text-gray-600 whitespace-nowrap">{row.category}</td>
+                            <td className="px-3 py-1.5 font-mono text-xs whitespace-nowrap">{row.code}</td>
+                            <td className="px-3 py-1.5 whitespace-nowrap">{row.name}</td>
+                            <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{row.spec}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums">{row.stock.toLocaleString()}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
+                              {row.salesMonths > 0 ? row.salesMonths : '—'}
+                            </td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
+                              {row.peakMonthly > 0 ? row.peakMonthly.toLocaleString() : '—'}
+                            </td>
+                            <td className="px-3 py-1.5 text-right tabular-nums">
+                              {row.peakMonthly > 0 ? row.coverage.toFixed(1) + '개월' : '—'}
+                            </td>
+                            <td className="px-3 py-1.5 text-right tabular-nums font-medium">
+                              {row.orderNeeded > 0 ? row.orderNeeded.toLocaleString() : '—'}
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[s]}`}>
+                                {STATUS_LABEL[s]}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* 간헐적 수요 테이블 */}
+              {subTab === 'intermittent' && (
+                <IntermittentView rows={intermittentRows} years={years} minMonths={minMonths} />
+              )}
+            </div>
           )}
         </div>
       )}
+
+      {/* 발주 현황 탭 — 항상 독립 접근 가능 */}
+      {subTab === 'orders' && <ImportOrdersView />}
     </div>
   )
 }
