@@ -20,12 +20,13 @@ import InventoryReconciliationTab from './components/InventoryReconciliationTab'
 import ImportTab from './components/ImportTab'
 
 const NAV_TABS = [
-  { id: 'home',   label: '🏠 홈' },
-  { id: 'steps',  label: '📋 생산자재 발주계획' },
-  { id: 'sales',  label: '🔍 판매 현황 분석' },
-  { id: 'recon',  label: '🗂 재고 대사' },
-  { id: 'import', label: '🚢 수입 관리' },
-  { id: 'admin',  label: '🔐 관리자' },
+  { id: 'home',    label: '🏠 홈' },
+  { id: 'steps',   label: '📋 생산자재 발주계획' },
+  { id: 'sales',   label: '🔍 판매 현황 분석' },
+  { id: 'recon',   label: '🗂 재고 대사' },
+  { id: 'import',  label: '🚢 수입 관리' },
+  { id: 'partnum', label: '🏷 품번 생성기' },
+  { id: 'admin',   label: '🔐 관리자' },
 ] as const
 
 const STEP_TABS = [
@@ -37,7 +38,6 @@ const STEP_TABS = [
 const ADMIN_TABS = [
   { id: 'admin_material', label: '자재 관리' },
   { id: 'admin_ojcrules', label: 'OJC 코드표' },
-  { id: 'admin_partnum',  label: '품번 생성기' },
   { id: 'admin_settings', label: '설정' },
 ] as const
 
@@ -216,9 +216,15 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'sales' && <SalesAnalysisTab />}
-        {activeTab === 'recon' && <InventoryReconciliationTab />}
-        {activeTab === 'import' && <ImportTab />}
+        {activeTab === 'sales'   && <SalesAnalysisTab />}
+        {activeTab === 'recon'   && <InventoryReconciliationTab />}
+        {activeTab === 'import'  && <ImportTab />}
+        {activeTab === 'partnum' && (
+          <PartNumberGenerator
+            ojcProducts={ojcProducts}
+            setOjcProducts={(p) => { setOjcProducts(p); saveOjcProducts(p) }}
+          />
+        )}
 
         {isAdminTabId(activeTab) && (
           <div>
@@ -244,12 +250,6 @@ export default function App() {
               />
             )}
             {activeTab === 'admin_ojcrules' && <OjcRulesEditor />}
-            {activeTab === 'admin_partnum' && (
-              <PartNumberGenerator
-                ojcProducts={ojcProducts}
-                setOjcProducts={(p) => { setOjcProducts(p); saveOjcProducts(p) }}
-              />
-            )}
             {activeTab === 'admin_settings' && (
               <Settings
                 settings={settings}   setSettings={setSettings}
