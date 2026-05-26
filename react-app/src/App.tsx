@@ -57,11 +57,12 @@ export default function App() {
   const [ojcProducts, setOjcProducts] = useState<OjcProduct[]>([])
 
   // Admin gate — session-level unlock, resets on page reload
-  const [materialUnlocked, setMaterialUnlocked] = useState(false)
+  const [adminUnlocked, setAdminUnlocked] = useState(false)
   const [showAdminGate, setShowAdminGate] = useState(false)
   const [pwInput, setPwInput] = useState('')
   const [pwError, setPwError] = useState(false)
   const pwRef = useRef<HTMLInputElement>(null)
+  const pendingTabAfterUnlock = useRef<TabId | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -92,7 +93,8 @@ export default function App() {
   }, [showAdminGate])
 
   function handleTabClick(tabId: TabId | NavId) {
-    if (tabId === 'material' && !materialUnlocked) {
+    if (tabId === 'material' && !adminUnlocked) {
+      pendingTabAfterUnlock.current = 'material'
       setShowAdminGate(true)
       return
     }
@@ -105,14 +107,22 @@ export default function App() {
 
   function handleAdminConfirm() {
     if (!ADMIN_PASS || pwInput === ADMIN_PASS) {
-      setMaterialUnlocked(true)
+      setAdminUnlocked(true)
       setShowAdminGate(false)
-      setActiveTab('material')
+      if (pendingTabAfterUnlock.current) {
+        setActiveTab(pendingTabAfterUnlock.current)
+        pendingTabAfterUnlock.current = null
+      }
     } else {
       setPwError(true)
       setPwInput('')
       setTimeout(() => pwRef.current?.focus(), 50)
     }
+  }
+
+  function requestAdminUnlock() {
+    pendingTabAfterUnlock.current = null  // 탭 이동 없이 제자리에서 잠금 해제
+    setShowAdminGate(true)
   }
 
   function handleAdminCancel() {
@@ -204,6 +214,8 @@ export default function App() {
           <PartNumberGenerator
             ojcProducts={ojcProducts}
             setOjcProducts={(p) => { setOjcProducts(p); saveOjcProducts(p) }}
+            adminUnlocked={adminUnlocked}
+            onRequestAdmin={requestAdminUnlock}
           />
         )}
         {activeTab === 'material' && (

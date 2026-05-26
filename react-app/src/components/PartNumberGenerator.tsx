@@ -57,9 +57,11 @@ const FIELD_LABELS: Record<keyof DetectedFields, string> = {
 interface Props {
   ojcProducts:    OjcProduct[]
   setOjcProducts: (p: OjcProduct[]) => void
+  adminUnlocked:  boolean
+  onRequestAdmin: () => void
 }
 
-export default function PartNumberGenerator({ ojcProducts, setOjcProducts }: Props) {
+export default function PartNumberGenerator({ ojcProducts, setOjcProducts, adminUnlocked, onRequestAdmin }: Props) {
   const [subTab, setSubTab]         = useState<SubTab>('auto')
   const [rules, setRules]           = useState<OjcRules>(DEFAULT_OJC_RULES)
   const [editRules, setEditRules]   = useState<OjcRules>(DEFAULT_OJC_RULES)
@@ -608,7 +610,19 @@ export default function PartNumberGenerator({ ojcProducts, setOjcProducts }: Pro
       {subTab === 'location' && <EmpLocationGenerator />}
 
       {/* ── 규칙 편집 탭 ──────────────────────────────────── */}
-      {subTab === 'rules' && (
+      {subTab === 'rules' && !adminUnlocked && (
+        <div className="flex flex-col items-center justify-center py-20 space-y-4 text-gray-500">
+          <div className="text-4xl">🔒</div>
+          <p className="text-sm font-medium">규칙 편집은 관리자 인증이 필요합니다.</p>
+          <button
+            onClick={onRequestAdmin}
+            className="px-5 py-2 bg-[#1F3864] text-white text-sm rounded-lg hover:bg-[#162a4e] transition-colors"
+          >
+            관리자 인증
+          </button>
+        </div>
+      )}
+      {subTab === 'rules' && adminUnlocked && (
         <div>
           <div className="flex items-center justify-between mb-5">
             <p className="text-sm text-gray-500">
