@@ -99,21 +99,21 @@ export default function App() {
     }
   }, [showAdminGate])
 
-  function handleTabClick(tabId: TabId | NavId) {
-    if ((tabId === 'admin' || isAdminTabId(tabId as string)) && !adminUnlocked) {
-      pendingTabAfterUnlock.current = isAdminTabId(tabId as string) ? tabId as AdminTabId : 'admin_material'
+  // 탭 전환의 유일한 통로 — 게이트 체크가 여기에만 존재
+  function navigateTo(tabId: TabId) {
+    if (isAdminTabId(tabId) && !adminUnlocked) {
+      pendingTabAfterUnlock.current = tabId
       setShowAdminGate(true)
       return
     }
-    if (tabId === 'steps') {
-      setActiveTab(isStepId(activeTab) ? activeTab : 'step1')
-      return
-    }
-    if (tabId === 'admin') {
-      setActiveTab(isAdminTabId(activeTab) ? activeTab : 'admin_material')
-      return
-    }
-    setActiveTab(tabId as TabId)
+    setActiveTab(tabId)
+  }
+
+  // 네비 버튼 전용 — 그룹 ID를 실제 TabId로 해석 후 navigateTo에 위임
+  function handleTabClick(navId: NavId) {
+    if (navId === 'steps') return navigateTo(isStepId(activeTab) ? activeTab : 'step1')
+    if (navId === 'admin') return navigateTo(isAdminTabId(activeTab) ? activeTab : 'admin_material')
+    navigateTo(navId as TabId)
   }
 
   function handleAdminConfirm() {
@@ -188,7 +188,7 @@ export default function App() {
             metadata={metadata}
             inventory={inventory}
             salesAgg={salesAgg}
-            onNavigate={(tab) => handleTabClick(tab as TabId)}
+            onNavigate={(tab) => navigateTo(tab as TabId)}
           />
         )}
 
