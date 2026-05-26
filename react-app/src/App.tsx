@@ -100,8 +100,8 @@ export default function App() {
   }, [showAdminGate])
 
   function handleTabClick(tabId: TabId | NavId) {
-    if (tabId === 'admin' && !adminUnlocked) {
-      pendingTabAfterUnlock.current = isAdminTabId(activeTab) ? activeTab : 'admin_material'
+    if ((tabId === 'admin' || isAdminTabId(tabId as string)) && !adminUnlocked) {
+      pendingTabAfterUnlock.current = isAdminTabId(tabId as string) ? tabId as AdminTabId : 'admin_material'
       setShowAdminGate(true)
       return
     }
