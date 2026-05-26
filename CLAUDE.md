@@ -13,14 +13,19 @@ npx tsc --noEmit
 
 ## 탭 구조 (App.tsx)
 
-**NAV_TABS**: home / steps / sales / partnum / material / recon / import / settings  
-**STEP_TABS** (steps 하위): step1 / step2 / step3
+**NAV_TABS**: home / steps / sales / recon / import / partnum / admin  
+**STEP_TABS** (steps 하위): step1 / step2 / step3  
+**ADMIN_TABS** (admin 하위): admin_material / admin_ojcrules / admin_settings
 
 ```typescript
-type StepId = 'step1' | 'step2' | 'step3'
-type TabId  = Exclude<typeof NAV_TABS[number]['id'], 'steps'> | StepId
+type StepId     = 'step1' | 'step2' | 'step3'
+type AdminTabId = 'admin_material' | 'admin_ojcrules' | 'admin_settings'
+type TabId      = Exclude<typeof NAV_TABS[number]['id'], 'steps' | 'admin'> | StepId | AdminTabId
 function isStepId(id: string): id is StepId
+function isAdminTabId(id: string): id is AdminTabId
 ```
+
+admin 탭: `VITE_ADMIN_PASS` 비밀번호 게이트 (session-level, 페이지 리로드 시 초기화)
 
 ---
 
@@ -28,12 +33,15 @@ function isStepId(id: string): id is StepId
 
 | 파일 | 역할 |
 |------|------|
+| `components/Dashboard.tsx` | 홈 — KPI 6개 + 수입 D-day + 재고대사 + OJC CAGR |
 | `components/ImportTab.tsx` | 수입 관리 — 서브탭: 발주계획 / 간헐적수요 / 발주현황 |
 | `components/ImportOrdersView.tsx` | 발주 현황 (업체+차수 단위 등록·D-day·입고처리) |
-| `components/InventoryReconciliationTab.tsx` | 재고 대사 (EMP ↔ 이카운트) |
-| `components/PartNumberGenerator.tsx` | OJC 품번 + EMP 코드/로케이션 생성기 서브탭 |
+| `components/InventoryReconciliationTab.tsx` | 재고 대사 (EMP ↔ 이카운트) + 이력 누적 차트 |
+| `components/PartNumberGenerator.tsx` | OJC 품번(자동/수동) + EMP 코드 생성기 서브탭 |
+| `components/OjcRulesEditor.tsx` | OJC 코드표 편집 (관리자 탭 하위, 독립 컴포넌트) |
+| `components/MaterialManager.tsx` | 자재 관리 (케이블/하우징/페룰 메타+재고) |
 | `lib/supabase.ts` | Supabase 클라이언트 + localStorage CRUD 전체 |
-| `lib/assignLocation.ts` | `assignLocation(품명)` → 창고 코드 (15규칙) |
+| `lib/ojcFilter.ts` | `classifyOjc` / `looksLikeOjc` — normalizeName 후 prefix 매칭 |
 | `lib/parse/parseStockFile.ts` | 이카운트 수불부 / EMP 재고현황 자동감지 → `Map<code, qty>` |
 | `lib/parse/parseItemCodes.ts` | 이카운트/EMP 품목 리스트 파싱 → `ItemCode[]` |
 
@@ -72,7 +80,7 @@ STEP 3: 가공파일 + 판매분석 + metadata + inventory
 
 **app_data 테이블 키**: settings / metadata / inventory / sales / sales_agg / ojc_products / item_codes  
 **vendors 테이블**: `{ code, name }` — 수입 업체코드  
-**localStorage 전용**: `ajw_detailed_sales` (DetailedSalesRow[]) / `ajw_import_orders` (ImportOrder[])
+**localStorage 전용**: `ajw_detailed_sales` (DetailedSalesRow[]) / `ajw_import_orders` (ImportOrder[]) / `ajw_recon_history` (ReconHistorySummary[]) / `ajw_recon_rows_${date}` (대사 상세)
 
 ---
 
@@ -90,7 +98,9 @@ STEP 3: 가공파일 + 판매분석 + metadata + inventory
 
 **OJC 품번**: `{타입}{코어타입}{코어수}{재질}{커넥터}{마킹}-{길이코드}` 예: `C-ALNN-3`  
 **EMP 로트코드**: `{기본코드} ({업체코드}-{YYMM}-{발주차수}_{입고회차})` 예: `14-K-107 (FLC-2601-01_02)`  
-**classifyOjc(name)**: `lib/ojcFilter.ts` — KT OJC / LG OJC / DROP / 피그테일 등 분류
+**classifyOjc(name)**: `lib/ojcFilter.ts` — `normalizeName`(대소문자·공백·언더스코어 정규화) 후 prefix 매칭  
+**looksLikeOjc(name)**: 분류 실패했지만 OJC 의심 품목 감지 → ImportTab에서 경고 표시  
+**EMP 로케이션**: `lib/assignLocation.ts` — KT향 재구성 예정, 탭 숨김 상태
 
 ---
 
@@ -114,14 +124,15 @@ STEP 3: 가공파일 + 판매분석 + metadata + inventory
 
 | 탭 | 상태 |
 |---|---|
+| 홈 대시보드 | ✅ 완료 (KPI 6개 / 수입 D-day / 재고대사 현황 / OJC CAGR) |
 | STEP 1/2/3 | 🔄 피드백 수정 중 |
 | 판매 현황 분석 | 🔄 피드백 수정 중 |
-| 품번 생성기 | ✅ 완료 (OJC 자동/수동/규칙/EMP코드/EMP로케이션) |
-| 자재 관리 | ✅ 완료 |
-| 재고 관리 | 🔄 피드백 수정 중 (이력 누적 고도화 예정) |
+| 재고 대사 | 🔄 피드백 수정 중 (이력 누적 + 추이 차트 완료) |
 | 수입 관리 | ✅ 완료 (발주계획/간헐적수요/발주현황) |
+| 품번 생성기 | 🔄 피드백 수정 중 (EMP 로케이션 탭 숨김 — KT향 재구성 예정) |
+| 관리자 | ✅ 완료 (자재관리 / OJC 코드표 / 설정) |
 
-**미구현**: 재고관리 이력 누적 차트 / EMP 로케이션 KT향 / 3단계 수익성 분석
+**미구현**: EMP 로케이션 KT향 / 리드타임 집계 분석 / 3단계 수익성 분석
 
 ---
 
