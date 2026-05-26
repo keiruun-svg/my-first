@@ -124,10 +124,11 @@ export async function saveOjcRules(rules: OjcRules): Promise<void> {
   void sbSave('ojc_rules', rules)
 }
 
-// ── 이카운트 품목 리스트 ──────────────────────────────────────
+// ── 이카운트/EMP 품목 리스트 ─────────────────────────────────
 export interface ItemCode {
   code: string
   name: string
+  spec: string
 }
 
 export async function loadItemCodes(): Promise<ItemCode[]> {
@@ -137,6 +138,15 @@ export async function loadItemCodes(): Promise<ItemCode[]> {
 export function saveItemCodes(codes: ItemCode[]): void {
   lsSet('ajw_item_codes', codes)
   void sbSave('item_codes', codes)
+}
+
+// ── 판매 현황 상세 데이터 (판매현황 분석 탭 → 수입 발주계획 공유) ──
+export async function loadDetailedSales<T>(): Promise<T[]> {
+  return lsGet<T[]>('ajw_detailed_sales', [])
+}
+
+export function saveDetailedSales<T>(rows: T[]): void {
+  lsSet('ajw_detailed_sales', rows)
 }
 
 // ── OJC 생성 품번 이력 ─────────────────────────────────────────

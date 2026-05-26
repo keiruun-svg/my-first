@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
 import { classifyOjc, classifyOjcDetailed, COLOR_MAP_OJC_DETAILED } from '../lib/ojcFilter'
 import { parseDetailedSalesFile } from '../lib/parse/parseDetailedSales'
+import { saveDetailedSales } from '../lib/supabase'
 import type { DetailedSalesRow } from '../lib/parse/parseDetailedSales'
 import { downloadXlsx, pickSaveFile, writeToFileHandle, today } from '../lib/download'
 import FileUploader from './FileUploader'
@@ -100,6 +101,7 @@ export default function SalesAnalysisTab() {
     try {
       const rows = parseDetailedSalesFile(await file.arrayBuffer(), newLogs)
       setRawRows(rows)
+      saveDetailedSales(rows)
     } catch (e) {
       newLogs.push(`❌ 오류: ${e}`)
     } finally {
