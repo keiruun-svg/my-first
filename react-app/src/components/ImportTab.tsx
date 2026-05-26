@@ -104,7 +104,8 @@ export default function ImportTab() {
         const sa = rowStatus(a, targetMonths, minMonths)
         const sb = rowStatus(b, targetMonths, minMonths)
         if (STATUS_SORT[sa] !== STATUS_SORT[sb]) return STATUS_SORT[sa] - STATUS_SORT[sb]
-        if (a.category !== b.category) return a.category.localeCompare(b.category)
+        if (b.salesMonths !== a.salesMonths)     return b.salesMonths - a.salesMonths  // 판매 빈도 높은 순
+        if (a.category !== b.category)           return a.category.localeCompare(b.category)
         return a.code.localeCompare(b.code)
       })
   }, [rawRows, targetMonths, minMonths])
