@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from 'react'
 import ExcelJS from 'exceljs'
 import FileUploader from './FileUploader'
 import { parseStockFile } from '../lib/parse/parseStockFile'
-import { loadDetailedSales, loadItemCodes } from '../lib/supabase'
+import { loadDetailedSales, saveDetailedSales, loadItemCodes } from '../lib/supabase'
 import type { ItemCode } from '../lib/supabase'
+import { parseDetailedSalesFile } from '../lib/parse/parseDetailedSales'
 import type { DetailedSalesRow } from '../lib/parse/parseDetailedSales'
 import { classifyOjc } from '../lib/ojcFilter'
 import { downloadXlsx, today } from '../lib/download'
@@ -54,6 +55,7 @@ const STATUS_ROW_BG: Record<RowStatus, string> = {
 
 export default function ImportTab() {
   const [stockFile,    setStockFile]  = useState<File | null>(null)
+  const [salesFile,    setSalesFile]  = useState<File | null>(null)
   const [salesRows,    setSalesRows]  = useState<DetailedSalesRow[]>([])
   const [itemCodes,    setItemCodes]  = useState<ItemCode[]>([])
   const [targetMonths, setTarget]     = useState(3)
@@ -65,6 +67,19 @@ export default function ImportTab() {
     loadDetailedSales<DetailedSalesRow>().then(setSalesRows)
     loadItemCodes().then(setItemCodes)
   }, [])
+
+  async function handleSalesFile(file: File) {
+    setSalesFile(file)
+    try {
+      const buf  = await file.arrayBuffer()
+      const logs: string[] = []
+      const rows = parseDetailedSalesFile(buf, logs)
+      setSalesRows(rows)
+      saveDetailedSales(rows)
+    } catch (e) {
+      setError('판매 파일 파싱 오류: ' + String(e))
+    }
+  }
 
   // Derive final rows whenever raw data or targetMonths changes
   const rows = useMemo<PlanRow[]>(() => {
@@ -225,22 +240,27 @@ export default function ImportTab() {
         </span>
       </div>
 
-      {/* 재고 파일 업로드 */}
-      <FileUploader
-        label="재고 파일 (이카운트 수불부 또는 EMP 재고현황 — 자동 감지)"
-        fileName={stockFile?.name ?? ''}
-        onFile={setStockFile}
-      />
-
-      {/* 판매 데이터 상태 */}
-      <div className={`text-sm rounded-lg px-4 py-2.5 flex items-center gap-2 border ${
-        salesRows.length
-          ? 'bg-green-50 text-green-700 border-green-200'
-          : 'bg-yellow-50 text-yellow-700 border-yellow-200'
-      }`}>
-        {salesRows.length
-          ? `✅ 판매 현황 분석 데이터 로드됨 — ${salesRows.length.toLocaleString()}행`
-          : '⚠️ 판매 데이터 없음 — 판매 현황 분석 탭에서 파일을 먼저 업로드하세요.'}
+      {/* 파일 업로드 2종 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FileUploader
+          label="재고 파일 (이카운트 수불부 또는 EMP 재고현황 — 자동 감지)"
+          fileName={stockFile?.name ?? ''}
+          onFile={setStockFile}
+        />
+        <div className="space-y-1">
+          <FileUploader
+            label="판매 현황 파일 (이카운트 판매 현황)"
+            fileName={salesFile?.name ?? ''}
+            onFile={handleSalesFile}
+            optional={salesRows.length > 0}
+          />
+          {salesRows.length > 0 && (
+            <p className="text-xs text-green-600">
+              ✅ {salesRows.length.toLocaleString()}행 로드됨
+              {!salesFile && ' (판매 현황 분석 탭 데이터)'}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* 실행 버튼 */}
