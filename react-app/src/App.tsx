@@ -187,7 +187,6 @@ export default function App() {
           <Dashboard
             metadata={metadata}
             inventory={inventory}
-            settings={settings}
             salesAgg={salesAgg}
             onNavigate={(tab) => handleTabClick(tab as TabId)}
           />
