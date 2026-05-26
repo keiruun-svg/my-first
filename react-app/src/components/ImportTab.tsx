@@ -9,6 +9,8 @@ import type { DetailedSalesRow } from '../lib/parse/parseDetailedSales'
 import { classifyOjc } from '../lib/ojcFilter'
 import { downloadXlsx, today } from '../lib/download'
 
+interface YearStat { months: number; total: number }
+
 interface RawRow {
   code:        string
   name:        string
@@ -16,8 +18,9 @@ interface RawRow {
   category:    string
   stock:       number
   peakMonthly: number
-  salesMonths: number  // 판매 발생 월 수 (간헐적 수요 판별용)
+  salesMonths: number
   coverage:    number
+  byYear:      Record<string, YearStat>  // key: '23' '24' '25'
 }
 
 interface PlanRow extends RawRow {
@@ -27,40 +30,29 @@ interface PlanRow extends RawRow {
 type RowStatus = 'urgent' | 'warning' | 'ok' | 'intermittent' | 'no_data'
 
 function rowStatus(row: PlanRow, target: number, minMonths: number): RowStatus {
-  if (row.peakMonthly === 0)         return 'no_data'
-  if (row.salesMonths < minMonths)   return 'intermittent'
-  if (row.coverage >= target)        return 'ok'
-  if (row.coverage >= 1)             return 'warning'
+  if (row.peakMonthly === 0)       return 'no_data'
+  if (row.salesMonths < minMonths) return 'intermittent'
+  if (row.coverage >= target)      return 'ok'
+  if (row.coverage >= 1)           return 'warning'
   return 'urgent'
 }
 
 const STATUS_LABEL: Record<RowStatus, string> = {
-  urgent:       '발주필요',
-  warning:      '주의',
-  ok:           '재고충분',
-  intermittent: '간헐적수요',
-  no_data:      '이력없음',
+  urgent: '발주필요', warning: '주의', ok: '재고충분', intermittent: '간헐적수요', no_data: '이력없음',
 }
-
 const STATUS_BADGE: Record<RowStatus, string> = {
-  urgent:       'text-red-700 bg-red-100',
-  warning:      'text-yellow-700 bg-yellow-100',
-  ok:           'text-green-700 bg-green-100',
-  intermittent: 'text-purple-700 bg-purple-100',
-  no_data:      'text-gray-400 bg-gray-100',
+  urgent: 'text-red-700 bg-red-100', warning: 'text-yellow-700 bg-yellow-100',
+  ok: 'text-green-700 bg-green-100', intermittent: 'text-purple-700 bg-purple-100',
+  no_data: 'text-gray-400 bg-gray-100',
 }
-
 const STATUS_ROW_BG: Record<RowStatus, string> = {
-  urgent:       'bg-red-50',
-  warning:      'bg-yellow-50',
-  ok:           '',
-  intermittent: 'bg-purple-50',
-  no_data:      '',
+  urgent: 'bg-red-50', warning: 'bg-yellow-50', ok: '', intermittent: 'bg-purple-50', no_data: '',
 }
-
 const STATUS_SORT: Record<RowStatus, number> = {
   urgent: 0, warning: 1, ok: 2, intermittent: 3, no_data: 4,
 }
+
+type SubTab = 'plan' | 'intermittent'
 
 export default function ImportTab() {
   const [stockFile,    setStockFile]  = useState<File | null>(null)
@@ -68,10 +60,12 @@ export default function ImportTab() {
   const [salesRows,    setSalesRows]  = useState<DetailedSalesRow[]>([])
   const [itemCodes,    setItemCodes]  = useState<ItemCode[]>([])
   const [targetMonths, setTarget]     = useState(3)
-  const [minMonths,    setMinMonths]  = useState(3)  // 간헐적 수요 기준
+  const [minMonths,    setMinMonths]  = useState(3)
   const [rawRows,      setRawRows]    = useState<RawRow[]>([])
+  const [years,        setYears]      = useState<string[]>([])
   const [error,        setError]      = useState('')
   const [loading,      setLoading]    = useState(false)
+  const [subTab,       setSubTab]     = useState<SubTab>('plan')
 
   useEffect(() => {
     loadDetailedSales<DetailedSalesRow>().then(setSalesRows)
@@ -91,7 +85,6 @@ export default function ImportTab() {
     }
   }
 
-  // targetMonths·minMonths 변경 시 orderNeeded·정렬 자동 재계산
   const rows = useMemo<PlanRow[]>(() => {
     return rawRows
       .map(r => ({
@@ -104,11 +97,17 @@ export default function ImportTab() {
         const sa = rowStatus(a, targetMonths, minMonths)
         const sb = rowStatus(b, targetMonths, minMonths)
         if (STATUS_SORT[sa] !== STATUS_SORT[sb]) return STATUS_SORT[sa] - STATUS_SORT[sb]
-        if (b.salesMonths !== a.salesMonths)     return b.salesMonths - a.salesMonths  // 판매 빈도 높은 순
+        if (b.salesMonths !== a.salesMonths)     return b.salesMonths - a.salesMonths
         if (a.category !== b.category)           return a.category.localeCompare(b.category)
         return a.code.localeCompare(b.code)
       })
   }, [rawRows, targetMonths, minMonths])
+
+  const intermittentRows = useMemo(
+    () => rows.filter(r => rowStatus(r, targetMonths, minMonths) === 'intermittent')
+              .sort((a, b) => b.salesMonths - a.salesMonths || b.peakMonthly - a.peakMonthly),
+    [rows, targetMonths, minMonths],
+  )
 
   async function handleRun() {
     if (!stockFile)        { setError('재고 파일을 선택하세요.'); return }
@@ -118,7 +117,6 @@ export default function ImportTab() {
       const stockMap = await parseStockFile(stockFile)
       const itemMap  = new Map<string, ItemCode>(itemCodes.map(i => [i.code, i]))
 
-      // (year-month) → qty 월간 집계
       const monthlyMap = new Map<string, Map<string, number>>()
       const nameMap    = new Map<string, string>()
       const catMap     = new Map<string, string>()
@@ -134,7 +132,6 @@ export default function ImportTab() {
         m.set(ym, (m.get(ym) ?? 0) + r.qty)
       }
 
-      // 재고에만 있는 OJC 품목 보완 (품목 리스트 기준)
       for (const [code] of stockMap) {
         if (monthlyMap.has(code)) continue
         const item = itemMap.get(code)
@@ -144,6 +141,14 @@ export default function ImportTab() {
         nameMap.set(code, item.name)
         catMap.set(code, cat)
       }
+
+      // 전체 연도 목록 수집
+      const yearSet = new Set<string>()
+      for (const mMap of monthlyMap.values()) {
+        for (const ym of mMap.keys()) yearSet.add(ym.split('-')[0])
+      }
+      const sortedYears = [...yearSet].sort()
+      setYears(sortedYears)
 
       const allCodes = new Set([
         ...monthlyMap.keys(),
@@ -161,7 +166,19 @@ export default function ImportTab() {
         const salesMonths = mMap?.size ?? 0
         const peakMonthly = mMap && salesMonths > 0 ? Math.max(...mMap.values()) : 0
         const coverage    = peakMonthly > 0 ? stock / peakMonthly : 0
-        result.push({ code, name, spec, category, stock, peakMonthly, salesMonths, coverage })
+
+        // 연도별 집계
+        const byYear: Record<string, YearStat> = {}
+        if (mMap) {
+          for (const [ym, qty] of mMap) {
+            const yr = ym.split('-')[0]
+            if (!byYear[yr]) byYear[yr] = { months: 0, total: 0 }
+            byYear[yr].months++
+            byYear[yr].total += qty
+          }
+        }
+
+        result.push({ code, name, spec, category, stock, peakMonthly, salesMonths, coverage, byYear })
       }
 
       setRawRows(result)
@@ -170,12 +187,6 @@ export default function ImportTab() {
     } finally {
       setLoading(false)
     }
-  }
-
-  function coverageText(row: PlanRow, minM: number): string {
-    if (row.peakMonthly === 0)        return '—'
-    if (row.salesMonths < minM)       return row.coverage.toFixed(1) + '개월'
-    return row.coverage.toFixed(1) + '개월'
   }
 
   async function handleDownload() {
@@ -224,6 +235,43 @@ export default function ImportTab() {
     ]
     for (let c = 5; c <= 10; c++) ws.getColumn(c).alignment = { horizontal: 'right' }
 
+    // 간헐적 수요 시트
+    if (intermittentRows.length > 0) {
+      const ws2 = wb.addWorksheet('간헐적 수요')
+      const iHeaders = ['카테고리', '품목코드', '품목명', '규격', '현재고', '판매월수(전체)', '최고단월수량',
+        ...years.map(y => `20${y}년`)]
+      ws2.addRow(iHeaders)
+      ws2.getRow(1).eachCell(cell => {
+        cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4B2E7E' } }
+        cell.font      = { bold: true, size: 9, color: { argb: 'FFFFFFFF' }, name: 'Arial' }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border    = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+      })
+      ws2.getRow(1).height = 20
+
+      for (const row of intermittentRows) {
+        const yearCells = years.map(yr => {
+          const s = row.byYear[yr]
+          return s ? `${s.months}회 / ${s.total.toLocaleString()}EA` : '—'
+        })
+        const xlRow = ws2.addRow([
+          row.category, row.code, row.name, row.spec,
+          row.stock, row.salesMonths, row.peakMonthly,
+          ...yearCells,
+        ])
+        xlRow.eachCell(cell => {
+          cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } }
+          cell.font   = { size: 9, name: 'Arial' }
+          cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+        })
+      }
+      ws2.columns = [
+        { width: 16 }, { width: 22 }, { width: 38 }, { width: 18 },
+        { width: 10 }, { width: 12 }, { width: 12 },
+        ...years.map(() => ({ width: 16 })),
+      ]
+    }
+
     const buf = await wb.xlsx.writeBuffer()
     downloadXlsx(buf as ArrayBuffer, `완제품수입발주계획_${today()}.xlsx`)
   }
@@ -236,6 +284,13 @@ export default function ImportTab() {
     no_data:      rows.filter(r => rowStatus(r, targetMonths, minMonths) === 'no_data').length,
   }), [rows, targetMonths, minMonths])
 
+  const tabCls = (id: SubTab) =>
+    `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+      subTab === id
+        ? 'border-blue-600 text-blue-700'
+        : 'border-transparent text-gray-500 hover:text-gray-700'
+    }`
+
   return (
     <div className="p-6 space-y-5 max-w-full">
       <div>
@@ -247,20 +302,16 @@ export default function ImportTab() {
       <div className="bg-gray-50 border rounded-lg px-4 py-3 flex items-center gap-6 flex-wrap text-sm">
         <div className="flex items-center gap-2">
           <span className="font-medium text-gray-700">목표 재고</span>
-          <input
-            type="number" min={1} max={12} value={targetMonths}
+          <input type="number" min={1} max={12} value={targetMonths}
             onChange={e => setTarget(Math.max(1, parseInt(e.target.value) || 1))}
-            className="w-14 border rounded px-2 py-1 text-center"
-          />
+            className="w-14 border rounded px-2 py-1 text-center" />
           <span className="text-gray-500">개월</span>
         </div>
         <div className="flex items-center gap-2 border-l pl-6">
           <span className="font-medium text-gray-700">간헐적 수요 기준</span>
-          <input
-            type="number" min={1} max={36} value={minMonths}
+          <input type="number" min={1} max={36} value={minMonths}
             onChange={e => setMinMonths(Math.max(1, parseInt(e.target.value) || 1))}
-            className="w-14 border rounded px-2 py-1 text-center"
-          />
+            className="w-14 border rounded px-2 py-1 text-center" />
           <span className="text-gray-500">개월 미만</span>
         </div>
         <span className="text-xs text-gray-400 border-l pl-6">
@@ -321,57 +372,156 @@ export default function ImportTab() {
             </button>
           </div>
 
-          {/* 결과 테이블 */}
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="bg-[#1F3864] text-white text-xs">
-                  <th className="px-3 py-2 text-left whitespace-nowrap">카테고리</th>
-                  <th className="px-3 py-2 text-left whitespace-nowrap">품목코드</th>
-                  <th className="px-3 py-2 text-left whitespace-nowrap">품목명</th>
-                  <th className="px-3 py-2 text-left whitespace-nowrap">규격</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">현재고</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap" title="전체 기간 중 판매가 발생한 월 수">판매월수</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">월간최고</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">커버리지</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">발주필요량</th>
-                  <th className="px-3 py-2 text-center whitespace-nowrap">상태</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {rows.map((row, i) => {
-                  const s  = rowStatus(row, targetMonths, minMonths)
-                  const bg = STATUS_ROW_BG[s] || (i % 2 === 0 ? 'bg-white' : 'bg-gray-50')
-                  return (
-                    <tr key={row.code} className={bg}>
-                      <td className="px-3 py-1.5 text-xs text-gray-600 whitespace-nowrap">{row.category}</td>
-                      <td className="px-3 py-1.5 font-mono text-xs whitespace-nowrap">{row.code}</td>
-                      <td className="px-3 py-1.5 whitespace-nowrap">{row.name}</td>
-                      <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{row.spec}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">{row.stock.toLocaleString()}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
-                        {row.salesMonths > 0 ? row.salesMonths : '—'}
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
-                        {row.peakMonthly > 0 ? row.peakMonthly.toLocaleString() : '—'}
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">{coverageText(row, minMonths)}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums font-medium">
-                        {row.orderNeeded > 0 ? row.orderNeeded.toLocaleString() : '—'}
-                      </td>
-                      <td className="px-3 py-1.5 text-center">
-                        <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[s]}`}>
-                          {STATUS_LABEL[s]}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          {/* 서브 탭 */}
+          <div className="border-b flex gap-1">
+            <button className={tabCls('plan')} onClick={() => setSubTab('plan')}>
+              📋 발주계획
+            </button>
+            <button className={tabCls('intermittent')} onClick={() => setSubTab('intermittent')}>
+              🔮 간헐적 수요
+              {counts.intermittent > 0 && (
+                <span className="ml-1.5 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
+                  {counts.intermittent}
+                </span>
+              )}
+            </button>
           </div>
+
+          {/* 발주계획 탭 */}
+          {subTab === 'plan' && (
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-[#1F3864] text-white text-xs">
+                    <th className="px-3 py-2 text-left whitespace-nowrap">카테고리</th>
+                    <th className="px-3 py-2 text-left whitespace-nowrap">품목코드</th>
+                    <th className="px-3 py-2 text-left whitespace-nowrap">품목명</th>
+                    <th className="px-3 py-2 text-left whitespace-nowrap">규격</th>
+                    <th className="px-3 py-2 text-right whitespace-nowrap">현재고</th>
+                    <th className="px-3 py-2 text-right whitespace-nowrap" title="전체 기간 중 판매 발생 월 수">판매월수</th>
+                    <th className="px-3 py-2 text-right whitespace-nowrap">월간최고</th>
+                    <th className="px-3 py-2 text-right whitespace-nowrap">커버리지</th>
+                    <th className="px-3 py-2 text-right whitespace-nowrap">발주필요량</th>
+                    <th className="px-3 py-2 text-center whitespace-nowrap">상태</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {rows.map((row, i) => {
+                    const s  = rowStatus(row, targetMonths, minMonths)
+                    const bg = STATUS_ROW_BG[s] || (i % 2 === 0 ? 'bg-white' : 'bg-gray-50')
+                    return (
+                      <tr key={row.code} className={bg}>
+                        <td className="px-3 py-1.5 text-xs text-gray-600 whitespace-nowrap">{row.category}</td>
+                        <td className="px-3 py-1.5 font-mono text-xs whitespace-nowrap">{row.code}</td>
+                        <td className="px-3 py-1.5 whitespace-nowrap">{row.name}</td>
+                        <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{row.spec}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{row.stock.toLocaleString()}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
+                          {row.salesMonths > 0 ? row.salesMonths : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
+                          {row.peakMonthly > 0 ? row.peakMonthly.toLocaleString() : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          {row.peakMonthly > 0 ? row.coverage.toFixed(1) + '개월' : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums font-medium">
+                          {row.orderNeeded > 0 ? row.orderNeeded.toLocaleString() : '—'}
+                        </td>
+                        <td className="px-3 py-1.5 text-center">
+                          <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[s]}`}>
+                            {STATUS_LABEL[s]}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* 간헐적 수요 탭 */}
+          {subTab === 'intermittent' && (
+            <IntermittentView rows={intermittentRows} years={years} minMonths={minMonths} />
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+function IntermittentView({
+  rows, years, minMonths,
+}: {
+  rows:      PlanRow[]
+  years:     string[]
+  minMonths: number
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="text-center py-10 text-gray-400 text-sm">
+        간헐적 수요 품목이 없습니다. (기준: 판매월수 {minMonths}개월 미만)
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-gray-500">
+        판매월수 {minMonths}개월 미만 품목 — 정기 발주 대상 제외, 별도 검토 필요
+      </p>
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="bg-purple-900 text-white text-xs">
+              <th className="px-3 py-2 text-left whitespace-nowrap">카테고리</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">품목코드</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">품목명</th>
+              <th className="px-3 py-2 text-left whitespace-nowrap">규격</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">현재고</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">판매월수</th>
+              <th className="px-3 py-2 text-right whitespace-nowrap">최고단월</th>
+              {years.map(yr => (
+                <th key={yr} className="px-3 py-2 text-center whitespace-nowrap">20{yr}년</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.map((row, i) => (
+              <tr key={row.code} className={i % 2 === 0 ? 'bg-white' : 'bg-purple-50'}>
+                <td className="px-3 py-1.5 text-xs text-gray-600 whitespace-nowrap">{row.category}</td>
+                <td className="px-3 py-1.5 font-mono text-xs whitespace-nowrap">{row.code}</td>
+                <td className="px-3 py-1.5 whitespace-nowrap">{row.name}</td>
+                <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{row.spec}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{row.stock.toLocaleString()}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums font-medium text-purple-700">
+                  {row.salesMonths}
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums font-medium">
+                  {row.peakMonthly.toLocaleString()}
+                </td>
+                {years.map(yr => {
+                  const s = row.byYear[yr]
+                  return (
+                    <td key={yr} className="px-3 py-1.5 text-center text-xs whitespace-nowrap">
+                      {s ? (
+                        <span>
+                          <span className="text-gray-700 font-medium">{s.months}회</span>
+                          <span className="text-gray-400 mx-1">/</span>
+                          <span className="tabular-nums">{s.total.toLocaleString()}EA</span>
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
