@@ -8,6 +8,9 @@ const key = import.meta.env.VITE_SUPABASE_KEY as string
 
 export const sb = url && key ? createClient(url, key) : null
 
+// MaterialManager 호환성 — 관리자 게이트(비밀번호)로 접근 제어하므로 항상 true
+export const CAN_WRITE = true
+
 // ── Supabase 연동 토글 (localStorage 전용) ───────────────────────
 // 연동 여부는 로컬에서 결정. 환경(DEV/PROD)과 무관하게 동작.
 export function getSyncEnabled(): boolean {
@@ -193,14 +196,14 @@ export async function syncToSupabase(
   salesAgg?: SalesAggResult | null,
 ): Promise<Record<string, boolean>> {
   if (!sb) return { 연결: false }
+  const up = (id: string, data: unknown) =>
+    Promise.resolve(sb!.from('app_data').upsert({ id, data })).then(() => true).catch(() => false)
   const [r1, r2, r3, r4, r5] = await Promise.all([
-    sb.from('app_data').upsert({ id: 'settings',  data: settings  }).then(() => true).catch(() => false),
-    sb.from('app_data').upsert({ id: 'metadata',  data: metadata  }).then(() => true).catch(() => false),
-    sb.from('app_data').upsert({ id: 'inventory', data: inventory }).then(() => true).catch(() => false),
-    sb.from('app_data').upsert({ id: 'sales',     data: sales     }).then(() => true).catch(() => false),
-    salesAgg
-      ? sb.from('app_data').upsert({ id: 'sales_agg', data: salesAgg }).then(() => true).catch(() => false)
-      : Promise.resolve(true),
+    up('settings',  settings),
+    up('metadata',  metadata),
+    up('inventory', inventory),
+    up('sales',     sales),
+    salesAgg ? up('sales_agg', salesAgg) : Promise.resolve(true),
   ])
   return { 설정: r1, '품번 메타': r2, 재고: r3, '판매 분석': r4, '판매 집계': r5 }
 }

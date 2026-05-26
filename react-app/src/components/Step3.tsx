@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { buildStep3Plan, parseSalesAggExcel } from '../lib/step3Core'
-import type { CodeCableEntry } from '../lib/step3Core'
+import type { CodeCableEntry, Step3Row } from '../lib/step3Core'
 import type { Metadata, Inventory, AppSettings } from '../lib/types'
 import type { SalesAggResult } from '../lib/aggregate/salesAgg'
 import { buildStep3Workbook } from '../lib/output/writeStep3Excel'
