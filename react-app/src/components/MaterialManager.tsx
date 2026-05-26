@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 import { saveMetadata, saveInventory, CAN_WRITE } from '../lib/supabase'
 import { today } from '../lib/download'
 import type { Metadata, Inventory, CableMeta, HousingComp, FerruleMeta, InventoryHousingItem } from '../lib/types'
+import OjcRulesEditor from './OjcRulesEditor'
 
 interface Props {
   metadata:     Metadata
@@ -35,6 +36,7 @@ const thR   = `${thCls} text-right`
 export default function MaterialManager({ metadata: metadataRaw, setMetadata, inventory: inventoryRaw, setInventory }: Props) {
   const metadata  = { ...metadataRaw,  ferrule: metadataRaw.ferrule  ?? {} }
   const inventory = { ...inventoryRaw, ferrule: inventoryRaw.ferrule ?? {} }
+  const [subTab, setSubTab] = useState<'material' | 'rules'>('material')
   const [tab,   setTab]   = useState<'cable' | 'housing' | 'ferrule'>('cable')
   const [saved, setSaved] = useState<'' | 'both' | 'meta' | 'inv'>('')
 
@@ -438,6 +440,26 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
 
   return (
     <div className="space-y-4">
+      {/* 서브탭 */}
+      <div className="flex border-b border-gray-200">
+        {([
+          ['material', '자재 관리'],
+          ['rules',    'OJC 코드표'],
+        ] as ['material' | 'rules', string][]).map(([id, lbl]) => (
+          <button key={id} onClick={() => setSubTab(id)}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+              subTab === id
+                ? 'border-[#2E75B6] text-[#2E75B6]'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'rules' && <OjcRulesEditor />}
+      {subTab === 'material' && <>
+
       <div className="bg-[#f0f4fa] border-l-4 border-[#2E75B6] px-5 py-4 rounded-md text-sm">
         <b>자재 관리</b> — 품번·구매처·리드타임과 현재고·기발주를 한 화면에서 관리합니다.
         {!CAN_WRITE && <span className="ml-2 text-gray-500">(품번 정보는 읽기 전용)</span>}
@@ -870,6 +892,7 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
           <span className="text-green-600 text-sm font-semibold">✅ 저장됐습니다.</span>
         )}
       </div>
+      </>}
     </div>
   )
 }

@@ -24,7 +24,7 @@ const NAV_TABS = [
   { id: 'steps',    label: '📋 생산자재 발주계획' },
   { id: 'sales',    label: '🔍 판매 현황 분석' },
   { id: 'partnum',  label: '🏷 품번 생성기' },
-  { id: 'material', label: '📦 자재 관리' },
+  { id: 'material', label: '🔐 관리자' },
   { id: 'recon',    label: '🗂 재고 관리' },
   { id: 'import',   label: '🚢 수입 관리' },
   { id: 'settings', label: '⚙️ 파라미터 & 양식 설정' },
@@ -120,11 +120,6 @@ export default function App() {
     }
   }
 
-  function requestAdminUnlock() {
-    pendingTabAfterUnlock.current = null  // 탭 이동 없이 제자리에서 잠금 해제
-    setShowAdminGate(true)
-  }
-
   function handleAdminCancel() {
     setShowAdminGate(false)
     setPwInput('')
@@ -214,8 +209,6 @@ export default function App() {
           <PartNumberGenerator
             ojcProducts={ojcProducts}
             setOjcProducts={(p) => { setOjcProducts(p); saveOjcProducts(p) }}
-            adminUnlocked={adminUnlocked}
-            onRequestAdmin={requestAdminUnlock}
           />
         )}
         {activeTab === 'material' && (
