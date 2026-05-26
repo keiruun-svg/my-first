@@ -238,6 +238,40 @@ export function saveImportOrders(orders: ImportOrder[]): void {
   lsSet('ajw_import_orders', orders)
 }
 
+// ── 재고 대사 이력 ────────────────────────────────────────────────
+export interface ReconHistorySummary {
+  date:        string   // 입출고확인서 마지막 시트 날짜 (예: '0526')
+  savedAt:     string   // ISO 저장 시각
+  total:       number
+  match:       number
+  diff:        number
+  emp_only:    number
+  ecount_only: number
+}
+
+export function loadReconHistory(): ReconHistorySummary[] {
+  return lsGet<ReconHistorySummary[]>('ajw_recon_history', [])
+}
+
+export function saveReconSnapshot(date: string, rows: { status: string }[]): void {
+  const entry: ReconHistorySummary = {
+    date, savedAt: new Date().toISOString(),
+    total:        rows.length,
+    match:        rows.filter(r => r.status === 'match').length,
+    diff:         rows.filter(r => r.status === 'diff').length,
+    emp_only:     rows.filter(r => r.status === 'emp_only').length,
+    ecount_only:  rows.filter(r => r.status === 'ecount_only').length,
+  }
+  const updated = [...loadReconHistory().filter(h => h.date !== date), entry]
+    .sort((a, b) => a.date.localeCompare(b.date))
+  lsSet('ajw_recon_history', updated)
+  lsSet(`ajw_recon_rows_${date}`, rows)
+}
+
+export function loadReconSnapshotRows(date: string): unknown[] {
+  return lsGet<unknown[]>(`ajw_recon_rows_${date}`, [])
+}
+
 // ── 피그테일 키 마이그레이션 ─────────────────────────────────────
 const PIGTAIL_KEY_RENAME: [string, string][] = [
   ['pigtail-연청', 'pigtail-AQUA'],

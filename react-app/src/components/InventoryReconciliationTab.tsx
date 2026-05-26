@@ -1,8 +1,12 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
 import { downloadXlsx, today } from '../lib/download'
 import { assignLocation } from '../lib/assignLocation'
+import {
+  loadReconHistory, saveReconSnapshot, loadReconSnapshotRows,
+} from '../lib/supabase'
+import type { ReconHistorySummary } from '../lib/supabase'
 
 // ── 타입 ──────────────────────────────────────────────────────────────
 interface LotEntry { lot: string | null; qty: number; autoLoc?: boolean }
@@ -279,11 +283,23 @@ export default function InventoryReconciliationTab() {
   const [unshipFile,   setUnshipFile]   = useState<File | null>(null)
   const [shipFile,     setShipFile]     = useState<File | null>(null)
 
-  const [rows,    setRows]    = useState<ReconRow[]>([])
-  const [lastDate, setLastDate] = useState('')
-  const [running, setRunning] = useState(false)
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [err, setErr] = useState('')
+  const [rows,        setRows]        = useState<ReconRow[]>([])
+  const [lastDate,    setLastDate]    = useState('')
+  const [running,     setRunning]     = useState(false)
+  const [expanded,    setExpanded]    = useState<Set<string>>(new Set())
+  const [err,         setErr]         = useState('')
+  const [history,     setHistory]     = useState<ReconHistorySummary[]>([])
+  const [showHistory, setShowHistory] = useState(false)
+
+  useEffect(() => { setHistory(loadReconHistory()) }, [])
+
+  function loadHistoryEntry(date: string) {
+    const loaded = loadReconSnapshotRows(date) as ReconRow[]
+    setRows(loaded)
+    setLastDate(date)
+    setShowHistory(false)
+    setExpanded(new Set())
+  }
 
   const toggleExpand = useCallback((code: string) => {
     setExpanded(prev => {
@@ -316,6 +332,8 @@ export default function InventoryReconciliationTab() {
       const result = buildReconRows(empMap, ecMap, unship, shipMap)
       setRows(result)
       setLastDate(ld)
+      saveReconSnapshot(ld, result)
+      setHistory(loadReconHistory())
     } catch (e) {
       setErr(String(e))
     } finally {
@@ -400,6 +418,67 @@ export default function InventoryReconciliationTab() {
         </div>
       )}
 
+      {/* 이력 패널 */}
+      {history.length > 0 && (
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowHistory(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-sm font-medium text-gray-700 transition-colors"
+          >
+            <span>📊 대사 이력 ({history.length}회)</span>
+            <span className="text-gray-400 text-xs">{showHistory ? '▲ 접기' : '▼ 펼치기'}</span>
+          </button>
+
+          {showHistory && (
+            <div className="p-4 space-y-4">
+              {/* 추이 차트 */}
+              <TrendChart history={history} />
+
+              {/* 이력 목록 */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-500 border-b">
+                      <th className="py-1.5 text-left font-medium">기준일</th>
+                      <th className="py-1.5 text-right font-medium">총</th>
+                      <th className="py-1.5 text-right font-medium text-red-600">불일치</th>
+                      <th className="py-1.5 text-right font-medium text-yellow-600">EMP만</th>
+                      <th className="py-1.5 text-right font-medium text-blue-600">EC만</th>
+                      <th className="py-1.5 text-right font-medium text-green-600">일치</th>
+                      <th className="py-1.5 text-right font-medium">저장시각</th>
+                      <th className="py-1.5" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {[...history].reverse().map(h => (
+                      <tr key={h.date} className="hover:bg-gray-50">
+                        <td className="py-1.5 font-mono">{h.date}</td>
+                        <td className="py-1.5 text-right">{h.total}</td>
+                        <td className="py-1.5 text-right text-red-600 font-medium">{h.diff}</td>
+                        <td className="py-1.5 text-right text-yellow-600">{h.emp_only}</td>
+                        <td className="py-1.5 text-right text-blue-600">{h.ecount_only}</td>
+                        <td className="py-1.5 text-right text-green-600">{h.match}</td>
+                        <td className="py-1.5 text-right text-gray-400">
+                          {new Date(h.savedAt).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="py-1.5 text-right">
+                          <button
+                            onClick={() => loadHistoryEntry(h.date)}
+                            className="text-blue-500 hover:text-blue-700 underline"
+                          >
+                            불러오기
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 대사 결과 테이블 */}
       {rows.length > 0 && (
         <div className="overflow-x-auto border border-gray-200 rounded-lg">
@@ -463,6 +542,45 @@ export default function InventoryReconciliationTab() {
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── TrendChart ────────────────────────────────────────────────────────
+function TrendChart({ history }: { history: ReconHistorySummary[] }) {
+  const data  = history.slice(-20)
+  const W     = 400
+  const H     = 80
+  const LABEL = 14  // x축 레이블 높이
+  const barW  = Math.floor(W / data.length) - 2
+  const maxVal = Math.max(...data.map(h => h.diff + h.emp_only + h.ecount_only), 1)
+
+  return (
+    <div>
+      <p className="text-xs text-gray-500 mb-1">불일치 추이 (최근 {data.length}회) — 빨강: 수량불일치 / 주황: 편측</p>
+      <svg viewBox={`0 0 ${W} ${H + LABEL}`} className="w-full" style={{ height: 96 }}>
+        {data.map((h, i) => {
+          const x       = i * (W / data.length) + 1
+          const diffH   = Math.round((h.diff / maxVal) * H)
+          const sideH   = Math.round(((h.emp_only + h.ecount_only) / maxVal) * H)
+          const totalH  = diffH + sideH
+          return (
+            <g key={h.date}>
+              <rect x={x} y={H - totalH} width={barW} height={sideH} fill="#fb923c" opacity={0.75} />
+              <rect x={x} y={H - diffH}  width={barW} height={diffH} fill="#ef4444" opacity={0.85} />
+              <text x={x + barW / 2} y={H + LABEL - 1} textAnchor="middle" fontSize={7} fill="#9ca3af">
+                {h.date}
+              </text>
+              {totalH > 0 && (
+                <text x={x + barW / 2} y={H - totalH - 2} textAnchor="middle" fontSize={7} fill="#374151">
+                  {h.diff + h.emp_only + h.ecount_only}
+                </text>
+              )}
+            </g>
+          )
+        })}
+        <line x1={0} y1={H} x2={W} y2={H} stroke="#e5e7eb" strokeWidth={1} />
+      </svg>
     </div>
   )
 }
