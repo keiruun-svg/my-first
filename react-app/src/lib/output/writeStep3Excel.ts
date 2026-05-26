@@ -26,6 +26,12 @@ function cl(n: number): string {
   return s
 }
 
+// 피크평균: 0인 연도 제외 평균 — 사용내역·집계탭 공용
+function computePeakAvg(peaks: number[]): number {
+  const nonZero = peaks.filter(v => v > 0)
+  return nonZero.length > 0 ? Math.round(nonZero.reduce((s, v) => s + v, 0) / nonZero.length) : 0
+}
+
 // ── 피그테일 색상 라벨 표시 변환 ──────────────────────────────
 const DISPLAY_LABEL_MAP: Record<string, string> = { '연청': 'AQUA', '연등': 'rose' }
 function displayLabel(label: string): string {
@@ -287,14 +293,14 @@ hdrCell(3, L.C_NO, 'NO'); hdrCell(3, L.C_PAI, '파이'); hdrCell(3, L.C_TYPE, ty
       pmCell.alignment = { horizontal: 'center', vertical: 'middle' }
     }
 
-    // 연간 평균 — 공식 (연간 합계 평균)
+    // 연간 평균 — 연간은 Excel 수식(0/빈 셀 제외), 피크평균은 computePeakAvg 공유 함수
     {
       const annCols = Array.from({ length: nYears }, (_, i) => `${cl(L.annC(i))}${ri}`).join(',')
-      const pkCols  = Array.from({ length: nYears }, (_, i) => `${cl(L.pkC(i))}${ri}`).join(',')
-      const avgAnn = setCell(ri, L.C_AVG, { formula: `ROUND(AVERAGE(${annCols}),0)` })
+      const avgAnn = setCell(ri, L.C_AVG, { formula: `IFERROR(ROUND(AVERAGE(${annCols}),0),0)` })
       avgAnn.numFmt = '#,##0'; avgAnn.alignment = { horizontal: 'right', vertical: 'middle' }
       if (evenFill) avgAnn.fill = evenFill
-      const avgPk = setCell(ri, L.C_PEAK_AVG, { formula: `ROUND(AVERAGE(${pkCols}),0)` })
+      const peaks = years.map(yr => row.byYear[yr]?.peak ?? 0)
+      const avgPk = setCell(ri, L.C_PEAK_AVG, computePeakAvg(peaks) || null)
       avgPk.numFmt = '#,##0'; avgPk.alignment = { horizontal: 'right', vertical: 'middle' }
       if (evenFill) avgPk.fill = evenFill
     }
@@ -322,10 +328,10 @@ hdrCell(3, L.C_NO, 'NO'); hdrCell(3, L.C_PAI, '파이'); hdrCell(3, L.C_TYPE, ty
     sc(L.C_CUR, row.현재고 || null, true, '#,##0')
     sc(L.C_ORD, row.기발주 || null, true, '#,##0')
 
-    // 2026목표 — 노란 입력셀 (비워둠)
+    // 2026목표 — forecastAnnual 기본값으로 채움 (사용자 수정 가능)
     {
       const tgtCell = ws.getCell(ri, L.C_TGT)
-      tgtCell.value = null
+      tgtCell.value = row.forecastAnnual > 0 ? row.forecastAnnual : null
       tgtCell.font  = { name: 'Arial', bold: true, size: 9, color: { argb: 'FF0000FF' } }
       tgtCell.fill  = fill('FFFFC0')
       tgtCell.border = INPUT_BORDERS()
@@ -534,7 +540,7 @@ function writeBunhoSheet(
   const renderBunhoRow = (
     bn: string, 품명: string, 구매처: string, 리드타임: number,
     unit: string, annByYear: number[], peakByYear: number[], 현재고: number, 기발주: number,
-    bgRow?: string, note?: string,
+    bgRow?: string, note?: string, forecast?: number,
   ) => {
     const evenFill2: ExcelJS.Fill | undefined = bgRow ? fill(bgRow) : ((ri % 2 === 0) ? fill('F5F5F5') : undefined)
 
@@ -552,12 +558,12 @@ function writeBunhoSheet(
 
     const annCols = Array.from({ length: nY }, (_, i) => `${cl(C_ANN_FIRST + i)}${ri}`).join(',')
     const avgCell = ws.getCell(ri, C_AVG)
-    avgCell.value = { formula: `ROUND(AVERAGE(${annCols}),0)` }
+    avgCell.value = { formula: `IFERROR(ROUND(AVERAGE(${annCols}),0),0)` }
     avgCell.font = font(); avgCell.border = ALL_BORDERS; avgCell.numFmt = '#,##0'
     avgCell.alignment = { horizontal: 'right', vertical: 'middle' }
     if (evenFill2) avgCell.fill = evenFill2
 
-    const peakAvg = peakByYear.length > 0 ? peakByYear.reduce((s, v) => s + v, 0) / peakByYear.length : 0
+    const peakAvg = computePeakAvg(peakByYear)
     const pkAvgCell = ws.getCell(ri, C_PEAK_AVG)
     pkAvgCell.value = Math.round(peakAvg)
     pkAvgCell.font = font(); pkAvgCell.border = ALL_BORDERS; pkAvgCell.numFmt = '#,##0'
@@ -572,13 +578,14 @@ function writeBunhoSheet(
     sc(C_CUR, 현재고 || null, true, '#,##0'); sc(C_ORD, 기발주 || null, true, '#,##0')
 
     const tgtCell2 = ws.getCell(ri, C_TGT)
-    tgtCell2.value = null; tgtCell2.font = font({ bold: true, color: '0000FF' })
+    tgtCell2.value = (forecast != null && forecast > 0) ? Math.round(forecast) : null
+    tgtCell2.font = font({ bold: true, color: '0000FF' })
     tgtCell2.fill = fill('FFFFC0'); tgtCell2.border = INPUT_BORDERS()
     tgtCell2.numFmt = '#,##0'; tgtCell2.alignment = { horizontal: 'right', vertical: 'middle' }
 
     const reqCell2 = ws.getCell(ri, C_REQ)
     reqCell2.value = {
-      formula: `IFERROR(MAX(${cl(C_TGT)}${ri}-${cl(C_CUR)}${ri}-${cl(C_ORD)}${ri}+${cl(C_SS)}${ri},0),"")`,
+      formula: `IFERROR(MAX(${cl(C_TGT)}${ri}+${cl(C_SS)}${ri}-IFERROR(${cl(C_CUR)}${ri},0)-IFERROR(${cl(C_ORD)}${ri},0),0),"")`,
     }
     reqCell2.font = font({ bold: true, color: 'C00000' }); reqCell2.border = ALL_BORDERS
     reqCell2.numFmt = '#,##0'; reqCell2.alignment = { horizontal: 'right', vertical: 'middle' }
@@ -604,13 +611,14 @@ function writeBunhoSheet(
 
   // ── 케이블 섹션 ───────────────────────────────────────────
   // 현재고/기발주는 같은 품번 = 동일 실물 재고이므로 첫 번째 등장 값만 사용
-  type BunhoEntry = { 품명: string; 구매처: string; 리드타임: number; 현재고: number; 기발주: number; annByYear: number[]; peakByYear: number[]; srcs: Map<string, number> }
+  type BunhoEntry = { 품명: string; 구매처: string; 리드타임: number; 현재고: number; 기발주: number; annByYear: number[]; peakByYear: number[]; srcs: Map<string, number>; forecast: number }
   const byCable = new Map<string, BunhoEntry>()
   const latestYr = years[nY - 1]
   for (const row of cableRows) {
     const bn = (row.품번 || '').trim(); if (!bn) continue
-    if (!byCable.has(bn)) byCable.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0), peakByYear: new Array(nY).fill(0), srcs: new Map() })
+    if (!byCable.has(bn)) byCable.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0), peakByYear: new Array(nY).fill(0), srcs: new Map(), forecast: 0 })
     const e = byCable.get(bn)!
+    e.forecast += row.forecastAnnual > 0 ? row.forecastAnnual : 0
     const srcKey = `${row.pai} ${row.label}`
     e.srcs.set(srcKey, (e.srcs.get(srcKey) ?? 0) + (row.byYear[latestYr]?.annual ?? 0))
     for (let i = 0; i < nY; i++) {
@@ -621,7 +629,7 @@ function writeBunhoSheet(
   if (byCable.size > 0) {
     sectionHeader('▼ 케이블 (m)', mainColor)
     for (const [bn, d] of [...byCable.entries()].sort())
-      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'm', d.annByYear, d.peakByYear, d.현재고, d.기발주, undefined, d.srcs.size > 1 ? buildSrcNote(d.srcs) : '')
+      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'm', d.annByYear, d.peakByYear, d.현재고, d.기발주, undefined, d.srcs.size > 1 ? buildSrcNote(d.srcs) : '', d.forecast)
     ri++
   }
 
@@ -632,8 +640,9 @@ function writeBunhoSheet(
   const byHousing = new Map<string, BunhoEntry>()
   for (const row of housingRows) {
     const bn = (row.품번 || '').trim(); if (!bn) continue
-    if (!byHousing.has(bn)) byHousing.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0), peakByYear: new Array(nY).fill(0), srcs: new Map() })
+    if (!byHousing.has(bn)) byHousing.set(bn, { 품명: row.품명, 구매처: row.구매처, 리드타임: row.리드타임, 현재고: row.현재고, 기발주: row.기발주, annByYear: new Array(nY).fill(0), peakByYear: new Array(nY).fill(0), srcs: new Map(), forecast: 0 })
     const e = byHousing.get(bn)!
+    e.forecast += row.forecastAnnual > 0 ? row.forecastAnnual : 0
     const srcKey = `${row.pai} ${row.label}`
     e.srcs.set(srcKey, (e.srcs.get(srcKey) ?? 0) + (row.byYear[latestYr]?.annual ?? 0))
     for (let i = 0; i < nY; i++) {
@@ -644,7 +653,7 @@ function writeBunhoSheet(
   if (byHousing.size > 0) {
     sectionHeader('▼ 하우징 공용 부품 (EA)', '7030A0')
     for (const [bn, d] of [...byHousing.entries()].sort())
-      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'EA', d.annByYear, d.peakByYear, d.현재고, d.기발주, undefined, buildSrcNote(d.srcs))
+      renderBunhoRow(bn, d.품명, d.구매처, d.리드타임, 'EA', d.annByYear, d.peakByYear, d.현재고, d.기발주, undefined, buildSrcNote(d.srcs), d.forecast)
     ri++
   }
 
@@ -676,7 +685,7 @@ function writeBunhoSheet(
       const ann  = connAnn.get(ct)!
       const peak = connPeak.get(ct) ?? new Array(nY).fill(0)
       const lt  = (() => { const n = parseInt(String(fm.리드타임 ?? '')); return isNaN(n) ? 60 : n })()
-      renderBunhoRow(fm.품번!, fm.품명 ?? '', fm.구매처 ?? '', lt, 'EA', ann, peak, fiv.현재고 ?? 0, fiv.기발주 ?? 0, 'F0FFF4', ct)
+      renderBunhoRow(fm.품번!, fm.품명 ?? '', fm.구매처 ?? '', lt, 'EA', ann, peak, fiv.현재고 ?? 0, fiv.기발주 ?? 0, 'F0FFF4', ct, ann[nY - 1])
     }
   }
 }
@@ -751,9 +760,10 @@ function writeMonthlySheet(
     sc(1, idx + 1); sc(2, cat); sc(3, row.pai)
     sc(4, displayLabel(row.label)); sc(5, row.품번 || ''); sc(6, unit)
 
-    // 연간목표 — 입력셀
+    // 연간목표 — 발주필요량 기본값으로 채움 (사용자 수정 가능)
     const tgtCell3 = ws.getCell(ri, 7)
-    tgtCell3.value = null; tgtCell3.font = font({ bold: true, color: '0000FF' })
+    tgtCell3.value = row.발주필요량 > 0 ? row.발주필요량 : null
+    tgtCell3.font = font({ bold: true, color: '0000FF' })
     tgtCell3.fill = fill('FFFFC0'); tgtCell3.border = INPUT_BORDERS()
     tgtCell3.numFmt = '#,##0'; tgtCell3.alignment = { horizontal: 'right', vertical: 'middle' }
 

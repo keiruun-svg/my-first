@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   loadSettings, loadMetadata, loadInventory, loadSalesAnalysis, loadSalesAgg,
-  loadOjcProducts, saveOjcProducts, CAN_WRITE,
+  loadOjcProducts, saveOjcProducts,
 } from './lib/supabase'
 import type { OjcProduct } from './lib/supabase'
 import { DEFAULT_SETTINGS } from './lib/types'
@@ -18,22 +18,31 @@ import Dashboard from './components/Dashboard'
 import InventoryReconciliationTab from './components/InventoryReconciliationTab'
 import ImportTab from './components/ImportTab'
 
-const ALL_TABS = [
-  { id: 'home',      label: '🏠 홈',                       devOnly: false },
-  { id: 'step1',     label: '📤 STEP 1 — ERP 파일 가공',  devOnly: false },
-  { id: 'step2',     label: '📈 STEP 2 — 판매 분석',      devOnly: false },
-  { id: 'step3',     label: '📊 STEP 3 — 발주계획 생성',  devOnly: false },
-  { id: 'sales',     label: '🔍 판매 현황 분석',           devOnly: false },
-  { id: 'partnum',   label: '🏷 품번 생성기',              devOnly: false },
-  { id: 'material',  label: '📦 자재 관리',                devOnly: false },
-  { id: 'recon',     label: '🗂 재고 관리',                devOnly: false },
-  { id: 'import',    label: '🚢 수입 관리',                devOnly: false },
-  { id: 'settings',  label: '⚙️ 파라미터 & 양식 설정',   devOnly: false },
+// 최상위 탭 (STEP 1/2/3은 'steps' 그룹으로 묶음)
+const NAV_TABS = [
+  { id: 'home',     label: '🏠 홈' },
+  { id: 'steps',    label: '📋 생산자재 발주계획' },
+  { id: 'sales',    label: '🔍 판매 현황 분석' },
+  { id: 'partnum',  label: '🏷 품번 생성기' },
+  { id: 'material', label: '📦 자재 관리' },
+  { id: 'recon',    label: '🗂 재고 관리' },
+  { id: 'import',   label: '🚢 수입 관리' },
+  { id: 'settings', label: '⚙️ 파라미터 & 양식 설정' },
 ] as const
 
-const TABS = ALL_TABS.filter(t => !t.devOnly || CAN_WRITE)
+const STEP_TABS = [
+  { id: 'step1', label: 'STEP 1 — ERP 파일 가공' },
+  { id: 'step2', label: 'STEP 2 — 판매 분석' },
+  { id: 'step3', label: 'STEP 3 — 발주계획 생성' },
+] as const
 
-type TabId = typeof ALL_TABS[number]['id']
+type StepId  = typeof STEP_TABS[number]['id']
+type NavId   = typeof NAV_TABS[number]['id']
+type TabId   = Exclude<NavId, 'steps'> | StepId
+
+function isStepId(id: string): id is StepId {
+  return id === 'step1' || id === 'step2' || id === 'step3'
+}
 
 const ADMIN_PASS = import.meta.env.VITE_ADMIN_PASS as string | undefined
 
@@ -82,16 +91,20 @@ export default function App() {
     }
   }, [showAdminGate])
 
-  function handleTabClick(tabId: TabId) {
-    if (tabId === 'material' && !CAN_WRITE && !materialUnlocked) {
+  function handleTabClick(tabId: TabId | NavId) {
+    if (tabId === 'material' && !materialUnlocked) {
       setShowAdminGate(true)
       return
     }
-    setActiveTab(tabId)
+    if (tabId === 'steps') {
+      setActiveTab(isStepId(activeTab) ? activeTab : 'step1')
+      return
+    }
+    setActiveTab(tabId as TabId)
   }
 
   function handleAdminConfirm() {
-    if (ADMIN_PASS && pwInput === ADMIN_PASS) {
+    if (!ADMIN_PASS || pwInput === ADMIN_PASS) {
       setMaterialUnlocked(true)
       setShowAdminGate(false)
       setActiveTab('material')
@@ -128,22 +141,25 @@ export default function App() {
         </div>
       </div>
 
-      {/* Tabs — matches Streamlit st.tabs */}
+      {/* 최상위 탭 */}
       <div className="border-b border-gray-200 sticky top-0 bg-white z-10">
         <div className="flex overflow-x-auto max-w-screen-2xl mx-auto px-4">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => handleTabClick(t.id)}
-              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
-                activeTab === t.id
-                  ? 'border-[#FF4B4B] text-[#FF4B4B]'
-                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+          {NAV_TABS.map(t => {
+            const isActive = t.id === 'steps' ? isStepId(activeTab) : activeTab === t.id
+            return (
+              <button
+                key={t.id}
+                onClick={() => handleTabClick(t.id)}
+                className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
+                  isActive
+                    ? 'border-[#FF4B4B] text-[#FF4B4B]'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                }`}
+              >
+                {t.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -158,14 +174,28 @@ export default function App() {
             onNavigate={(tab) => handleTabClick(tab as TabId)}
           />
         )}
-        {activeTab === 'step1' && (
-          <Step1 metadata={metadata} setMetadata={setMetadata} settings={settings} />
-        )}
-        {activeTab === 'step2' && (
-          <Step2 salesAgg={salesAgg} setSalesAgg={setSalesAgg} />
-        )}
-        {activeTab === 'step3' && (
-          <Step3 metadata={metadata} inventory={inventory} settings={settings} salesAgg={salesAgg} />
+        {isStepId(activeTab) && (
+          <div>
+            {/* 생산자재 발주계획 서브탭 */}
+            <div className="flex border-b border-gray-200 mb-6">
+              {STEP_TABS.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setActiveTab(s.id)}
+                  className={`px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+                    activeTab === s.id
+                      ? 'border-[#2E75B6] text-[#2E75B6]'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            {activeTab === 'step1' && <Step1 metadata={metadata} setMetadata={setMetadata} settings={settings} />}
+            {activeTab === 'step2' && <Step2 salesAgg={salesAgg} setSalesAgg={setSalesAgg} />}
+            {activeTab === 'step3' && <Step3 metadata={metadata} inventory={inventory} settings={settings} salesAgg={salesAgg} />}
+          </div>
         )}
         {activeTab === 'sales' && (
           <SalesAnalysisTab />

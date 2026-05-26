@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { buildStep3Plan, parseSalesAggExcel } from '../lib/step3Core'
-import type { Step3Row, CodeCableEntry } from '../lib/step3Core'
+import type { CodeCableEntry } from '../lib/step3Core'
 import type { Metadata, Inventory, AppSettings } from '../lib/types'
 import type { SalesAggResult } from '../lib/aggregate/salesAgg'
 import { buildStep3Workbook } from '../lib/output/writeStep3Excel'
@@ -14,13 +14,11 @@ interface Props {
   salesAgg?: SalesAggResult | null
 }
 
-const num = (v: number, unit = '') => v === 0 ? '—' : v.toLocaleString() + (unit ? ' ' + unit : '')
-
 export default function Step3({ metadata, inventory, settings, salesAgg }: Props) {
   const [logs, setLogs]                     = useState<string[]>([])
   const [running, setRunning]               = useState(false)
   const [done, setDone]                     = useState(false)
-  const [gaongFile, setGaongFile]           = useState<File | null>(null)
+const [gaongFile, setGaongFile]           = useState<File | null>(null)
   const [salesAggFile, setSalesAggFile]     = useState<File | null>(null)
   const [rows, setRows]                     = useState<Step3Row[]>([])
   const [years, setYears]                   = useState<string[]>([])
@@ -55,11 +53,7 @@ export default function Step3({ metadata, inventory, settings, salesAgg }: Props
     downloadXlsx(buf as ArrayBuffer, `발주계획_${today()}.xlsx`)
   }
 
-  const cableRows   = rows.filter(r => r.type === 'cable')
-  const housingRows = rows.filter(r => r.type === 'housing')
   const missingPn   = rows.filter(r => !r.품번).length
-  const latestYr    = years[years.length - 1]
-  const hasCagr     = rows.some(r => r.appliedCagr !== 0)
 
   return (
     <div className="space-y-4">
@@ -131,102 +125,8 @@ export default function Step3({ metadata, inventory, settings, salesAgg }: Props
         </div>
       )}
 
-      {done && rows.length > 0 && (
-        <div className="space-y-4">
-          <SectionTable
-            title={`케이블 자재 (${cableRows.length}타입)`}
-            rows={cableRows} years={years} latestYr={latestYr} unitSuffix="m" showCagr={hasCagr}
-          />
-          <SectionTable
-            title={`하우징 자재 (${housingRows.length}타입)`}
-            rows={housingRows} years={years} latestYr={latestYr} unitSuffix="EA" showCagr={false}
-          />
-        </div>
-      )}
     </div>
   )
 }
 
-// ── 섹션 테이블 컴포넌트 ─────────────────────────────────────────
-function SectionTable({
-  title, rows, years, latestYr, unitSuffix, showCagr = false,
-}: {
-  title: string; rows: Step3Row[]; years: string[]; latestYr: string; unitSuffix: string; showCagr?: boolean
-}) {
-  if (!rows.length) return null
-  const fmtCagr = (v: number) => v === 0 ? '—' : `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`
-  return (
-    <div>
-      <div className="text-sm font-semibold text-gray-700 mb-1.5">{title}</div>
-      <div className="overflow-x-auto border border-gray-200 rounded">
-        <table className="text-xs w-full whitespace-nowrap">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>타입</th>
-              <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>파이</th>
-              <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>품번</th>
-              <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>품명</th>
-              <th className="px-3 py-2 text-left border-b font-semibold text-gray-600" rowSpan={2}>구매처</th>
-              <th className="px-2 py-1 text-center border-b font-semibold text-gray-600" rowSpan={2}>LT<br/>(일)</th>
-              {showCagr && <th className="px-2 py-1 text-center border-b font-semibold text-blue-700" rowSpan={2}>판매<br/>CAGR</th>}
-              <th className="px-2 py-1 text-center border-b border-l font-semibold text-blue-700" colSpan={years.length}>
-                연간 사용량({unitSuffix})
-              </th>
-              <th className="px-2 py-1 text-center border-b font-semibold text-orange-700" rowSpan={2}>월최대<br/>({latestYr}년)</th>
-              <th className="px-2 py-1 text-center border-b font-semibold text-red-700" rowSpan={2}>안전재고<br/>({unitSuffix})</th>
-              <th className="px-2 py-1 text-center border-b font-semibold text-purple-700" rowSpan={2}>현재고</th>
-              <th className="px-2 py-1 text-center border-b font-semibold text-purple-700" rowSpan={2}>기발주</th>
-              <th className="px-2 py-1 text-center border-b font-semibold text-green-700" rowSpan={2}>발주<br/>필요량</th>
-            </tr>
-            <tr>
-              {years.map(yr => (
-                <th key={yr} className="px-2 py-1 text-right border-b border-l text-blue-600 font-normal">{yr}년</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => {
-              const missingPn  = !row.품번
-              const needsOrder = row.발주필요량 > 0
-              return (
-                <tr key={row.key} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className="px-3 py-1.5 font-medium">{row.label}</td>
-                  <td className="px-3 py-1.5 text-gray-500">{row.pai}</td>
-                  <td className={`px-3 py-1.5 font-mono ${missingPn ? 'text-red-500 font-semibold' : 'text-gray-600'}`}>
-                    {row.품번 || '미등록'}
-                  </td>
-                  <td className="px-3 py-1.5 max-w-[200px] truncate" title={row.품명}>{row.품명 || '—'}</td>
-                  <td className="px-3 py-1.5 text-gray-500">{row.구매처 || '—'}</td>
-                  <td className="px-2 py-1.5 text-center">{row.리드타임}</td>
-                  {showCagr && (
-                    <td className={`px-2 py-1.5 text-center font-semibold ${row.appliedCagr > 0 ? 'text-blue-600' : row.appliedCagr < 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                      {fmtCagr(row.appliedCagr)}
-                    </td>
-                  )}
-                  {years.map(yr => (
-                    <td key={yr} className="px-2 py-1.5 text-right border-l">
-                      {num(row.byYear[yr]?.annual ?? 0)}
-                    </td>
-                  ))}
-                  <td className="px-2 py-1.5 text-right text-orange-700">{num(row.latestPeak)}</td>
-                  <td className="px-2 py-1.5 text-right text-red-700 font-semibold">{num(row.안전재고)}</td>
-                  <td className="px-2 py-1.5 text-right text-purple-700">{num(row.현재고)}</td>
-                  <td className="px-2 py-1.5 text-right text-purple-700">{num(row.기발주)}</td>
-                  <td className={`px-2 py-1.5 text-right font-bold ${needsOrder ? 'text-green-700 bg-green-50' : 'text-gray-400'}`}>
-                    {needsOrder ? row.발주필요량.toLocaleString() : '—'}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-      <div className="text-xs text-gray-400 mt-1">
-        {showCagr
-          ? '발주필요량 = CAGR 예측량 + 안전재고 − 현재고 − 기발주 (케이블에 판매CAGR 적용, 하우징은 최근년 실적 기준)'
-          : '발주필요량 = 최근년 연간사용량 + 안전재고 − 현재고 − 기발주'}
-      </div>
-    </div>
-  )
-}
 

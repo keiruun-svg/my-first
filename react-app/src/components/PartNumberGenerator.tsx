@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import type { OjcRules } from '../lib/types'
 import { DEFAULT_OJC_RULES } from '../lib/types'
-import { loadOjcRules, saveOjcRules } from '../lib/supabase'
-import type { OjcProduct } from '../lib/supabase'
+import { loadOjcRules, saveOjcRules, loadItemCodes } from '../lib/supabase'
+import type { OjcProduct, ItemCode } from '../lib/supabase'
 import type { DetectedFields } from '../lib/ojcAutoDetect'
 import { analyzeProduct } from '../lib/ojcAutoDetect'
 
@@ -66,6 +66,7 @@ export default function PartNumberGenerator({ ojcProducts, setOjcProducts }: Pro
   const [copied, setCopied]         = useState(false)
   const [savedPN, setSavedPN]       = useState(false)
   const [openSections, setOpenSections] = useState<Partial<Record<Section, boolean>>>({ ojcType: true })
+  const [itemCodes, setItemCodes]       = useState<ItemCode[]>([])
 
   // ── 자동 분석 탭 상태 ─────────────────────────────────────
   const [autoName,    setAutoName]    = useState('')
@@ -89,12 +90,18 @@ export default function PartNumberGenerator({ ojcProducts, setOjcProducts }: Pro
 
   useEffect(() => {
     loadOjcRules().then(r => { setRules(r); setEditRules(r) })
+    loadItemCodes().then(setItemCodes)
   }, [])
 
   // ── 기존 품번 조회 ─────────────────────────────────────────
   const existingProduct = ojcProducts.find(
     p => p.name.trim() === autoName.trim() && p.spec.trim() === autoSpec.trim()
   )
+
+  function ecountCheck(pn: string | null): ItemCode | null {
+    if (!pn) return null
+    return itemCodes.find(ic => ic.code === pn) ?? null
+  }
 
   function saveCurrentPartNumber(pn: string) {
     if (!autoName.trim()) return
@@ -455,6 +462,7 @@ export default function PartNumberGenerator({ ojcProducts, setOjcProducts }: Pro
                         {copied ? '✓ 복사됨' : '복사'}
                       </button>
                     </div>
+                    <EcountBadge match={ecountCheck(autoPartNumber)} hasItemCodes={itemCodes.length > 0} />
                     {autoName.trim() && (
                       <div className="flex items-center gap-2">
                         <button
@@ -562,19 +570,22 @@ export default function PartNumberGenerator({ ojcProducts, setOjcProducts }: Pro
                 </select>
               </Row>
             </div>
-            <div className="mt-6 pt-5 border-t border-gray-200">
+            <div className="mt-6 pt-5 border-t border-gray-200 space-y-2">
               {manualPartNumber ? (
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-2xl font-bold text-sky-700 tracking-widest flex-1 break-all">
-                    {manualPartNumber}
-                  </span>
-                  <button
-                    onClick={() => handleCopy(manualPartNumber)}
-                    className="px-4 py-1.5 text-sm bg-sky-600 text-white rounded hover:bg-sky-700 transition-colors"
-                  >
-                    {copied ? '✓ 복사됨' : '복사'}
-                  </button>
-                </div>
+                <>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-2xl font-bold text-sky-700 tracking-widest flex-1 break-all">
+                      {manualPartNumber}
+                    </span>
+                    <button
+                      onClick={() => handleCopy(manualPartNumber)}
+                      className="px-4 py-1.5 text-sm bg-sky-600 text-white rounded hover:bg-sky-700 transition-colors"
+                    >
+                      {copied ? '✓ 복사됨' : '복사'}
+                    </button>
+                  </div>
+                  <EcountBadge match={ecountCheck(manualPartNumber)} hasItemCodes={itemCodes.length > 0} />
+                </>
               ) : (
                 <p className="text-sm text-gray-400">
                   {manualMissing.length > 0 ? `미선택: ${manualMissing.join(' / ')}` : '—'}
@@ -692,5 +703,23 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <span className="text-sm font-medium text-gray-700 w-32 flex-shrink-0">{label}</span>
       <div className="flex-1">{children}</div>
     </div>
+  )
+}
+
+function EcountBadge({ match, hasItemCodes }: { match: ItemCode | null; hasItemCodes: boolean }) {
+  if (!hasItemCodes) return (
+    <span className="inline-flex items-center text-xs text-gray-400 gap-1">
+      ⚪ 이카운트 품목 리스트 미등록 — 수입 관리 탭에서 파일을 업로드하면 중복 확인이 활성화됩니다
+    </span>
+  )
+  if (match) return (
+    <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-medium">
+      ⚠ 이카운트 등록됨 — {match.name || match.code} (신규 등록 전 확인 필요)
+    </span>
+  )
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-medium">
+      ✅ 이카운트 미등록 — 신규 품번
+    </span>
   )
 }
