@@ -16,6 +16,7 @@ interface RawRow {
   category:    string
   stock:       number
   peakMonthly: number
+  salesMonths: number  // 판매 발생 월 수 (간헐적 수요 판별용)
   coverage:    number
 }
 
@@ -23,34 +24,42 @@ interface PlanRow extends RawRow {
   orderNeeded: number
 }
 
-type RowStatus = 'urgent' | 'warning' | 'ok' | 'no_data'
+type RowStatus = 'urgent' | 'warning' | 'ok' | 'intermittent' | 'no_data'
 
-function rowStatus(row: PlanRow, target: number): RowStatus {
-  if (row.peakMonthly === 0) return 'no_data'
-  if (row.coverage >= target) return 'ok'
-  if (row.coverage >= 1)      return 'warning'
+function rowStatus(row: PlanRow, target: number, minMonths: number): RowStatus {
+  if (row.peakMonthly === 0)         return 'no_data'
+  if (row.salesMonths < minMonths)   return 'intermittent'
+  if (row.coverage >= target)        return 'ok'
+  if (row.coverage >= 1)             return 'warning'
   return 'urgent'
 }
 
 const STATUS_LABEL: Record<RowStatus, string> = {
-  urgent:  '발주필요',
-  warning: '주의',
-  ok:      '재고충분',
-  no_data: '이력없음',
+  urgent:       '발주필요',
+  warning:      '주의',
+  ok:           '재고충분',
+  intermittent: '간헐적수요',
+  no_data:      '이력없음',
 }
 
 const STATUS_BADGE: Record<RowStatus, string> = {
-  urgent:  'text-red-700 bg-red-100',
-  warning: 'text-yellow-700 bg-yellow-100',
-  ok:      'text-green-700 bg-green-100',
-  no_data: 'text-gray-400 bg-gray-100',
+  urgent:       'text-red-700 bg-red-100',
+  warning:      'text-yellow-700 bg-yellow-100',
+  ok:           'text-green-700 bg-green-100',
+  intermittent: 'text-purple-700 bg-purple-100',
+  no_data:      'text-gray-400 bg-gray-100',
 }
 
 const STATUS_ROW_BG: Record<RowStatus, string> = {
-  urgent:  'bg-red-50',
-  warning: 'bg-yellow-50',
-  ok:      '',
-  no_data: '',
+  urgent:       'bg-red-50',
+  warning:      'bg-yellow-50',
+  ok:           '',
+  intermittent: 'bg-purple-50',
+  no_data:      '',
+}
+
+const STATUS_SORT: Record<RowStatus, number> = {
+  urgent: 0, warning: 1, ok: 2, intermittent: 3, no_data: 4,
 }
 
 export default function ImportTab() {
@@ -59,6 +68,7 @@ export default function ImportTab() {
   const [salesRows,    setSalesRows]  = useState<DetailedSalesRow[]>([])
   const [itemCodes,    setItemCodes]  = useState<ItemCode[]>([])
   const [targetMonths, setTarget]     = useState(3)
+  const [minMonths,    setMinMonths]  = useState(3)  // 간헐적 수요 기준
   const [rawRows,      setRawRows]    = useState<RawRow[]>([])
   const [error,        setError]      = useState('')
   const [loading,      setLoading]    = useState(false)
@@ -81,34 +91,33 @@ export default function ImportTab() {
     }
   }
 
-  // Derive final rows whenever raw data or targetMonths changes
+  // targetMonths·minMonths 변경 시 orderNeeded·정렬 자동 재계산
   const rows = useMemo<PlanRow[]>(() => {
-    const ord: Record<RowStatus, number> = { urgent: 0, warning: 1, ok: 2, no_data: 3 }
     return rawRows
       .map(r => ({
         ...r,
-        orderNeeded: r.peakMonthly > 0
+        orderNeeded: r.peakMonthly > 0 && r.salesMonths >= minMonths
           ? Math.max(0, targetMonths * r.peakMonthly - r.stock)
           : 0,
       }))
       .sort((a, b) => {
-        const sa = rowStatus(a, targetMonths)
-        const sb = rowStatus(b, targetMonths)
-        if (ord[sa] !== ord[sb]) return ord[sa] - ord[sb]
+        const sa = rowStatus(a, targetMonths, minMonths)
+        const sb = rowStatus(b, targetMonths, minMonths)
+        if (STATUS_SORT[sa] !== STATUS_SORT[sb]) return STATUS_SORT[sa] - STATUS_SORT[sb]
         if (a.category !== b.category) return a.category.localeCompare(b.category)
         return a.code.localeCompare(b.code)
       })
-  }, [rawRows, targetMonths])
+  }, [rawRows, targetMonths, minMonths])
 
   async function handleRun() {
-    if (!stockFile)         { setError('재고 파일을 선택하세요.'); return }
-    if (!salesRows.length)  { setError('판매 현황 분석 탭에서 판매 데이터를 먼저 로드하세요.'); return }
+    if (!stockFile)        { setError('재고 파일을 선택하세요.'); return }
+    if (!salesRows.length) { setError('판매 파일을 업로드하거나 판매 현황 분석 탭에서 먼저 로드하세요.'); return }
     setLoading(true); setError('')
     try {
       const stockMap = await parseStockFile(stockFile)
       const itemMap  = new Map<string, ItemCode>(itemCodes.map(i => [i.code, i]))
 
-      // Aggregate monthly sales per code: (year-month) → qty
+      // (year-month) → qty 월간 집계
       const monthlyMap = new Map<string, Map<string, number>>()
       const nameMap    = new Map<string, string>()
       const catMap     = new Map<string, string>()
@@ -124,7 +133,7 @@ export default function ImportTab() {
         m.set(ym, (m.get(ym) ?? 0) + r.qty)
       }
 
-      // Also add stock-only codes that are OJC by item list
+      // 재고에만 있는 OJC 품목 보완 (품목 리스트 기준)
       for (const [code] of stockMap) {
         if (monthlyMap.has(code)) continue
         const item = itemMap.get(code)
@@ -135,8 +144,10 @@ export default function ImportTab() {
         catMap.set(code, cat)
       }
 
-      // Build result
-      const allCodes = new Set([...monthlyMap.keys(), ...[...stockMap.keys()].filter(c => nameMap.has(c))])
+      const allCodes = new Set([
+        ...monthlyMap.keys(),
+        ...[...stockMap.keys()].filter(c => nameMap.has(c)),
+      ])
       const result: RawRow[] = []
 
       for (const code of allCodes) {
@@ -146,9 +157,10 @@ export default function ImportTab() {
         const category    = catMap.get(code) ?? ''
         const stock       = stockMap.get(code) ?? 0
         const mMap        = monthlyMap.get(code)
-        const peakMonthly = mMap && mMap.size > 0 ? Math.max(...mMap.values()) : 0
+        const salesMonths = mMap?.size ?? 0
+        const peakMonthly = mMap && salesMonths > 0 ? Math.max(...mMap.values()) : 0
         const coverage    = peakMonthly > 0 ? stock / peakMonthly : 0
-        result.push({ code, name, spec, category, stock, peakMonthly, coverage })
+        result.push({ code, name, spec, category, stock, peakMonthly, salesMonths, coverage })
       }
 
       setRawRows(result)
@@ -159,8 +171,9 @@ export default function ImportTab() {
     }
   }
 
-  function coverageText(row: PlanRow): string {
-    if (row.peakMonthly === 0) return '—'
+  function coverageText(row: PlanRow, minM: number): string {
+    if (row.peakMonthly === 0)        return '—'
+    if (row.salesMonths < minM)       return row.coverage.toFixed(1) + '개월'
     return row.coverage.toFixed(1) + '개월'
   }
 
@@ -168,12 +181,11 @@ export default function ImportTab() {
     const wb = new ExcelJS.Workbook()
     const ws = wb.addWorksheet('완제품 수입 발주계획')
 
-    const HEADERS = [
+    ws.addRow([
       '카테고리', '품목코드', '품목명', '규격',
-      '현재고', '월간최고판매', '커버리지(개월)',
+      '현재고', '판매월수', '월간최고', '커버리지(개월)',
       `목표재고(${targetMonths}개월)`, '발주필요량', '상태',
-    ]
-    ws.addRow(HEADERS)
+    ])
     ws.getRow(1).eachCell(cell => {
       cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } }
       cell.font      = { bold: true, size: 9, color: { argb: 'FFFFFFFF' }, name: 'Arial' }
@@ -183,20 +195,21 @@ export default function ImportTab() {
     ws.getRow(1).height = 20
 
     for (const row of rows) {
-      const s       = rowStatus(row, targetMonths)
-      const xlRow   = ws.addRow([
-        row.category,
-        row.code,
-        row.name,
-        row.spec,
+      const s     = rowStatus(row, targetMonths, minMonths)
+      const xlRow = ws.addRow([
+        row.category, row.code, row.name, row.spec,
         row.stock,
+        row.salesMonths || '',
         row.peakMonthly || '',
         row.peakMonthly ? parseFloat(row.coverage.toFixed(1)) : '',
-        row.peakMonthly ? row.peakMonthly * targetMonths : '',
+        row.peakMonthly && s !== 'intermittent' ? row.peakMonthly * targetMonths : '',
         row.orderNeeded || '',
         STATUS_LABEL[s],
       ])
-      const fillArgb = s === 'urgent' ? 'FFFFCCCC' : s === 'warning' ? 'FFFFFBCC' : 'FFFFFFFF'
+      const fillArgb =
+        s === 'urgent'       ? 'FFFFCCCC' :
+        s === 'warning'      ? 'FFFFFBCC' :
+        s === 'intermittent' ? 'FFF3E8FF' : 'FFFFFFFF'
       xlRow.eachCell(cell => {
         cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillArgb } }
         cell.font   = { size: 9, name: 'Arial' }
@@ -205,19 +218,22 @@ export default function ImportTab() {
     }
 
     ws.columns = [
-      { width: 16 }, { width: 22 }, { width: 40 }, { width: 18 },
-      { width: 10 }, { width: 12 }, { width: 14 }, { width: 14 }, { width: 12 }, { width: 12 },
+      { width: 16 }, { width: 22 }, { width: 38 }, { width: 18 },
+      { width: 10 }, { width: 10 }, { width: 12 }, { width: 14 }, { width: 14 }, { width: 12 }, { width: 12 },
     ]
-    for (let c = 5; c <= 9; c++) ws.getColumn(c).alignment = { horizontal: 'right' }
+    for (let c = 5; c <= 10; c++) ws.getColumn(c).alignment = { horizontal: 'right' }
 
     const buf = await wb.xlsx.writeBuffer()
     downloadXlsx(buf as ArrayBuffer, `완제품수입발주계획_${today()}.xlsx`)
   }
 
-  const urgentCount  = rows.filter(r => rowStatus(r, targetMonths) === 'urgent').length
-  const warningCount = rows.filter(r => rowStatus(r, targetMonths) === 'warning').length
-  const okCount      = rows.filter(r => rowStatus(r, targetMonths) === 'ok').length
-  const noDataCount  = rows.filter(r => rowStatus(r, targetMonths) === 'no_data').length
+  const counts = useMemo(() => ({
+    urgent:       rows.filter(r => rowStatus(r, targetMonths, minMonths) === 'urgent').length,
+    warning:      rows.filter(r => rowStatus(r, targetMonths, minMonths) === 'warning').length,
+    ok:           rows.filter(r => rowStatus(r, targetMonths, minMonths) === 'ok').length,
+    intermittent: rows.filter(r => rowStatus(r, targetMonths, minMonths) === 'intermittent').length,
+    no_data:      rows.filter(r => rowStatus(r, targetMonths, minMonths) === 'no_data').length,
+  }), [rows, targetMonths, minMonths])
 
   return (
     <div className="p-6 space-y-5 max-w-full">
@@ -226,21 +242,32 @@ export default function ImportTab() {
         <p className="text-sm text-gray-500 mt-0.5">현재고와 판매 데이터를 기반으로 수입 필요 품목을 자동 도출합니다.</p>
       </div>
 
-      {/* 목표 개월수 설정 */}
-      <div className="bg-gray-50 border rounded-lg px-4 py-3 flex items-center gap-4 flex-wrap">
-        <span className="text-sm font-medium text-gray-700">목표 재고 개월수</span>
-        <input
-          type="number" min={1} max={12} value={targetMonths}
-          onChange={e => setTarget(Math.max(1, parseInt(e.target.value) || 1))}
-          className="w-16 border rounded px-2 py-1 text-sm text-center"
-        />
-        <span className="text-sm text-gray-500">개월</span>
-        <span className="text-xs text-gray-400 border-l pl-4">
-          커버리지 = 현재고 ÷ 월간최고  /  발주필요량 = (월간최고 × 목표개월) − 현재고
+      {/* 설정 */}
+      <div className="bg-gray-50 border rounded-lg px-4 py-3 flex items-center gap-6 flex-wrap text-sm">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-gray-700">목표 재고</span>
+          <input
+            type="number" min={1} max={12} value={targetMonths}
+            onChange={e => setTarget(Math.max(1, parseInt(e.target.value) || 1))}
+            className="w-14 border rounded px-2 py-1 text-center"
+          />
+          <span className="text-gray-500">개월</span>
+        </div>
+        <div className="flex items-center gap-2 border-l pl-6">
+          <span className="font-medium text-gray-700">간헐적 수요 기준</span>
+          <input
+            type="number" min={1} max={36} value={minMonths}
+            onChange={e => setMinMonths(Math.max(1, parseInt(e.target.value) || 1))}
+            className="w-14 border rounded px-2 py-1 text-center"
+          />
+          <span className="text-gray-500">개월 미만</span>
+        </div>
+        <span className="text-xs text-gray-400 border-l pl-6">
+          판매 발생 월 수가 기준 미만이면 간헐적 수요로 분류 → 발주 대상 제외
         </span>
       </div>
 
-      {/* 파일 업로드 2종 */}
+      {/* 파일 업로드 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FileUploader
           label="재고 파일 (이카운트 수불부 또는 EMP 재고현황 — 자동 감지)"
@@ -280,10 +307,11 @@ export default function ImportTab() {
           {/* 요약 배너 */}
           <div className="flex items-center gap-3 bg-gray-50 border rounded-lg px-4 py-2.5 flex-wrap text-sm">
             <span className="font-medium text-gray-700">총 {rows.length}개 품목</span>
-            {urgentCount  > 0 && <span className="text-red-600 font-medium">🔴 발주필요 {urgentCount}</span>}
-            {warningCount > 0 && <span className="text-yellow-600 font-medium">⚠️ 주의 {warningCount}</span>}
-            {okCount      > 0 && <span className="text-green-600">✅ 재고충분 {okCount}</span>}
-            {noDataCount  > 0 && <span className="text-gray-400">— 이력없음 {noDataCount}</span>}
+            {counts.urgent       > 0 && <span className="text-red-600 font-medium">🔴 발주필요 {counts.urgent}</span>}
+            {counts.warning      > 0 && <span className="text-yellow-600 font-medium">⚠️ 주의 {counts.warning}</span>}
+            {counts.ok           > 0 && <span className="text-green-600">✅ 재고충분 {counts.ok}</span>}
+            {counts.intermittent > 0 && <span className="text-purple-600">🔮 간헐적수요 {counts.intermittent}</span>}
+            {counts.no_data      > 0 && <span className="text-gray-400">— 이력없음 {counts.no_data}</span>}
             <button
               onClick={handleDownload}
               className="ml-auto px-4 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition"
@@ -302,6 +330,7 @@ export default function ImportTab() {
                   <th className="px-3 py-2 text-left whitespace-nowrap">품목명</th>
                   <th className="px-3 py-2 text-left whitespace-nowrap">규격</th>
                   <th className="px-3 py-2 text-right whitespace-nowrap">현재고</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap" title="전체 기간 중 판매가 발생한 월 수">판매월수</th>
                   <th className="px-3 py-2 text-right whitespace-nowrap">월간최고</th>
                   <th className="px-3 py-2 text-right whitespace-nowrap">커버리지</th>
                   <th className="px-3 py-2 text-right whitespace-nowrap">발주필요량</th>
@@ -310,7 +339,7 @@ export default function ImportTab() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((row, i) => {
-                  const s  = rowStatus(row, targetMonths)
+                  const s  = rowStatus(row, targetMonths, minMonths)
                   const bg = STATUS_ROW_BG[s] || (i % 2 === 0 ? 'bg-white' : 'bg-gray-50')
                   return (
                     <tr key={row.code} className={bg}>
@@ -319,10 +348,13 @@ export default function ImportTab() {
                       <td className="px-3 py-1.5 whitespace-nowrap">{row.name}</td>
                       <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{row.spec}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">{row.stock.toLocaleString()}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
+                        {row.salesMonths > 0 ? row.salesMonths : '—'}
+                      </td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
                         {row.peakMonthly > 0 ? row.peakMonthly.toLocaleString() : '—'}
                       </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">{coverageText(row)}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{coverageText(row, minMonths)}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums font-medium">
                         {row.orderNeeded > 0 ? row.orderNeeded.toLocaleString() : '—'}
                       </td>
