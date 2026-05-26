@@ -6,9 +6,8 @@ import type { OjcProduct, ItemCode } from '../lib/supabase'
 import type { DetectedFields } from '../lib/ojcAutoDetect'
 import { analyzeProduct } from '../lib/ojcAutoDetect'
 import EmpCodeGenerator from './EmpCodeGenerator'
-import EmpLocationGenerator from './EmpLocationGenerator'
 
-type SubTab = 'auto' | 'manual' | 'emp' | 'location'
+type SubTab = 'auto' | 'manual' | 'emp'
 
 function lengthToCodeAlgo(m: number): string | null {
   if ([100, 150, 200, 250, 300].includes(m)) return String(m)
@@ -195,10 +194,9 @@ export default function PartNumberGenerator({ ojcProducts, setOjcProducts }: Pro
       {/* 서브탭 */}
       <div className="flex border-b mb-6">
         {([
-          ['auto',     'OJC 품번 — 자동 분석'],
-          ['manual',   'OJC 품번 — 수동 선택'],
-          ['emp',      'EMP 코드 생성기'],
-          ['location', 'EMP 로케이션 생성기'],
+          ['auto',   'OJC 품번 — 자동 분석'],
+          ['manual', 'OJC 품번 — 수동 선택'],
+          ['emp',    'EMP 코드 생성기'],
         ] as [SubTab, string][]).map(([id, lbl]) => (
           <button
             key={id}
@@ -537,8 +535,7 @@ export default function PartNumberGenerator({ ojcProducts, setOjcProducts }: Pro
         </div>
       )}
 
-      {subTab === 'emp'      && <EmpCodeGenerator />}
-      {subTab === 'location' && <EmpLocationGenerator />}
+      {subTab === 'emp' && <EmpCodeGenerator />}
     </div>
   )
 }
