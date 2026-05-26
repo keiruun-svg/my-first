@@ -7,7 +7,7 @@ import { loadDetailedSales, saveDetailedSales, loadItemCodes } from '../lib/supa
 import type { ItemCode } from '../lib/supabase'
 import { parseDetailedSalesFile } from '../lib/parse/parseDetailedSales'
 import type { DetailedSalesRow } from '../lib/parse/parseDetailedSales'
-import { classifyOjc } from '../lib/ojcFilter'
+import { classifyOjc, looksLikeOjc } from '../lib/ojcFilter'
 import { downloadXlsx, today } from '../lib/download'
 
 interface YearStat { months: number; total: number }
@@ -62,9 +62,10 @@ export default function ImportTab() {
   const [itemCodes,    setItemCodes]  = useState<ItemCode[]>([])
   const [targetMonths, setTarget]     = useState(3)
   const [minMonths,    setMinMonths]  = useState(3)
-  const [rawRows,      setRawRows]    = useState<RawRow[]>([])
-  const [years,        setYears]      = useState<string[]>([])
-  const [error,        setError]      = useState('')
+  const [rawRows,           setRawRows]           = useState<RawRow[]>([])
+  const [years,             setYears]             = useState<string[]>([])
+  const [unclassifiedItems, setUnclassifiedItems] = useState<{ code: string; name: string; source: 'sales' | 'stock' }[]>([])
+  const [error,             setError]             = useState('')
   const [loading,      setLoading]    = useState(false)
   const [subTab,       setSubTab]     = useState<SubTab>('plan')
 
@@ -118,13 +119,21 @@ export default function ImportTab() {
       const stockMap = await parseStockFile(stockFile)
       const itemMap  = new Map<string, ItemCode>(itemCodes.map(i => [i.code, i]))
 
-      const monthlyMap = new Map<string, Map<string, number>>()
-      const nameMap    = new Map<string, string>()
-      const catMap     = new Map<string, string>()
+      const monthlyMap  = new Map<string, Map<string, number>>()
+      const nameMap     = new Map<string, string>()
+      const catMap      = new Map<string, string>()
+      const unclassified: { code: string; name: string; source: 'sales' | 'stock' }[] = []
+      const seenUncls   = new Set<string>()
 
       for (const r of salesRows) {
         const cat = classifyOjc(r.name)
-        if (!cat) continue
+        if (!cat) {
+          if (looksLikeOjc(r.name) && !seenUncls.has(r.code)) {
+            seenUncls.add(r.code)
+            unclassified.push({ code: r.code, name: r.name, source: 'sales' })
+          }
+          continue
+        }
         nameMap.set(r.code, r.name)
         catMap.set(r.code, cat)
         if (!monthlyMap.has(r.code)) monthlyMap.set(r.code, new Map())
@@ -138,10 +147,17 @@ export default function ImportTab() {
         const item = itemMap.get(code)
         if (!item) continue
         const cat = classifyOjc(item.name)
-        if (!cat) continue
+        if (!cat) {
+          if (looksLikeOjc(item.name) && !seenUncls.has(code)) {
+            seenUncls.add(code)
+            unclassified.push({ code, name: item.name, source: 'stock' })
+          }
+          continue
+        }
         nameMap.set(code, item.name)
         catMap.set(code, cat)
       }
+      setUnclassifiedItems(unclassified)
 
       // 전체 연도 목록 수집
       const yearSet = new Set<string>()
@@ -393,6 +409,24 @@ export default function ImportTab() {
                   📥 Excel 다운로드
                 </button>
               </div>
+
+              {/* 미분류 경고 */}
+              {unclassifiedItems.length > 0 && (
+                <div className="border border-orange-200 bg-orange-50 rounded-lg p-3 space-y-1.5">
+                  <p className="text-sm font-medium text-orange-800">
+                    ⚠️ OJC로 보이지만 분류되지 않은 품목 {unclassifiedItems.length}개 — 이카운트/EMP 품명 확인 필요
+                  </p>
+                  <div className="space-y-0.5">
+                    {unclassifiedItems.map(item => (
+                      <div key={item.code} className="text-xs text-orange-700 font-mono flex gap-2">
+                        <span className="text-orange-400">{item.source === 'sales' ? '판매' : '재고'}</span>
+                        <span className="font-semibold">{item.code}</span>
+                        <span className="text-orange-600">{item.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* 발주계획 테이블 */}
               {subTab === 'plan' && (
