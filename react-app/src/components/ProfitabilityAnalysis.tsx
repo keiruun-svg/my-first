@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import ExcelJS from 'exceljs'
 import FileUploader from './FileUploader'
 import {
@@ -325,18 +325,18 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
           {/* 권고 유형 */}
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">권고 유형</p>
-            <div className="space-y-2.5 text-xs text-gray-700">
+            <div className="grid gap-y-2.5 text-xs" style={{ gridTemplateColumns: 'auto 1fr' }}>
               {[
-                { bg: 'bg-green-100',  text: 'text-green-700',  label: '✅ 맥산 생산 권고', desc: '국내 생산 유리' },
-                { bg: 'bg-orange-100', text: 'text-orange-700', label: '⚖ 맥산 생산 가능',  desc: '맥산 가중치 5% 적용 시 생산 가능 — 가급적 지양 (CEO 지시, 26년 5월)' },
-                { bg: 'bg-blue-100',   text: 'text-blue-700',   label: '📦 수입 권고',       desc: '수입 유리' },
-                { bg: 'bg-yellow-100', text: 'text-yellow-700', label: '🔍 검토필요',         desc: '수익성 악화 — 영업 부서와 협의' },
-                { bg: 'bg-red-100',    text: 'text-red-700',    label: '⚠ 철수검토',         desc: '수익 없음 — 영업 부서와 협의' },
+                { bg: 'bg-green-100',  text: 'text-green-700',  label: '✅ 맥산 생산 권고', desc: '국내 생산이 원가상 유리' },
+                { bg: 'bg-orange-100', text: 'text-orange-700', label: '⚖ 맥산 생산 가능',  desc: '가중치 5% 기준 내 생산 유지 가능 — 가급적 지양 (CEO 지시, 26년 5월)' },
+                { bg: 'bg-blue-100',   text: 'text-blue-700',   label: '📦 수입 권고',       desc: '수입이 원가상 유리' },
+                { bg: 'bg-yellow-100', text: 'text-yellow-700', label: '🔍 검토필요',         desc: '수익성 저조 — 영업 부서 판가 검토 요청' },
+                { bg: 'bg-red-100',    text: 'text-red-700',    label: '⚠ 철수검토',         desc: '현 판매가로 수익 없음 — 단가 재협상 또는 단종 건의' },
               ].map(({ bg, text, label, desc }) => (
-                <div key={label} className="flex items-start gap-3">
-                  <span className={`px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 ${bg} ${text}`}>{label}</span>
-                  <span className="text-gray-600 leading-relaxed">{desc}</span>
-                </div>
+                <React.Fragment key={label}>
+                  <span className={`px-2 py-0.5 rounded-full whitespace-nowrap self-start mr-3 ${bg} ${text}`}>{label}</span>
+                  <span className="text-gray-600 leading-relaxed self-center">{desc}</span>
+                </React.Fragment>
               ))}
             </div>
           </div>
