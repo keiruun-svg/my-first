@@ -34,8 +34,10 @@ admin 탭: `VITE_ADMIN_PASS` 비밀번호 게이트 (session-level, 페이지 �
 | 파일 | 역할 |
 |------|------|
 | `components/Dashboard.tsx` | 홈 — KPI 6개 + 수입 D-day + 재고대사 + OJC CAGR |
-| `components/ImportTab.tsx` | 수입 관리 — 서브탭: 발주계획 / 간헐적수요 / 발주현황 |
+| `components/ImportTab.tsx` | 수입 관리 — 서브탭: 발주계획 / 간헐적수요 / 발주현황 / 수익성 분석 |
 | `components/ImportOrdersView.tsx` | 발주 현황 (업체+차수 단위 등록·D-day·입고처리) |
+| `components/ProfitabilityAnalysis.tsx` | 수익성 분석 — 원가 파일 업로드 → 마진율 + 권고 테이블 + Excel |
+| `lib/parse/parseCostFile.ts` | 맥산 생산원가 / FLC 수입원가 / 계약 단가 파싱 → `Map<code, CostEntry\|ContractItem>` |
 | `components/InventoryReconciliationTab.tsx` | 재고 대사 (EMP ↔ 이카운트) + 이력 누적 차트 |
 | `components/PartNumberGenerator.tsx` | OJC 품번(자동/수동) + EMP 코드 생성기 서브탭 |
 | `components/OjcRulesEditor.tsx` | OJC 코드표 편집 (관리자 탭 하위, 독립 컴포넌트) |
@@ -69,6 +71,13 @@ STEP 3: 가공파일 + 판매분석 + metadata + inventory
 **발주 현황** (`ImportOrdersView`): 업체+연도+차수 단위 (예: `FLC 26-05차`)  
 - 차수 자동 제안, D-day 카운트, 입고처리 → 리드타임 자동 계산  
 - `localStorage: ajw_import_orders`
+
+**수익성 분석** (`ProfitabilityAnalysis`): 맥산(국내) + FLC(수입) 원가 + 계약 단가 파일 업로드 → 마진율·권고  
+- 원가 적용: KT향 → 표준원가, LG향·기타 → 생산원가
+- 판매가: 계약 단가 우선 → 없으면 판매 이력 평균 (DetailedSalesRow)
+- `마진율 = (판매가 − 원가) / 판매가 × 100`
+- `생산유지기준 = max(20, minMarginPct × 3)` (검토필요 구간 자동 확장)
+- `importThreshold = thresholdEnabled ? 100 + bufferPct : 100` (맥산 생산 가중치 ON/OFF)
 
 ---
 
@@ -120,7 +129,7 @@ STEP 3: 가공파일 + 판매분석 + metadata + inventory
 
 ---
 
-## 구현 상태 (2026-05-26)
+## 구현 상태 (2026-05-28)
 
 | 탭 | 상태 |
 |---|---|
@@ -128,11 +137,11 @@ STEP 3: 가공파일 + 판매분석 + metadata + inventory
 | STEP 1/2/3 | 🔄 피드백 수정 중 |
 | 판매 현황 분석 | 🔄 피드백 수정 중 |
 | 재고 대사 | 🔄 피드백 수정 중 (이력 누적 + 추이 차트 완료) |
-| 수입 관리 | ✅ 완료 (발주계획/간헐적수요/발주현황) |
+| 수입 관리 | ✅ 완료 (발주계획/간헐적수요/발주현황/수익성 분석) |
 | 품번 생성기 | 🔄 피드백 수정 중 (EMP 로케이션 탭 숨김 — KT향 재구성 예정) |
 | 관리자 | ✅ 완료 (자재관리 / OJC 코드표 / 설정) |
 
-**미구현**: EMP 로케이션 KT향 / 리드타임 집계 분석 / 3단계 수익성 분석
+**미구현**: EMP 로케이션 KT향 / 리드타임 집계 분석
 
 ---
 

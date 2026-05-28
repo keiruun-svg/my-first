@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import ExcelJS from 'exceljs'
 import FileUploader from './FileUploader'
 import ImportOrdersView from './ImportOrdersView'
+import ProfitabilityAnalysis from './ProfitabilityAnalysis'
 import { parseStockFile } from '../lib/parse/parseStockFile'
 import { loadDetailedSales, saveDetailedSales, loadItemCodes } from '../lib/supabase'
 import type { ItemCode } from '../lib/supabase'
@@ -53,7 +54,7 @@ const STATUS_SORT: Record<RowStatus, number> = {
   urgent: 0, warning: 1, ok: 2, intermittent: 3, no_data: 4,
 }
 
-type SubTab = 'plan' | 'intermittent' | 'orders'
+type SubTab = 'plan' | 'intermittent' | 'orders' | 'profitability'
 
 export default function ImportTab() {
   const [stockFile,    setStockFile]  = useState<File | null>(null)
@@ -331,10 +332,18 @@ export default function ImportTab() {
         <button className={tabCls('orders')} onClick={() => setSubTab('orders')}>
           📦 발주 현황
         </button>
+        <button className={tabCls('profitability')} onClick={() => setSubTab('profitability')}>
+          💰 수익성 분석
+        </button>
       </div>
 
+      {/* 수익성 분석 탭 */}
+      {subTab === 'profitability' && (
+        <ProfitabilityAnalysis salesRows={salesRows} />
+      )}
+
       {/* 발주계획 / 간헐적 수요 탭 */}
-      {subTab !== 'orders' && (
+      {subTab !== 'orders' && subTab !== 'profitability' && (
         <div className="space-y-5">
           {/* 설정 */}
           <div className="bg-gray-50 border rounded-lg px-4 py-3 flex items-center gap-6 flex-wrap text-sm">
@@ -491,7 +500,6 @@ export default function ImportTab() {
         </div>
       )}
 
-      {/* 발주 현황 탭 — 항상 독립 접근 가능 */}
       {subTab === 'orders' && <ImportOrdersView />}
     </div>
   )

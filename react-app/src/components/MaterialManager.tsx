@@ -28,6 +28,22 @@ interface ImportRow {
 const DEFAULT_COMP: HousingComp          = { 품번: '', 품명: '', 구매처: '', 리드타임: null }
 const DEFAULT_INV:  InventoryHousingItem = { 현재고: 0, 기발주: 0 }
 
+interface PrevSnapshot {
+  date:    string
+  cable:   Record<string, { 현재고: number; 기발주: number }>
+  housing: Record<string, Array<{ 현재고: number; 기발주: number }>>
+  ferrule: Record<string, { 현재고: number; 기발주: number }>
+}
+
+function DeltaBadge({ curr, prev }: { curr: number; prev: number | null }) {
+  if (prev === null) return null
+  const d = curr - prev
+  if (d === 0) return <span className="text-gray-300 text-[10px] ml-1">±0</span>
+  return d > 0
+    ? <span className="text-green-600 text-[10px] font-bold ml-1">▲{d.toLocaleString()}</span>
+    : <span className="text-red-500 text-[10px] font-bold ml-1">▼{Math.abs(d).toLocaleString()}</span>
+}
+
 const thCls = 'px-3 py-2 text-xs font-bold text-gray-700 border-b-2 border-gray-200 bg-gray-50 whitespace-nowrap text-left'
 const thR   = `${thCls} text-right`
 
@@ -52,6 +68,15 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
   const [importApplied,  setImportApplied]  = useState(false)
   const [importFileName, setImportFileName] = useState('')
   const erpFileRef = useRef<HTMLInputElement>(null)
+
+  // ── 주간 재고 비교 스냅샷 (ERP 업로드 적용 시 자동 저장) ──────
+  const [prevSnapshot, setPrevSnapshot] = useState<PrevSnapshot | null>(() => {
+    try { const s = localStorage.getItem('ajw_inv_snapshot_prev'); return s ? JSON.parse(s) : null } catch { return null }
+  })
+
+  // ── 구형 자재 숨김 키워드 + 검색 필터 ────────────────────────
+  const [hideKeyword, setHideKeyword] = useState('')
+  const [searchQuery, setSearchQuery]  = useState('')
 
   // ── 하우징 다중 부품 헬퍼 ─────────────────────────────────────
   function getHousingComps(key: string): HousingComp[] {
@@ -353,6 +378,18 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
 
   function applyErpImport(useTotal: boolean) {
     if (!importRows) return
+    // 현재 재고를 이전 주 스냅샷으로 보관 (ERP 업로드 적용 직전)
+    const snap: PrevSnapshot = {
+      date: new Date().toLocaleDateString('ko-KR'),
+      cable:   Object.fromEntries(Object.entries(inventory.cable).map(([k, v]) => [k, { 현재고: v?.현재고 ?? 0, 기발주: v?.기발주 ?? 0 }])),
+      housing: Object.fromEntries(Object.entries(inventory.housing).map(([k, vRaw]) => {
+        const arr = Array.isArray(vRaw) ? vRaw : [vRaw as InventoryHousingItem]
+        return [k, arr.map(v => ({ 현재고: v?.현재고 ?? 0, 기발주: v?.기발주 ?? 0 }))]
+      })),
+      ferrule: Object.fromEntries(Object.entries(inventory.ferrule).map(([k, v]) => [k, { 현재고: v?.현재고 ?? 0, 기발주: v?.기발주 ?? 0 }])),
+    }
+    localStorage.setItem('ajw_inv_snapshot_prev', JSON.stringify(snap))
+    setPrevSnapshot(snap)
     const newCable    = { ...inventory.cable }
     const newHousing  = { ...inventory.housing }
     const newFerrule  = { ...inventory.ferrule }
@@ -410,13 +447,32 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
   const matched   = importRows?.filter(r => r.matchType) ?? []
   const unmatched = importRows?.filter(r => !r.matchType) ?? []
 
+  // ── 구형 숨김 + 검색 필터 ─────────────────────────────────────
+  const hideWords = hideKeyword.split(/[,\s]+/).map(w => w.trim().toLowerCase()).filter(Boolean)
+  const sq = searchQuery.trim().toLowerCase()
+
+  function isHidden(pai: string, type: string) {
+    return hideWords.length > 0 && hideWords.some(w => pai.toLowerCase().includes(w) || type.toLowerCase().includes(w))
+  }
+  function matchesSearch(key: string, kind: 'cable' | 'housing' | 'ferrule') {
+    if (!sq) return true
+    const [pai, type] = kind === 'ferrule' ? ['', key] : key.split('|')
+    if (pai.toLowerCase().includes(sq) || type.toLowerCase().includes(sq)) return true
+    if (kind === 'cable')   return (getCm(key).품번 ?? '').toLowerCase().includes(sq) || (getCm(key).품명 ?? '').toLowerCase().includes(sq)
+    if (kind === 'ferrule') return (getFm(key).품번 ?? '').toLowerCase().includes(sq) || (getFm(key).품명 ?? '').toLowerCase().includes(sq)
+    return getHousingComps(key).some(c => (c.품번 ?? '').toLowerCase().includes(sq) || (c.품명 ?? '').toLowerCase().includes(sq))
+  }
+  const filteredCableKeys   = cableKeys.filter(k => { const [p, t] = k.split('|'); return !isHidden(p, t) && matchesSearch(k, 'cable') })
+  const filteredHousingKeys = housingKeys.filter(k => { const [p, t] = k.split('|'); return !isHidden(p, t) && matchesSearch(k, 'housing') })
+  const filteredFerruleKeys = ferruleKeys.filter(k => !isHidden('', k) && matchesSearch(k, 'ferrule'))
+
   // 하우징 표시용 전개 행
   interface HousingDisplayRow {
     key: string; ci: number; pai: string; type: string
     comp: HousingComp; inv: InventoryHousingItem
     missing: boolean; isFirst: boolean; isLast: boolean; total: number
   }
-  const housingDisplayRows: HousingDisplayRow[] = housingKeys.flatMap(key => {
+  const housingDisplayRows: HousingDisplayRow[] = filteredHousingKeys.flatMap(key => {
     const [pai, type] = key.split('|')
     const comps = getHousingComps(key)
     const invs  = getHousingInvs(key)
@@ -657,6 +713,51 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
         </div>
       )}
 
+      {/* ── 필터 바 ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-4 flex-wrap text-xs bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-gray-500 whitespace-nowrap">🔍 검색</span>
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="파이·타입·품번·품명"
+            className="border border-gray-200 rounded px-2 py-1 text-xs w-36 bg-white focus:outline-none focus:border-blue-400"
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-gray-500 whitespace-nowrap">🙈 구형 숨김</span>
+          <input
+            value={hideKeyword}
+            onChange={e => setHideKeyword(e.target.value)}
+            placeholder="키워드 (예: 구형, 단종)"
+            className="border border-gray-200 rounded px-2 py-1 text-xs w-44 bg-white focus:outline-none focus:border-orange-400"
+          />
+          {hideKeyword && (() => {
+            const hiddenCount = tab === 'cable'
+              ? cableKeys.length - filteredCableKeys.length
+              : tab === 'housing'
+              ? housingKeys.length - filteredHousingKeys.length
+              : ferruleKeys.length - filteredFerruleKeys.length
+            return hiddenCount > 0
+              ? <span className="text-orange-500 font-semibold">{hiddenCount}건 숨김</span>
+              : null
+          })()}
+        </div>
+        {prevSnapshot && (
+          <span className="text-gray-400 flex items-center gap-1">
+            📅 전주 기준: <b className="text-gray-600">{prevSnapshot.date}</b>
+            <span className="text-gray-300 ml-1">— ERP 업로드 적용 시 자동 갱신</span>
+          </span>
+        )}
+        {!prevSnapshot && (
+          <span className="text-gray-400 italic">ERP 재고 업로드 적용 시 전주 비교 컬럼이 표시됩니다</span>
+        )}
+        {(hideKeyword || searchQuery) && (
+          <button onClick={() => { setHideKeyword(''); setSearchQuery('') }}
+            className="text-gray-400 hover:text-gray-700 underline ml-auto">초기화</button>
+        )}
+      </div>
+
       {/* ── 통합 테이블 ─────────────────────────────────────── */}
       <div className="overflow-x-auto border border-gray-200 rounded-lg">
         <table className="text-xs w-full border-collapse bg-white">
@@ -771,9 +872,17 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
                     </td>
                   ))}
                   <td className="px-1 py-1">
-                    <input type="number" min="0" value={inv.현재고}
-                      onChange={e => tab==='cable' ? updateCableInv(key,'현재고',e.target.value) : updateFerruleInv(key,'현재고',e.target.value)}
-                      className={inputInvCls} />
+                    <div className="flex items-center gap-1">
+                      <input type="number" min="0" value={inv.현재고}
+                        onChange={e => tab==='cable' ? updateCableInv(key,'현재고',e.target.value) : updateFerruleInv(key,'현재고',e.target.value)}
+                        className={inputInvCls} />
+                      {prevSnapshot && (
+                        <DeltaBadge
+                          curr={inv.현재고}
+                          prev={tab==='cable' ? (prevSnapshot.cable[key]?.현재고 ?? null) : (prevSnapshot.ferrule[key]?.현재고 ?? null)}
+                        />
+                      )}
+                    </div>
                   </td>
                   <td className="px-1 py-1">
                     <input type="number" min="0" value={inv.기발주 ?? 0}
