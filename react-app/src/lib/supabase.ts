@@ -228,6 +228,7 @@ export interface ImportOrder {
   orderDate:    string   // 'YYYY-MM-DD'
   expectedDate: string   // 'YYYY-MM-DD'
   actualDate?:  string   // 'YYYY-MM-DD' — 입고 완료 시 기입
+  note?:        string   // 발주계획에서 가져온 품목 메모
 }
 
 export function loadImportOrders(): ImportOrder[] {

@@ -32,14 +32,12 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
   const [error,             setError]             = useState('')
   const [hasBothCost,       setHasBothCost]       = useState(false)
   const [showLegend,        setShowLegend]        = useState(false)
-  // 수입전환 가중치: OFF=100%, ON=(100+bufferPct)%
-  const [thresholdEnabled,  setThresholdEnabled]  = useState(false)
-  const [bufferPct,         setBufferPct]         = useState(5)
+  // 맥산 생산 가중치: 0 = 없음, N > 0 = 맥산이 FLC보다 N%까지 비싸도 생산 유지
+  const [bufferPct,         setBufferPct]         = useState(0)
   // 최소 마진율: 이 미만이면 철수검토
   const [minMarginPct,      setMinMarginPct]      = useState(0)
 
-  // 실제 적용 threshold
-  const importThreshold = thresholdEnabled ? 100 + bufferPct : 100
+  const importThreshold = bufferPct > 0 ? 100 + bufferPct : 100
 
   // code → { totalPrice, totalQty, yearSet }
   const salesMap = useMemo(() => {
@@ -260,43 +258,25 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
         </div>
       </div>
 
-      {/* 수입전환 가중치 설정 */}
+      {/* 맥산 생산 가중치 설정 */}
       <div className="bg-gray-50 border rounded-lg px-4 py-3 flex items-center gap-4 flex-wrap text-sm">
         <span className="font-medium text-gray-700">📦 맥산 생산 가중치</span>
-
-        {/* 토글 */}
-        <button
-          onClick={() => setThresholdEnabled(v => !v)}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${
-            thresholdEnabled ? 'bg-blue-600' : 'bg-gray-300'
-          }`}
-        >
-          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-            thresholdEnabled ? 'translate-x-6' : 'translate-x-1'
-          }`} />
-        </button>
-
-        {/* 버퍼값 입력 — 활성화 시만 표시 */}
-        {thresholdEnabled && (
-          <div className="flex items-center gap-1.5">
-            <input
-              type="number"
-              min={1}
-              max={30}
-              step={1}
-              value={bufferPct}
-              onChange={e => setBufferPct(Math.min(30, Math.max(1, parseInt(e.target.value) || 5)))}
-              className="w-14 border rounded px-2 py-1 text-center font-mono"
-            />
-            <span className="text-gray-500">%</span>
-          </div>
-        )}
-
-        {/* 현재 상태 설명 */}
+        <div className="flex items-center gap-1.5">
+          <input
+            type="number"
+            min={0}
+            max={30}
+            step={1}
+            value={bufferPct}
+            onChange={e => setBufferPct(Math.min(30, Math.max(0, parseInt(e.target.value) || 0)))}
+            className="w-14 border rounded px-2 py-1 text-center font-mono"
+          />
+          <span className="text-gray-500">%</span>
+        </div>
         <span className="text-xs text-gray-500 border-l pl-4">
-          {thresholdEnabled
-            ? `가중치 ON — 맥산이 FLC보다 ${bufferPct}%까지 비싸도 국내생산 유지`
-            : '가중치 OFF — FLC가 1원이라도 저렴하면 수입 권고'}
+          {bufferPct > 0
+            ? `맥산이 FLC보다 ${bufferPct}%까지 비싸도 국내생산 유지`
+            : '0% — FLC가 1원이라도 저렴하면 수입 권고'}
         </span>
       </div>
 
@@ -317,59 +297,67 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
       </div>
 
       {showLegend && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-5 py-4 text-sm space-y-4">
-          <p className="font-semibold text-[#1F3864]">📋 권고 기준 안내</p>
+        <div className="text-left bg-blue-50 border border-blue-200 rounded-lg p-5 text-sm space-y-5">
+          <p className="font-semibold text-[#1F3864] text-base">📋 권고 기준 안내</p>
 
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">신호등 — 해당 마진율 수준</p>
-            <div className="flex flex-col gap-1 text-xs text-gray-700">
-              <span>🟢 마진율 20% 이상 — 수익성 양호</span>
-              <span>🟡 마진율 0~20% — 수익성 낮음, 영업 부서 확인 필요</span>
-              <span>🔴 마진율 0% 미만 — 원가가 판매가를 초과</span>
-              <span className="text-gray-400 mt-0.5">수입 권고 시 FLC 마진율 기준 / 맥산 생산 권고·검토필요 시 맥산 마진율 기준 / 철수검토 시 양쪽 중 더 나은 값</span>
+          {/* 신호등 */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">신호등 — 마진율 수준</p>
+            <div className="grid grid-cols-1 gap-1 text-xs text-gray-700">
+              <div className="flex items-center gap-2">
+                <span className="text-base leading-none">🟢</span>
+                <span><b>20% 이상</b> — 수익성 양호</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-base leading-none">🟡</span>
+                <span><b>0 ~ 20%</b> — 수익성 낮음, 영업 부서 확인 필요</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-base leading-none">🔴</span>
+                <span><b>0% 미만</b> — 원가가 판매가 초과</span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 pl-1">
+              수입 권고 → FLC 마진율 기준 &nbsp;·&nbsp;
+              맥산 생산 권고·검토필요 → 맥산 마진율 기준 &nbsp;·&nbsp;
+              철수검토 → 양쪽 중 더 나은 값
+            </p>
+          </div>
+
+          {/* 권고 유형 */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">권고 유형</p>
+            <div className="space-y-2.5 text-xs text-gray-700">
+              {[
+                { bg: 'bg-green-100',  text: 'text-green-700',  label: '✅ 맥산 생산 권고', desc: '맥산 마진 ≥ 생산유지기준이고, 맥산 원가가 FLC보다 저렴하거나 동등한 경우' },
+                { bg: 'bg-orange-100', text: 'text-orange-700', label: '⚖ 맥산 생산 가능',  desc: '맥산 마진은 기준 이상이나 원가가 FLC보다 비쌈 — 가중치 버퍼 덕분에 수입 권고를 피한 케이스. 가중치 0%면 수입 권고로 전환' },
+                { bg: 'bg-blue-100',   text: 'text-blue-700',   label: '📦 수입 권고',       desc: 'FLC 원가가 유리하거나 맥산 마진이 최소 마진율 미달인 경우' },
+                { bg: 'bg-yellow-100', text: 'text-yellow-700', label: '🔍 검토필요',         desc: '마진이 최소 기준을 넘지만 생산유지기준 미만 — 영업 부서 협의 권장' },
+                { bg: 'bg-red-100',    text: 'text-red-700',    label: '⚠ 철수검토',         desc: '모든 원가 옵션의 마진이 최소 마진율 미달 — 단가 재협상 또는 판매 중단 건의' },
+              ].map(({ bg, text, label, desc }) => (
+                <div key={label} className="flex items-start gap-3">
+                  <span className={`px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 ${bg} ${text}`}>{label}</span>
+                  <span className="text-gray-600 leading-relaxed">{desc}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">권고 유형</p>
-            <div className="flex flex-col gap-1.5 text-xs text-gray-700">
-              <div className="flex items-start gap-2">
-                <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 whitespace-nowrap shrink-0">✅ 맥산 생산 권고</span>
-                <span>맥산 마진이 생산유지기준 이상이고, 맥산이 FLC 대비 원래 저렴하거나 동등한 경우</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap shrink-0">⚖ 맥산 생산 가능</span>
-                <span>맥산 마진은 기준 이상이나 원가가 FLC보다 비쌈 — 가중치 설정 덕분에 수입 권고를 피한 케이스. 가중치를 OFF하면 수입 권고로 전환됨</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 whitespace-nowrap shrink-0">📦 수입 권고</span>
-                <span>FLC 원가가 유리하거나, 맥산 마진이 최소 마진율 미달인 경우</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700 whitespace-nowrap shrink-0">🔍 검토필요</span>
-                <span>마진이 최소 기준을 넘지만 생산유지기준 미만 — 개별 판단 필요 (영업 부서 협의 권장)</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 whitespace-nowrap shrink-0">⚠ 철수검토</span>
-                <span>모든 원가 옵션의 마진이 최소 마진율 미달 — 현재 판매가 구조로 수익이 나지 않음. 영업 부서에 단가 재협상 또는 판매 중단을 건의</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">설정값</p>
-            <div className="flex flex-col gap-1 text-xs text-gray-700">
-              <span><b>최소 마진율</b>: 영업 부서의 마진 하한선. 이 값 미만은 무조건 철수검토. 기본 0% (모든 양의 마진 허용)</span>
-              <span><b>생산유지기준</b>: max(20%, 최소마진×3) — 자동 계산. 이 기준 이상이어야 생산/수입 권고를 받음</span>
-              <span><b>맥산 생산 가중치</b>: ON 시 맥산이 FLC보다 설정% 이내로 비싸면 맥산 생산을 유지. 국내 생산의 납기·품질 이점을 비용으로 환산한 버퍼</span>
-              <span><b>판매가</b>: 계약 단가 파일 업로드 시 계약 단가 우선 적용, 없으면 판매 이력 평균 단가 사용</span>
-            </div>
-          </div>
-
-          <div className="space-y-1 text-xs text-gray-500 border-t border-blue-200 pt-3">
-            <p className="font-medium text-gray-600">마진율 공식</p>
-            <code className="text-gray-700">마진율 = (판매가 − 원가) / 판매가 × 100</code>
-            <p className="mt-1">KT향 품목은 표준원가, LG향·기타는 생산원가를 적용합니다.</p>
+          {/* 설정값 */}
+          <div className="space-y-2 border-t border-blue-200 pt-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">설정값 & 공식</p>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+              <dt className="font-semibold text-gray-700 whitespace-nowrap">최소 마진율</dt>
+              <dd className="text-gray-600">이 값 미만이면 무조건 철수검토. 기본 0% (모든 양의 마진 허용)</dd>
+              <dt className="font-semibold text-gray-700 whitespace-nowrap">생산유지기준</dt>
+              <dd className="text-gray-600">max(20%, 최소마진×3) — 자동 계산. 이 기준 이상이어야 생산/수입 권고</dd>
+              <dt className="font-semibold text-gray-700 whitespace-nowrap">맥산 생산 가중치</dt>
+              <dd className="text-gray-600">0% = 없음. N% 입력 시 맥산이 FLC보다 N% 이내로 비싸도 생산 유지</dd>
+              <dt className="font-semibold text-gray-700 whitespace-nowrap">판매가</dt>
+              <dd className="text-gray-600">계약 단가 파일 우선 → 없으면 판매 이력 평균. KT향 → 표준원가, LG향·기타 → 생산원가</dd>
+              <dt className="font-semibold text-gray-700 whitespace-nowrap">마진율 공식</dt>
+              <dd className="text-gray-600"><code>(판매가 − 원가) / 판매가 × 100</code></dd>
+            </dl>
           </div>
         </div>
       )}
@@ -388,9 +376,7 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
             {counts.철수검토 > 0 && <span className="text-red-700 font-medium">⚠ 철수검토 {counts.철수검토}</span>}
             {hasBothCost && (
               <span className="text-xs text-gray-400 border-l pl-4">
-                {thresholdEnabled
-                  ? `가중치 ${bufferPct}% 적용 중`
-                  : '가중치 미적용'}
+                {bufferPct > 0 ? `가중치 ${bufferPct}% 적용 중` : '가중치 미적용'}
               </span>
             )}
             <button

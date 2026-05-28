@@ -28,7 +28,7 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10)
 }
 
-export default function ImportOrdersView() {
+export default function ImportOrdersView({ prefill }: { prefill?: { note: string } }) {
   const [orders,   setOrders]   = useState<ImportOrder[]>([])
   const [vendors,  setVendors]  = useState<Vendor[]>([])
   const [filter,   setFilter]   = useState<'all' | 'pending' | 'done'>('all')
@@ -43,7 +43,12 @@ export default function ImportOrdersView() {
     seq:          1,
     orderDate:    todayStr(),
     expectedDate: '',
+    note:         '',
   })
+
+  useEffect(() => {
+    if (prefill) setForm(f => ({ ...f, note: prefill.note }))
+  }, [prefill])
 
   useEffect(() => {
     setOrders(loadImportOrders())
@@ -70,6 +75,7 @@ export default function ImportOrdersView() {
       seq:          form.seq,
       orderDate:    form.orderDate,
       expectedDate: form.expectedDate,
+      note:         form.note || undefined,
     }
     const updated = [...orders, newOrder].sort((a, b) =>
       b.orderDate.localeCompare(a.orderDate)
@@ -77,7 +83,7 @@ export default function ImportOrdersView() {
     setOrders(updated)
     saveImportOrders(updated)
     // 등록 후 차수 +1, 날짜만 유지
-    setForm(f => ({ ...f, seq: f.seq + 1, expectedDate: '' }))
+    setForm(f => ({ ...f, seq: f.seq + 1, expectedDate: '', note: '' }))
   }
 
   function handleReceive(id: string) {
@@ -193,6 +199,17 @@ export default function ImportOrdersView() {
           </button>
         </div>
 
+        {/* 메모 */}
+        <div className="space-y-1">
+          <label className="text-xs text-gray-500">메모 (발주 품목 등)</label>
+          <input
+            type="text" value={form.note}
+            onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+            className="border rounded px-2 py-1.5 text-sm w-full max-w-xl"
+            placeholder="예: 14-K-107 × 200개, 14-P-201 × 100개"
+          />
+        </div>
+
         {/* 미리보기 */}
         {form.vendorCode && form.year && form.seq && (
           <p className="text-xs text-gray-400">
@@ -240,9 +257,16 @@ export default function ImportOrdersView() {
                 return (
                   <tr key={order.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     {/* 발주건명 */}
-                    <td className="px-3 py-2 font-medium whitespace-nowrap">
-                      {orderLabel(order)}
-                      <span className="ml-2 text-xs text-gray-400">{order.vendorName}</span>
+                    <td className="px-3 py-2">
+                      <div className="font-medium whitespace-nowrap">
+                        {orderLabel(order)}
+                        <span className="ml-2 text-xs text-gray-400">{order.vendorName}</span>
+                      </div>
+                      {order.note && (
+                        <div className="text-xs text-blue-600 mt-0.5 max-w-xs truncate" title={order.note}>
+                          {order.note}
+                        </div>
+                      )}
                     </td>
 
                     {/* 발주일 */}

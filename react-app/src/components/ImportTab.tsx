@@ -69,6 +69,7 @@ export default function ImportTab() {
   const [error,             setError]             = useState('')
   const [loading,      setLoading]    = useState(false)
   const [subTab,       setSubTab]     = useState<SubTab>('plan')
+  const [orderPrefill, setOrderPrefill] = useState<{ note: string } | undefined>()
 
   useEffect(() => {
     loadDetailedSales<DetailedSalesRow>().then(setSalesRows)
@@ -453,6 +454,7 @@ export default function ImportTab() {
                         <th className="px-3 py-2 text-right whitespace-nowrap">커버리지</th>
                         <th className="px-3 py-2 text-right whitespace-nowrap">발주필요량</th>
                         <th className="px-3 py-2 text-center whitespace-nowrap">상태</th>
+                        <th className="px-3 py-2 text-center whitespace-nowrap"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -483,6 +485,20 @@ export default function ImportTab() {
                                 {STATUS_LABEL[s]}
                               </span>
                             </td>
+                            <td className="px-3 py-1.5 text-center">
+                              {(s === 'urgent' || s === 'warning') && (
+                                <button
+                                  onClick={() => {
+                                    const qty = row.orderNeeded > 0 ? ` — 발주필요량 ${row.orderNeeded.toLocaleString()}개` : ''
+                                    setOrderPrefill({ note: `${row.code} ${row.name}${qty}` })
+                                    setSubTab('orders')
+                                  }}
+                                  className="text-xs px-2 py-0.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 whitespace-nowrap transition"
+                                >
+                                  발주 등록
+                                </button>
+                              )}
+                            </td>
                           </tr>
                         )
                       })}
@@ -500,7 +516,7 @@ export default function ImportTab() {
         </div>
       )}
 
-      {subTab === 'orders' && <ImportOrdersView />}
+      {subTab === 'orders' && <ImportOrdersView prefill={orderPrefill} />}
     </div>
   )
 }
