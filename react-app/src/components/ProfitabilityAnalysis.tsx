@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import * as XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
 import FileUploader from './FileUploader'
 import {
@@ -13,6 +14,19 @@ import {
 } from '../lib/profitabilityEngine'
 import type { ProfitRow } from '../lib/profitabilityEngine'
 
+async function parsePlanCodes(file: File): Promise<Set<string>> {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf)
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  const rows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1 }) as string[][]
+  const codes = new Set<string>()
+  for (let i = 1; i < rows.length; i++) {
+    const code = rows[i]?.[1] // B열 = 품목코드
+    if (code && String(code).trim()) codes.add(String(code).trim())
+  }
+  return codes
+}
+
 function pct(v: number | null): string {
   if (v === null) return '—'
   return v.toFixed(1) + '%'
@@ -24,6 +38,7 @@ function won(v: number | null): string {
 }
 
 export default function ProfitabilityAnalysis({ salesRows }: { salesRows: DetailedSalesRow[] }) {
+  const [planFile,          setPlanFile]          = useState<File | null>(null)
   const [maeksanFile,       setMaeksanFile]       = useState<File | null>(null)
   const [flcFile,           setFlcFile]           = useState<File | null>(null)
   const [contractFile,      setContractFile]      = useState<File | null>(null)
@@ -54,20 +69,27 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
   }, [salesRows])
 
   async function handleRun() {
+    if (!planFile) {
+      setError('완제품 수입 발주계획 파일을 업로드하세요.')
+      return
+    }
     if (!maeksanFile && !flcFile) {
       setError('맥산 원가 파일 또는 FLC 원가 파일 중 하나 이상을 업로드하세요.')
       return
     }
     setLoading(true); setError('')
     try {
-      const [maeksanMap, flcMap, contractMap] = await Promise.all([
+      const [planCodes, maeksanMap, flcMap, contractMap] = await Promise.all([
+        parsePlanCodes(planFile),
         maeksanFile ? maeksanFile.arrayBuffer().then(parseMaeksanCost) : Promise.resolve(new Map<string, CostEntry>()),
         flcFile     ? flcFile.arrayBuffer().then(parseFlcCost)         : Promise.resolve(new Map<string, CostEntry>()),
         contractFile? contractFile.arrayBuffer().then(parseContractItems) : Promise.resolve(new Map<string, { code: string; name: string; spec: string; 단가: number }>()),
       ])
       setHasBothCost(maeksanMap.size > 0 && flcMap.size > 0)
 
-      const allCodes = new Set([...maeksanMap.keys(), ...flcMap.keys()])
+      const allCodes = new Set(
+        [...planCodes].filter(code => maeksanMap.has(code) || flcMap.has(code))
+      )
       const result: ProfitRow[] = []
 
       for (const code of allCodes) {
@@ -194,13 +216,26 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
     <div className="space-y-5">
       {/* 설명 */}
       <div className="text-sm text-gray-500">
-        맥산(국내 생산) · FLC(수입) 원가 파일과 계약 단가 파일을 업로드하면 품목별 마진율 및 생산 방식 권고를 제공합니다.
+        완제품 수입 발주계획 파일의 품목을 대상으로 맥산·FLC 원가를 비교해 생산 방식 권고를 제공합니다.
         <br />
         <span className="text-xs text-gray-400">LG향 → 생산원가 적용 · KT향 → 표준원가 적용 · 판매가: 계약 품목은 계약 단가, 나머지는 판매 이력 평균</span>
       </div>
 
       {/* 파일 업로드 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <FileUploader
+          label="완제품 수입 발주계획 파일 (필수)"
+          fileName={planFile?.name ?? ''}
+          onFile={setPlanFile}
+        />
+        <FileUploader
+          label="계약 단가 파일 (선택)"
+          fileName={contractFile?.name ?? ''}
+          onFile={setContractFile}
+          optional
+        />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FileUploader
           label="맥산 생산원가 파일"
           fileName={maeksanFile?.name ?? ''}
@@ -211,12 +246,6 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
           label="FLC 수입원가 파일"
           fileName={flcFile?.name ?? ''}
           onFile={setFlcFile}
-          optional
-        />
-        <FileUploader
-          label="계약 단가 파일 (선택)"
-          fileName={contractFile?.name ?? ''}
-          onFile={setContractFile}
           optional
         />
       </div>
@@ -281,7 +310,7 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
       <div className="flex items-center gap-4 flex-wrap">
         <button
           onClick={handleRun}
-          disabled={loading || (!maeksanFile && !flcFile)}
+          disabled={loading || !planFile || (!maeksanFile && !flcFile)}
           className="px-6 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
           {loading ? '분석 중…' : '📊 수익성 분석 실행'}
