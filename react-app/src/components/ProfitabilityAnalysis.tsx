@@ -32,12 +32,12 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
   const [error,             setError]             = useState('')
   const [hasBothCost,       setHasBothCost]       = useState(false)
   const [showLegend,        setShowLegend]        = useState(false)
-  // 맥산 생산 가중치: 0 = 없음, N > 0 = 맥산이 FLC보다 N%까지 비싸도 생산 유지
-  const [bufferPct,         setBufferPct]         = useState(0)
+  // 맥산 생산 가중치 5% (CEO 지시, 26년 5월) — ON 시에만 적용
+  const [thresholdEnabled,  setThresholdEnabled]  = useState(false)
   // 최소 마진율: 이 미만이면 철수검토
   const [minMarginPct,      setMinMarginPct]      = useState(0)
 
-  const importThreshold = bufferPct > 0 ? 100 + bufferPct : 100
+  const importThreshold = thresholdEnabled ? 105 : 100
 
   // code → { totalPrice, totalQty, yearSet }
   const salesMap = useMemo(() => {
@@ -260,23 +260,21 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
 
       {/* 맥산 생산 가중치 설정 */}
       <div className="bg-gray-50 border rounded-lg px-4 py-3 flex items-center gap-4 flex-wrap text-sm">
-        <span className="font-medium text-gray-700">📦 맥산 생산 가중치</span>
-        <div className="flex items-center gap-1.5">
-          <input
-            type="number"
-            min={0}
-            max={30}
-            step={1}
-            value={bufferPct}
-            onChange={e => setBufferPct(Math.min(30, Math.max(0, parseInt(e.target.value) || 0)))}
-            className="w-14 border rounded px-2 py-1 text-center font-mono"
-          />
-          <span className="text-gray-500">%</span>
-        </div>
-        <span className="text-xs text-gray-500 border-l pl-4">
-          {bufferPct > 0
-            ? `맥산이 FLC보다 ${bufferPct}%까지 비싸도 국내생산 유지`
-            : '0% — FLC가 1원이라도 저렴하면 수입 권고'}
+        <span className="font-medium text-gray-700">📦 맥산 생산 가중치 5%</span>
+        <button
+          onClick={() => setThresholdEnabled(v => !v)}
+          className={`px-5 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+            thresholdEnabled
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+          }`}
+        >
+          {thresholdEnabled ? '● ON' : '○ OFF'}
+        </button>
+        <span className="text-xs text-gray-500">
+          {thresholdEnabled
+            ? '맥산이 FLC보다 5%까지 비싸도 국내 생산 유지 (CEO 지시, 26년 5월)'
+            : 'FLC가 1원이라도 저렴하면 수입 권고'}
         </span>
       </div>
 
@@ -329,11 +327,11 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">권고 유형</p>
             <div className="space-y-2.5 text-xs text-gray-700">
               {[
-                { bg: 'bg-green-100',  text: 'text-green-700',  label: '✅ 맥산 생산 권고', desc: '맥산 마진 ≥ 생산유지기준이고, 맥산 원가가 FLC보다 저렴하거나 동등한 경우' },
-                { bg: 'bg-orange-100', text: 'text-orange-700', label: '⚖ 맥산 생산 가능',  desc: '맥산 마진은 기준 이상이나 원가가 FLC보다 비쌈 — 가중치 버퍼 덕분에 수입 권고를 피한 케이스. 가중치 0%면 수입 권고로 전환' },
-                { bg: 'bg-blue-100',   text: 'text-blue-700',   label: '📦 수입 권고',       desc: 'FLC 원가가 유리하거나 맥산 마진이 최소 마진율 미달인 경우' },
-                { bg: 'bg-yellow-100', text: 'text-yellow-700', label: '🔍 검토필요',         desc: '마진이 최소 기준을 넘지만 생산유지기준 미만 — 영업 부서 협의 권장' },
-                { bg: 'bg-red-100',    text: 'text-red-700',    label: '⚠ 철수검토',         desc: '모든 원가 옵션의 마진이 최소 마진율 미달 — 단가 재협상 또는 판매 중단 건의' },
+                { bg: 'bg-green-100',  text: 'text-green-700',  label: '✅ 맥산 생산 권고', desc: '국내 생산 유리' },
+                { bg: 'bg-orange-100', text: 'text-orange-700', label: '⚖ 맥산 생산 가능',  desc: '맥산 가중치 5% 적용 시 생산 가능 — 가급적 지양 (CEO 지시, 26년 5월)' },
+                { bg: 'bg-blue-100',   text: 'text-blue-700',   label: '📦 수입 권고',       desc: '수입 유리' },
+                { bg: 'bg-yellow-100', text: 'text-yellow-700', label: '🔍 검토필요',         desc: '수익성 악화 — 영업 부서와 협의' },
+                { bg: 'bg-red-100',    text: 'text-red-700',    label: '⚠ 철수검토',         desc: '수익 없음 — 영업 부서와 협의' },
               ].map(({ bg, text, label, desc }) => (
                 <div key={label} className="flex items-start gap-3">
                   <span className={`px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 ${bg} ${text}`}>{label}</span>
@@ -376,7 +374,7 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
             {counts.철수검토 > 0 && <span className="text-red-700 font-medium">⚠ 철수검토 {counts.철수검토}</span>}
             {hasBothCost && (
               <span className="text-xs text-gray-400 border-l pl-4">
-                {bufferPct > 0 ? `가중치 ${bufferPct}% 적용 중` : '가중치 미적용'}
+                {thresholdEnabled ? '가중치 5% 적용 중' : '가중치 미적용'}
               </span>
             )}
             <button
