@@ -65,7 +65,7 @@ export default function App() {
   const [salesAgg, setSalesAgg] = useState<SalesAggResult | null>(null)
   const [ojcProducts, setOjcProducts] = useState<OjcProduct[]>([])
 
-  const [adminUnlocked, setAdminUnlocked] = useState(false)
+  const [adminUnlocked, setAdminUnlocked] = useState(import.meta.env.DEV as boolean)
   const [showAdminGate, setShowAdminGate] = useState(false)
   const [pwInput, setPwInput] = useState('')
   const [pwError, setPwError] = useState(false)

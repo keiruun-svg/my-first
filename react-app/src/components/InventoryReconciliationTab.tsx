@@ -400,146 +400,16 @@ export default function InventoryReconciliationTab() {
         {err && <span className="text-sm text-red-500">{err}</span>}
       </div>
 
-      {/* 요약 배너 */}
       {rows.length > 0 && (
-        <div className="flex flex-wrap gap-3 items-center bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
-          <span className="text-sm font-medium text-gray-700">총 {total}개 품목</span>
-          <span className="text-sm text-green-700">✅ 일치 {matchCnt}</span>
-          <span className="text-sm text-red-600">❌ 불일치 {diffCnt}</span>
-          <span className="text-sm text-yellow-700">⚠ EMP만 {empOnly}</span>
-          <span className="text-sm text-blue-700">⚠ EC만 {ecOnly}</span>
-          {lastDate && <span className="text-sm text-gray-400 ml-1">기준: {lastDate}</span>}
+        <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+          <span className="text-green-700 font-medium text-sm">✅ 대사 완료</span>
+          {lastDate && <span className="text-sm text-gray-400">기준: {lastDate}</span>}
           <button
             onClick={() => exportReconExcel(rows, lastDate)}
-            className="ml-auto px-4 py-1.5 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
+            className="ml-auto px-4 py-1.5 text-sm bg-green-600 text-white font-medium rounded hover:bg-green-700 transition-colors"
           >
             📥 Excel 다운로드
           </button>
-        </div>
-      )}
-
-      {/* 이력 패널 */}
-      {history.length > 0 && (
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <button
-            onClick={() => setShowHistory(v => !v)}
-            className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-sm font-medium text-gray-700 transition-colors"
-          >
-            <span>📊 대사 이력 ({history.length}회)</span>
-            <span className="text-gray-400 text-xs">{showHistory ? '▲ 접기' : '▼ 펼치기'}</span>
-          </button>
-
-          {showHistory && (
-            <div className="p-4 space-y-4">
-              {/* 추이 차트 */}
-              <TrendChart history={history} />
-
-              {/* 이력 목록 */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-gray-500 border-b">
-                      <th className="py-1.5 text-left font-medium">기준일</th>
-                      <th className="py-1.5 text-right font-medium">총</th>
-                      <th className="py-1.5 text-right font-medium text-red-600">불일치</th>
-                      <th className="py-1.5 text-right font-medium text-yellow-600">EMP만</th>
-                      <th className="py-1.5 text-right font-medium text-blue-600">EC만</th>
-                      <th className="py-1.5 text-right font-medium text-green-600">일치</th>
-                      <th className="py-1.5 text-right font-medium">저장시각</th>
-                      <th className="py-1.5" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {[...history].reverse().map(h => (
-                      <tr key={h.date} className="hover:bg-gray-50">
-                        <td className="py-1.5 font-mono">{h.date}</td>
-                        <td className="py-1.5 text-right">{h.total}</td>
-                        <td className="py-1.5 text-right text-red-600 font-medium">{h.diff}</td>
-                        <td className="py-1.5 text-right text-yellow-600">{h.emp_only}</td>
-                        <td className="py-1.5 text-right text-blue-600">{h.ecount_only}</td>
-                        <td className="py-1.5 text-right text-green-600">{h.match}</td>
-                        <td className="py-1.5 text-right text-gray-400">
-                          {new Date(h.savedAt).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                        </td>
-                        <td className="py-1.5 text-right">
-                          <button
-                            onClick={() => loadHistoryEntry(h.date)}
-                            className="text-blue-500 hover:text-blue-700 underline"
-                          >
-                            불러오기
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 대사 결과 테이블 */}
-      {rows.length > 0 && (
-        <div className="overflow-x-auto border border-gray-200 rounded-lg">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-[#1F3864] text-white text-xs">
-                <th className="px-3 py-2 text-left">품목코드</th>
-                <th className="px-3 py-2 text-right">EMP재고</th>
-                <th className="px-3 py-2 text-right">출고차감</th>
-                <th className="px-3 py-2 text-right font-bold">EMP조정</th>
-                <th className="px-3 py-2 text-right">이카운트</th>
-                <th className="px-3 py-2 text-right">미출하</th>
-                <th className="px-3 py-2 text-right font-bold">EC조정</th>
-                <th className="px-3 py-2 text-right">차이</th>
-                <th className="px-3 py-2 text-center">상태</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <>
-                  <tr
-                    key={r.code}
-                    className={`border-t border-gray-100 ${STATUS_BG[r.status]} cursor-pointer hover:brightness-95`}
-                    onClick={() => r.lots.length > 1 && toggleExpand(r.code)}
-                  >
-                    <td className="px-3 py-1.5 font-mono text-xs">
-                      {r.lots.length > 1 && (
-                        <span className="mr-1 text-gray-400">{expanded.has(r.code) ? '▼' : '▶'}</span>
-                      )}
-                      {r.code}
-                    </td>
-                    <td className="px-3 py-1.5 text-right">{r.empRaw.toLocaleString()}</td>
-                    <td className="px-3 py-1.5 text-right text-gray-500">{r.shipDeduct > 0 ? `-${r.shipDeduct.toLocaleString()}` : '–'}</td>
-                    <td className="px-3 py-1.5 text-right font-medium">{r.empAdj.toLocaleString()}</td>
-                    <td className="px-3 py-1.5 text-right">{r.ecRaw.toLocaleString()}</td>
-                    <td className="px-3 py-1.5 text-right text-gray-500">{r.unshipped > 0 ? `+${r.unshipped.toLocaleString()}` : '–'}</td>
-                    <td className="px-3 py-1.5 text-right font-medium">{r.ecAdj.toLocaleString()}</td>
-                    <td className={`px-3 py-1.5 text-right font-bold ${r.diff !== 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      {r.diff > 0 ? `+${r.diff}` : r.diff === 0 ? '0' : r.diff}
-                    </td>
-                    <td className="px-3 py-1.5 text-center text-xs">{STATUS_LABEL[r.status]}</td>
-                  </tr>
-                  {expanded.has(r.code) && r.lots.map((lot, i) => (
-                    <tr key={`${r.code}-lot-${i}`} className={`border-t border-gray-50 ${STATUS_BG[r.status]} opacity-75`}>
-                      <td className="px-3 py-1 pl-8 font-mono text-xs">
-                        <span className="text-gray-400">└ </span>
-                        <span className={lot.autoLoc ? 'text-orange-500 italic' : 'text-gray-500'}>
-                          {lot.lot ?? '(기본)'}
-                        </span>
-                        {lot.autoLoc && (
-                          <span className="ml-1 text-[10px] text-orange-400 bg-orange-50 rounded px-1">자동배정</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-1 text-right text-xs text-gray-500">{lot.qty.toLocaleString()}</td>
-                      <td colSpan={7} />
-                    </tr>
-                  ))}
-                </>
-              ))}
-            </tbody>
-          </table>
         </div>
       )}
     </div>

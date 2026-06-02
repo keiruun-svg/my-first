@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { saveMetadata, saveInventory, CAN_WRITE } from '../lib/supabase'
+import { saveMetadata, saveInventory, saveMaterialStock, CAN_WRITE } from '../lib/supabase'
+import { parseMaterialStock } from '../lib/parse/parseMaterialStock'
 import { today } from '../lib/download'
 import type { Metadata, Inventory, CableMeta, HousingComp, FerruleMeta, InventoryHousingItem } from '../lib/types'
 interface Props {
@@ -68,6 +69,42 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
   const [importApplied,  setImportApplied]  = useState(false)
   const [importFileName, setImportFileName] = useState('')
   const erpFileRef = useRef<HTMLInputElement>(null)
+
+  // 의왕 재고현황 파일 업로드 상태
+  interface StockMatchRow {
+    품번: string; 품명: string; 총재고: number
+    matchType: 'cable' | 'housing' | 'ferrule' | null
+    metaKey: string | null; compIdx: number
+  }
+  const [stockPanel,    setStockPanel]    = useState(false)
+  const [stockRows,     setStockRows]     = useState<StockMatchRow[] | null>(null)
+  const [stockApplied,  setStockApplied]  = useState(false)
+  const [stockFileName, setStockFileName] = useState('')
+  const stockFileRef = useRef<HTMLInputElement>(null)
+
+  // 드래그 상태
+  const [pnDragging,    setPnDragging]    = useState(false)
+  const [erpDragging,   setErpDragging]   = useState(false)
+  const [stockDragging, setStockDragging] = useState(false)
+  const pnDragCnt    = useRef(0)
+  const erpDragCnt   = useRef(0)
+  const stockDragCnt = useRef(0)
+
+  function makeDrop(
+    setDragging: (v: boolean) => void,
+    counter: React.MutableRefObject<number>,
+    onFile: (f: File) => void,
+  ) {
+    return {
+      onDragOver:  (e: React.DragEvent) => e.preventDefault(),
+      onDragEnter: (e: React.DragEvent) => { e.preventDefault(); counter.current++; setDragging(true) },
+      onDragLeave: (e: React.DragEvent) => { e.preventDefault(); if (--counter.current === 0) setDragging(false) },
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault(); counter.current = 0; setDragging(false)
+        const f = e.dataTransfer.files?.[0]; if (f) onFile(f)
+      },
+    }
+  }
 
   // ── 주간 재고 비교 스냅샷 (ERP 업로드 적용 시 자동 저장) ──────
   const [prevSnapshot, setPrevSnapshot] = useState<PrevSnapshot | null>(() => {
@@ -207,9 +244,8 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
   }
 
   // ── 양식 Excel 업로드 파싱 ────────────────────────────────────
-  function handlePnUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]; if (!file) return
-    e.target.value = ''; setPreviewErr('')
+  function handlePnUpload(file: File) {
+    setPreviewErr('')
     const reader = new FileReader()
     reader.onload = ev => {
       try {
@@ -327,9 +363,8 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
   }
 
   // ── ERP 재고 파일 파싱 ────────────────────────────────────────
-  function handleErpUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]; if (!file) return
-    setImportFileName(file.name); e.target.value = ''
+  function handleErpUpload(file: File) {
+    setImportFileName(file.name)
     const reader = new FileReader()
     reader.onload = ev => {
       const wb = XLSX.read(ev.target?.result, { type: 'array' })
@@ -413,6 +448,78 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
     })
     setInventory({ cable: newCable, housing: newHousing, ferrule: newFerrule })
     setImportApplied(true)
+  }
+
+  // ── 의왕 재고현황 파일 업로드 + 매칭 ─────────────────────────
+  function handleStockUpload(file: File) {
+    setStockFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = ev => {
+      try {
+        const parsed = parseMaterialStock(ev.target?.result as ArrayBuffer)
+        saveMaterialStock(parsed)
+
+        // 품번 역방향 맵 생성
+        const cableMap:   Record<string, string> = {}
+        const ferruleMap: Record<string, string> = {}
+        Object.entries(metadata.cable).forEach(([k, m]) => { if (m.품번) cableMap[m.품번] = k })
+        Object.entries(metadata.ferrule).forEach(([k, m]) => { if (m.품번) ferruleMap[m.품번] = k })
+        const housingCompMap: Record<string, { key: string; ci: number }> = {}
+        Object.entries(metadata.housing).forEach(([k, mRaw]) => {
+          const comps = Array.isArray(mRaw) ? mRaw : [mRaw]
+          comps.forEach((m, ci) => { if (m?.품번) housingCompMap[m.품번] = { key: k, ci } })
+        })
+
+        const rows: StockMatchRow[] = Object.entries(parsed).map(([품번, item]) => {
+          let matchType: 'cable' | 'housing' | 'ferrule' | null = null
+          let metaKey: string | null = null
+          let compIdx = 0
+          if (cableMap[품번])             { matchType = 'cable';   metaKey = cableMap[품번] }
+          else if (housingCompMap[품번])  { matchType = 'housing'; metaKey = housingCompMap[품번].key; compIdx = housingCompMap[품번].ci }
+          else if (ferruleMap[품번])      { matchType = 'ferrule'; metaKey = ferruleMap[품번] }
+          return { 품번, 품명: item.품명, 총재고: item.총재고, matchType, metaKey, compIdx }
+        })
+        setStockRows(rows); setStockApplied(false)
+      } catch (err) { alert(`파일 파싱 오류: ${err}`) }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  function applyStockImport() {
+    if (!stockRows) return
+    const snap: PrevSnapshot = {
+      date: new Date().toLocaleDateString('ko-KR'),
+      cable:   Object.fromEntries(Object.entries(inventory.cable).map(([k, v]) => [k, { 현재고: v?.현재고 ?? 0, 기발주: v?.기발주 ?? 0 }])),
+      housing: Object.fromEntries(Object.entries(inventory.housing).map(([k, vRaw]) => {
+        const arr = Array.isArray(vRaw) ? vRaw : [vRaw as InventoryHousingItem]
+        return [k, arr.map(v => ({ 현재고: v?.현재고 ?? 0, 기발주: v?.기발주 ?? 0 }))]
+      })),
+      ferrule: Object.fromEntries(Object.entries(inventory.ferrule).map(([k, v]) => [k, { 현재고: v?.현재고 ?? 0, 기발주: v?.기발주 ?? 0 }])),
+    }
+    localStorage.setItem('ajw_inv_snapshot_prev', JSON.stringify(snap))
+    setPrevSnapshot(snap)
+
+    const newCable   = { ...inventory.cable }
+    const newHousing = { ...inventory.housing }
+    const newFerrule = { ...inventory.ferrule }
+    stockRows.forEach(row => {
+      if (!row.matchType || !row.metaKey) return
+      if (row.matchType === 'cable') {
+        newCable[row.metaKey] = { ...(newCable[row.metaKey] ?? { 현재고: 0, 기발주: 0 }), 현재고: row.총재고 }
+      } else if (row.matchType === 'housing') {
+        const invs = Array.isArray(newHousing[row.metaKey])
+          ? [...(newHousing[row.metaKey] as InventoryHousingItem[])]
+          : [newHousing[row.metaKey] as InventoryHousingItem ?? { ...DEFAULT_INV }]
+        while (invs.length <= row.compIdx) invs.push({ ...DEFAULT_INV })
+        invs[row.compIdx] = { ...(invs[row.compIdx] ?? DEFAULT_INV), 현재고: row.총재고 }
+        newHousing[row.metaKey] = packInvs(invs)
+      } else {
+        newFerrule[row.metaKey] = { ...(newFerrule[row.metaKey] ?? { 현재고: 0, 기발주: 0 }), 현재고: row.총재고 }
+      }
+    })
+    const next = { cable: newCable, housing: newHousing, ferrule: newFerrule }
+    setInventory(next); saveInventory(next)
+    setStockApplied(true)
   }
 
   // ── 행 삭제 ───────────────────────────────────────────────────
@@ -532,18 +639,26 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
               </button>
             </>
           )}
-          <button onClick={() => { setErpPanel(v => !v); setPnPanel(false) }}
+          <button onClick={() => { setErpPanel(v => !v); setPnPanel(false); setStockPanel(false) }}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded transition ${
               erpPanel ? 'border-yellow-500 bg-yellow-50 text-yellow-700' : 'border-yellow-500 text-yellow-700 bg-white hover:bg-yellow-50'
             }`}>
             🏭 ERP 재고 업로드
+          </button>
+          <button onClick={() => { setStockPanel(v => !v); setErpPanel(false); setPnPanel(false) }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded transition ${
+              stockPanel ? 'border-green-600 bg-green-50 text-green-700' : 'border-green-600 text-green-700 bg-white hover:bg-green-50'
+            }`}>
+            📋 의왕 재고현황 업로드
           </button>
         </div>
       </div>
 
       {/* ── 양식 Excel 업로드 패널 ──────────────────────────── */}
       {pnPanel && CAN_WRITE && (
-        <div className="border border-blue-200 rounded-lg bg-blue-50 p-4 space-y-3">
+        <div className={`border rounded-lg p-4 space-y-3 transition-colors ${pnDragging ? 'border-[#2E75B6] bg-[#dbeeff]' : 'border-blue-200 bg-blue-50'}`}
+          {...makeDrop(setPnDragging, pnDragCnt, handlePnUpload)}>
+          {pnDragging && <div className="text-center text-sm font-semibold text-[#2E75B6] py-2">📂 여기에 놓으세요</div>}
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-blue-800">
               양식 업로드 — 케이블 + 하우징 동시 적용
@@ -607,13 +722,100 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
               </div>
             </div>
           )}
-          <input ref={pnFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handlePnUpload} />
+          <input ref={pnFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) { handlePnUpload(f); e.target.value = '' } }} />
+        </div>
+      )}
+
+      {/* ── 의왕 재고현황 업로드 패널 ───────────────────────── */}
+      {stockPanel && (
+        <div className={`border rounded-lg p-4 space-y-3 transition-colors ${stockDragging ? 'border-green-600 bg-[#d1fae5]' : 'border-green-200 bg-green-50'}`}
+          {...makeDrop(setStockDragging, stockDragCnt, handleStockUpload)}>
+          {stockDragging && <div className="text-center text-sm font-semibold text-green-700 py-2">📂 여기에 놓으세요</div>}
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-green-800">의왕 생산자재 재고현황 업로드</span>
+            <button onClick={() => { setStockPanel(false); setStockRows(null); setStockFileName('') }}
+              className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+          </div>
+          <p className="text-xs text-green-700">
+            <b>의왕_생산자재_재고현황</b> Excel 파일을 업로드하면 D열(품번) + O열(총재고)를 읽어<br />
+            자재 관리의 <b>품번</b> 필드와 매칭해 현재고를 자동 갱신합니다.
+            품번 미등록 항목은 건너뜁니다.
+          </p>
+          <div className="flex items-center gap-3">
+            <button onClick={() => stockFileRef.current?.click()}
+              className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded hover:bg-green-700 transition">
+              📂 파일 선택
+            </button>
+            {stockFileName && <span className="text-sm text-gray-600">{stockFileName}</span>}
+          </div>
+          {stockRows && (() => {
+            const matched   = stockRows.filter(r => r.matchType)
+            const unmatched = stockRows.filter(r => !r.matchType)
+            return (
+              <div className="space-y-2">
+                <div className="flex gap-4 text-xs text-green-800">
+                  <span>전체 <b>{stockRows.length}</b>개</span>
+                  <span>매칭 <b className="text-green-700">{matched.length}</b>개</span>
+                  <span>미매칭 <b className="text-orange-600">{unmatched.length}</b>개
+                    {unmatched.length > 0 && <span className="text-gray-400 ml-1">(품번 미등록)</span>}
+                  </span>
+                </div>
+                {matched.length > 0 && (
+                  <div className="overflow-x-auto max-h-60 overflow-y-auto rounded border border-green-100">
+                    <table className="text-xs w-full bg-white">
+                      <thead className="sticky top-0 bg-green-100 text-green-800">
+                        <tr>{['구분','품번','품명','총재고','매핑키'].map(h => (
+                          <th key={h} className="px-2 py-1.5 text-left font-semibold whitespace-nowrap">{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {matched.map((r, i) => (
+                          <tr key={i}>
+                            <td className="px-2 py-1">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                r.matchType === 'cable' ? 'bg-blue-100 text-blue-700'
+                                : r.matchType === 'housing' ? 'bg-purple-100 text-purple-700'
+                                : 'bg-orange-100 text-orange-700'
+                              }`}>
+                                {r.matchType === 'cable' ? '케이블' : r.matchType === 'housing' ? '하우징' : '페룰'}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1 font-mono">{r.품번}</td>
+                            <td className="px-2 py-1 max-w-[160px] truncate" title={r.품명}>{r.품명}</td>
+                            <td className="px-2 py-1 text-right font-mono font-semibold">{r.총재고.toLocaleString()}</td>
+                            <td className="px-2 py-1 text-gray-500 font-mono text-[10px]">{r.metaKey}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {!stockApplied ? (
+                  <div className="flex gap-2">
+                    <button onClick={applyStockImport}
+                      disabled={matched.length === 0}
+                      className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-bold px-5 py-2 rounded-lg text-sm transition">
+                      ✅ {matched.length}개 현재고 반영
+                    </button>
+                    <button onClick={() => setStockRows(null)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">취소</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 bg-green-100 border border-green-300 rounded px-4 py-2">
+                    <span className="text-green-800 font-semibold text-sm">✅ {matched.length}개 현재고 반영 완료 — 저장 버튼을 눌러 확정하세요</span>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+          <input ref={stockFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) { handleStockUpload(f); e.target.value = '' } }} />
         </div>
       )}
 
       {/* ── ERP 재고 업로드 패널 ────────────────────────────── */}
       {erpPanel && (
-        <div className="border border-yellow-200 rounded-lg bg-yellow-50 p-4 space-y-3">
+        <div className={`border rounded-lg p-4 space-y-3 transition-colors ${erpDragging ? 'border-yellow-500 bg-[#fef3c7]' : 'border-yellow-200 bg-yellow-50'}`}
+          {...makeDrop(setErpDragging, erpDragCnt, handleErpUpload)}>
+          {erpDragging && <div className="text-center text-sm font-semibold text-yellow-700 py-2">📂 여기에 놓으세요</div>}
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-yellow-800">ERP 재고 업로드 (ESZ018R)</span>
             <button onClick={() => { setErpPanel(false); setImportRows(null); setImportFileName('') }}
@@ -709,7 +911,7 @@ export default function MaterialManager({ metadata: metadataRaw, setMetadata, in
               </div>
             </>
           )}
-          <input ref={erpFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleErpUpload} />
+          <input ref={erpFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) { handleErpUpload(f); e.target.value = '' } }} />
         </div>
       )}
 

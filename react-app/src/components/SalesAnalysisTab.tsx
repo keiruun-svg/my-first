@@ -90,6 +90,7 @@ export default function SalesAnalysisTab() {
   const [eszSelectedWh, setEszSelectedWh] = useState('')
   const [eszSubTab,    setEszSubTab]    = useState<'total' | 'warehouse'>('total')
   const [subView, setSubView]   = useState<SubView>('summary')
+  const [selectedYears, setSelectedYears] = useState<string[]>([])
   const [ojcStock, setOjcStock] = useState<Record<string, number>>(() => {
     try { return JSON.parse(localStorage.getItem('ojc_stock') ?? '{}') } catch { return {} }
   })
@@ -101,6 +102,7 @@ export default function SalesAnalysisTab() {
     try {
       const rows = parseDetailedSalesFile(await file.arrayBuffer(), newLogs)
       setRawRows(rows)
+      setSelectedYears([...new Set(rows.map(r => r.year))].sort())
       saveDetailedSales(rows)
     } catch (e) {
       newLogs.push(`❌ 오류: ${e}`)
@@ -197,7 +199,13 @@ export default function SalesAnalysisTab() {
   }
 
   const years    = useMemo(() => [...new Set(rawRows.map(r => r.year))].sort(), [rawRows])
-  const latestYr = years[years.length - 1] ?? ''
+  const toggleYear = (yr: string) =>
+    setSelectedYears(prev => prev.includes(yr) ? prev.filter(y => y !== yr) : [...prev, yr].sort())
+  const activeRows = useMemo(
+    () => selectedYears.length ? rawRows.filter(r => selectedYears.includes(r.year)) : rawRows,
+    [rawRows, selectedYears],
+  )
+  const latestYr = selectedYears[selectedYears.length - 1] ?? years[years.length - 1] ?? ''
 
   // ── 전체 품목별 집계 (단일 소스) ──────────────────────────────
   // rawRows를 한 번만 순회해 품목별 연간·월별 데이터를 모두 담음
@@ -209,7 +217,7 @@ export default function SalesAnalysisTab() {
       priceAnnuals: Record<string, number>
       monthlyByYear: Record<string, Record<string, number>>
     }> = {}
-    for (const row of rawRows) {
+    for (const row of activeRows) {
       if (!map[row.name]) map[row.name] = {
         name: row.name, code: row.code,
         ojcCat: classifyOjc(row.name), etcCat: classifyEtc(row.name),
@@ -224,7 +232,7 @@ export default function SalesAnalysisTab() {
     return Object.values(map).sort((a, b) =>
       (b.annuals[latestYr] ?? 0) - (a.annuals[latestYr] ?? 0)
     )
-  }, [rawRows, latestYr])
+  }, [activeRows, latestYr])
 
   // ── 카테고리별 집계 (fullProducts에서 파생) ─────────────────
   function buildCategoryMap(
@@ -275,7 +283,7 @@ export default function SalesAnalysisTab() {
   )
 
   // OJC 행 (거래처 탑3용으로만 사용)
-  const ojcRows = useMemo(() => rawRows.filter(r => classifyOjc(r.name) !== null), [rawRows])
+  const ojcRows = useMemo(() => activeRows.filter(r => classifyOjc(r.name) !== null), [activeRows])
 
   // 거래처별 탑3 집계 헬퍼 (내자/외자 공통)
   function buildCustomerTop3(rows: typeof rawRows) {
@@ -303,10 +311,10 @@ export default function SalesAnalysisTab() {
   }
 
   // 내자/외자 분리 집계
-  const domesticRows = useMemo(() => rawRows.filter(r => !r.isForeign), [rawRows])
-  const foreignRows  = useMemo(() => rawRows.filter(r => r.isForeign),  [rawRows])
+  const domesticRows = useMemo(() => activeRows.filter(r => !r.isForeign), [activeRows])
+  const foreignRows  = useMemo(() => activeRows.filter(r => r.isForeign),  [activeRows])
 
-  const customerTop3          = useMemo(() => buildCustomerTop3(rawRows),     [rawRows])
+  const customerTop3          = useMemo(() => buildCustomerTop3(activeRows),     [activeRows])
   const customerTop3Domestic  = useMemo(() => buildCustomerTop3(domesticRows), [domesticRows])
   const customerTop3Foreign   = useMemo(() => buildCustomerTop3(foreignRows),  [foreignRows])
 
@@ -442,31 +450,30 @@ export default function SalesAnalysisTab() {
         </div>
       )}
 
-      {/* 서브탭 + 통합 다운로드 */}
+      {years.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-gray-500 font-medium">연도 선택</span>
+          {years.map(yr => (
+            <button
+              key={yr}
+              onClick={() => toggleYear(yr)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                selectedYears.includes(yr)
+                  ? 'bg-[#2E75B6] text-white border-[#2E75B6]'
+                  : 'bg-white text-gray-500 border-gray-300 hover:border-[#2E75B6]'
+              }`}
+            >
+              {yr.slice(2)}년
+            </button>
+          ))}
+        </div>
+      )}
+
       {hasData && (
-        <div className="flex gap-2 flex-wrap items-center justify-between">
-          <div className="flex gap-2 flex-wrap">
-            {(['summary', 'ojc', 'customer_domestic', 'customer_foreign', 'ojc_customer', 'full'] as SubView[]).map(v => (
-              <button
-                key={v}
-                onClick={() => setSubView(v)}
-                className={`px-4 py-1.5 text-sm font-medium rounded border transition ${
-                  subView === v
-                    ? 'bg-yellow-400 border-yellow-500 text-black'
-                    : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {v === 'summary'           ? '⓪ 요약 대시보드'
-                  : v === 'ojc'            ? '① OJC 판매 현황'
-                  : v === 'customer_domestic' ? '② 거래처별 탑3 (내자)'
-                  : v === 'customer_foreign'  ? '③ 거래처별 탑3 (외자)'
-                  : v === 'ojc_customer'   ? '④ 거래처별 OJC 탑3'
-                  : '⑤ 전체 판매량'}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+          <span className="text-green-700 font-medium text-sm">✅ 분석 완료</span>
           {dlProgress ? (
-            <div className="flex flex-col gap-1 min-w-[220px]">
+            <div className="flex flex-col gap-1 min-w-[220px] ml-auto">
               <div className="flex justify-between text-xs text-gray-600">
                 <span className="font-medium">{dlProgress.label}</span>
                 <span className="text-gray-400">{dlProgress.current} / {dlProgress.total}</span>
@@ -482,60 +489,20 @@ export default function SalesAnalysisTab() {
             <button
               onClick={async () => {
                 const filename = `판매현황분석_${today()}.xlsx`
-                // user gesture 컨텍스트가 살아있는 지금 파일 핸들 먼저 획득
                 const handle = await pickSaveFile(filename)
                 if (handle === 'cancelled') return
                 downloadStyledExcel(
-                  ojcByCategory, etcByCategory, fullProducts, years, latestYr, ojcStock, rawRows,
+                  ojcByCategory, etcByCategory, fullProducts, selectedYears.length ? selectedYears : years, latestYr, ojcStock, activeRows,
                   (current, total, label) => setDlProgress({ current, total, label }),
                   handle,
                 ).catch(e => alert(`다운로드 오류: ${e}`))
                  .finally(() => setDlProgress(null))
               }}
-              className="px-4 py-1.5 text-sm bg-[#2E75B6] hover:bg-[#1a5a9e] text-white font-semibold rounded transition whitespace-nowrap"
+              className="ml-auto px-4 py-1.5 text-sm bg-[#2E75B6] hover:bg-[#1a5a9e] text-white font-semibold rounded transition whitespace-nowrap"
             >
               📥 전체 통합 다운로드 (8시트)
             </button>
           )}
-        </div>
-      )}
-
-      {hasData && subView === 'summary' && (
-        <SalesSummaryView
-          ojcByCategory={ojcByCategory}
-          etcByCategory={etcByCategory}
-          customerTop3={customerTop3}
-          fullProducts={fullProducts}
-          years={years}
-          latestYr={latestYr}
-        />
-      )}
-      {hasData && subView === 'ojc' && (
-        <OjcSalesView
-          ojcByCategory={ojcByCategory}
-          etcByCategory={etcByCategory}
-          years={years}
-          latestYr={latestYr}
-          ojcStock={ojcStock}
-          onStockChange={updateStock}
-        />
-      )}
-      {hasData && subView === 'customer_domestic' && (
-        <CustomerTop3View customerTop3={customerTop3Domestic} years={years} rawRows={domesticRows} label="내자" />
-      )}
-      {hasData && subView === 'customer_foreign' && (
-        <CustomerTop3View customerTop3={customerTop3Foreign} years={years} rawRows={foreignRows} label="외자" />
-      )}
-      {hasData && subView === 'ojc_customer' && (
-        <OjcCustomerTop3View ojcRows={ojcRows} years={years} />
-      )}
-      {hasData && subView === 'full' && (
-        <FullSalesView products={fullProducts} years={years} latestYr={latestYr} />
-      )}
-
-      {!hasData && (
-        <div className="text-center text-gray-400 py-16 text-sm">
-          📊 판매현황 파일을 업로드하고 분석 실행 버튼을 누르세요.
         </div>
       )}
     </div>

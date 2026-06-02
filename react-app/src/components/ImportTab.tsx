@@ -401,116 +401,18 @@ export default function ImportTab() {
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
-          {/* 결과 */}
           {rows.length > 0 && (
-            <div className="space-y-3">
-              {/* 요약 배너 */}
-              <div className="flex items-center gap-3 bg-gray-50 border rounded-lg px-4 py-2.5 flex-wrap text-sm">
-                <span className="font-medium text-gray-700">총 {rows.length}개 품목</span>
-                {counts.urgent       > 0 && <span className="text-red-600 font-medium">🔴 발주필요 {counts.urgent}</span>}
-                {counts.warning      > 0 && <span className="text-yellow-600 font-medium">⚠️ 주의 {counts.warning}</span>}
-                {counts.ok           > 0 && <span className="text-green-600">✅ 재고충분 {counts.ok}</span>}
-                {counts.intermittent > 0 && <span className="text-purple-600">🔮 간헐적수요 {counts.intermittent}</span>}
-                {counts.no_data      > 0 && <span className="text-gray-400">— 이력없음 {counts.no_data}</span>}
-                <button
-                  onClick={handleDownload}
-                  className="ml-auto px-4 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition"
-                >
-                  📥 Excel 다운로드
-                </button>
-              </div>
-
-              {/* 미분류 경고 */}
+            <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+              <span className="text-green-700 font-medium text-sm">✅ 분석 완료</span>
               {unclassifiedItems.length > 0 && (
-                <div className="border border-orange-200 bg-orange-50 rounded-lg p-3 space-y-1.5">
-                  <p className="text-sm font-medium text-orange-800">
-                    ⚠️ OJC로 보이지만 분류되지 않은 품목 {unclassifiedItems.length}개 — 이카운트/EMP 품명 확인 필요
-                  </p>
-                  <div className="space-y-0.5">
-                    {unclassifiedItems.map(item => (
-                      <div key={item.code} className="text-xs text-orange-700 font-mono flex gap-2">
-                        <span className="text-orange-400">{item.source === 'sales' ? '판매' : '재고'}</span>
-                        <span className="font-semibold">{item.code}</span>
-                        <span className="text-orange-600">{item.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <span className="text-xs text-orange-600">⚠️ 미분류 {unclassifiedItems.length}개</span>
               )}
-
-              {/* 발주계획 테이블 */}
-              {subTab === 'plan' && (
-                <div className="overflow-x-auto rounded-lg border">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="bg-[#1F3864] text-white text-xs">
-                        <th className="px-3 py-2 text-left whitespace-nowrap">카테고리</th>
-                        <th className="px-3 py-2 text-left whitespace-nowrap">품목코드</th>
-                        <th className="px-3 py-2 text-left whitespace-nowrap">품목명</th>
-                        <th className="px-3 py-2 text-left whitespace-nowrap">규격</th>
-                        <th className="px-3 py-2 text-right whitespace-nowrap">현재고</th>
-                        <th className="px-3 py-2 text-right whitespace-nowrap" title="전체 기간 중 판매 발생 월 수">판매월수</th>
-                        <th className="px-3 py-2 text-right whitespace-nowrap">월간최고</th>
-                        <th className="px-3 py-2 text-right whitespace-nowrap">커버리지</th>
-                        <th className="px-3 py-2 text-right whitespace-nowrap">발주필요량</th>
-                        <th className="px-3 py-2 text-center whitespace-nowrap">상태</th>
-                        <th className="px-3 py-2 text-center whitespace-nowrap"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {rows.map((row, i) => {
-                        const s  = rowStatus(row, targetMonths, minMonths)
-                        const bg = STATUS_ROW_BG[s] || (i % 2 === 0 ? 'bg-white' : 'bg-gray-50')
-                        return (
-                          <tr key={row.code} className={bg}>
-                            <td className="px-3 py-1.5 text-xs text-gray-600 whitespace-nowrap">{row.category}</td>
-                            <td className="px-3 py-1.5 font-mono text-xs whitespace-nowrap">{row.code}</td>
-                            <td className="px-3 py-1.5 whitespace-nowrap">{row.name}</td>
-                            <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">{row.spec}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums">{row.stock.toLocaleString()}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
-                              {row.salesMonths > 0 ? row.salesMonths : '—'}
-                            </td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
-                              {row.peakMonthly > 0 ? row.peakMonthly.toLocaleString() : '—'}
-                            </td>
-                            <td className="px-3 py-1.5 text-right tabular-nums">
-                              {row.peakMonthly > 0 ? row.coverage.toFixed(1) + '개월' : '—'}
-                            </td>
-                            <td className="px-3 py-1.5 text-right tabular-nums font-medium">
-                              {row.orderNeeded > 0 ? row.orderNeeded.toLocaleString() : '—'}
-                            </td>
-                            <td className="px-3 py-1.5 text-center">
-                              <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_BADGE[s]}`}>
-                                {STATUS_LABEL[s]}
-                              </span>
-                            </td>
-                            <td className="px-3 py-1.5 text-center">
-                              {(s === 'urgent' || s === 'warning') && (
-                                <button
-                                  onClick={() => {
-                                    const qty = row.orderNeeded > 0 ? ` — 발주필요량 ${row.orderNeeded.toLocaleString()}개` : ''
-                                    setOrderPrefill({ note: `${row.code} ${row.name}${qty}` })
-                                    setSubTab('orders')
-                                  }}
-                                  className="text-xs px-2 py-0.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 whitespace-nowrap transition"
-                                >
-                                  발주 등록
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* 간헐적 수요 테이블 */}
-              {subTab === 'intermittent' && (
-                <IntermittentView rows={intermittentRows} years={years} minMonths={minMonths} />
-              )}
+              <button
+                onClick={handleDownload}
+                className="ml-auto px-4 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition"
+              >
+                📥 Excel 다운로드
+              </button>
             </div>
           )}
         </div>

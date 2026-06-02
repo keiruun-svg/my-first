@@ -392,122 +392,17 @@ export default function ProfitabilityAnalysis({ salesRows }: { salesRows: Detail
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {rows.length > 0 && (
-        <div className="space-y-3">
-          {/* 요약 */}
-          <div className="flex items-center gap-4 bg-gray-50 border rounded-lg px-4 py-2.5 flex-wrap text-sm">
-            <span className="font-medium text-gray-700">총 {rows.length}개 품목</span>
-            {counts.맥산생산권고 > 0 && <span className="text-green-700">✅ 맥산 생산 권고 {counts.맥산생산권고}</span>}
-            {counts.맥산생산가능 > 0 && <span className="text-orange-700">⚖ 맥산 생산 가능 {counts.맥산생산가능}</span>}
-            {counts.수입권고 > 0 && <span className="text-blue-700">📦 수입 권고 {counts.수입권고}</span>}
-            {counts.검토필요 > 0 && <span className="text-yellow-700">🔍 검토필요 {counts.검토필요}</span>}
-            {counts.철수검토 > 0 && <span className="text-red-700 font-medium">⚠ 철수검토 {counts.철수검토}</span>}
-            {hasBothCost && (
-              <span className="text-xs text-gray-400 border-l pl-4">
-                {thresholdEnabled ? '가중치 5% 적용 중' : '가중치 미적용'}
-              </span>
-            )}
-            <button
-              onClick={handleDownload}
-              className="ml-auto px-4 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition"
-            >
-              📥 Excel 다운로드
-            </button>
-          </div>
-
-          {/* 테이블 */}
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="bg-[#1F3864] text-white text-xs">
-                  <th className="px-3 py-2 text-left whitespace-nowrap">카테고리</th>
-                  <th className="px-3 py-2 text-left whitespace-nowrap">품목코드</th>
-                  <th className="px-3 py-2 text-left whitespace-nowrap">품목명</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap" title="LG향=생산원가, KT향=표준원가">
-                    맥산 원가
-                  </th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap" title="LG향=생산원가, KT향=표준원가">
-                    FLC 원가
-                  </th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">판매가</th>
-                  <th className="px-3 py-2 text-center whitespace-nowrap">구분</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">맥산 마진율</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">FLC 마진율</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">연간판매량</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">맥산 연간이익</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">FLC 연간이익</th>
-                  <th className="px-3 py-2 text-center whitespace-nowrap">권고</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {rows.map((row, i) => {
-                  const reco = getReco(row, importThreshold, minMarginPct)
-                  const sig  = marginSignal(getSignalMargin(row, reco.label))
-                  const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                  const catLabel = 적용원가명(row.category)
-                  return (
-                    <tr key={row.code} className={rowBg}>
-                      <td className="px-3 py-1.5 text-xs text-gray-600 whitespace-nowrap">{row.category}</td>
-                      <td className="px-3 py-1.5 font-mono text-xs whitespace-nowrap">{row.code}</td>
-                      <td className="px-3 py-1.5 whitespace-nowrap">{row.name}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">
-                        {row.maeksanApplied !== null ? (
-                          <span title={catLabel}>{won(row.maeksanApplied)}</span>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">
-                        {row.flcApplied !== null ? (
-                          <span title={catLabel}>{won(row.flcApplied)}</span>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">
-                        {row.판매가 !== null ? won(row.판매가) : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-3 py-1.5 text-center">
-                        {row.판매가 !== null && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                            row.isContract ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {row.isContract ? '계약' : '평균'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">
-                        <MarginCell v={row.마진율맥산} />
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">
-                        <MarginCell v={row.마진율FLC} />
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
-                        {row.avgAnnualQty > 0 ? Math.round(row.avgAnnualQty).toLocaleString() : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">
-                        {row.연간이익맥산 !== null
-                          ? <span className={row.연간이익맥산 < 0 ? 'text-red-600' : ''}>{won(row.연간이익맥산)}</span>
-                          : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">
-                        {row.연간이익FLC !== null
-                          ? <span className={row.연간이익FLC < 0 ? 'text-red-600' : ''}>{won(row.연간이익FLC)}</span>
-                          : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-3 py-1.5 text-center">
-                        <div className="flex items-center gap-1 justify-center">
-                          {sig && <span className="text-sm leading-none">{sig}</span>}
-                          <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${reco.bg} ${reco.text}`}>
-                            {reco.label}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+        <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+          <span className="text-green-700 font-medium text-sm">✅ {rows.length}개 품목 분석 완료</span>
+          {hasBothCost && (
+            <span className="text-xs text-gray-400">{thresholdEnabled ? '가중치 5% 적용 중' : '가중치 미적용'}</span>
+          )}
+          <button
+            onClick={handleDownload}
+            className="ml-auto px-4 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition"
+          >
+            📥 Excel 다운로드
+          </button>
         </div>
       )}
     </div>

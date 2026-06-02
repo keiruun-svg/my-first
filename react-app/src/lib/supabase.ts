@@ -166,6 +166,17 @@ export function saveOjcProducts(products: OjcProduct[]): void {
   void sbSave('ojc_products', products)
 }
 
+// ── 생산자재 재고현황 (의왕_생산자재_재고현황 파일 업로드분) ────────
+import type { MaterialStockItem } from './parse/parseMaterialStock'
+
+export function loadMaterialStock(): Record<string, MaterialStockItem> {
+  return lsGet<Record<string, MaterialStockItem>>('ajw_material_stock', {})
+}
+
+export function saveMaterialStock(stock: Record<string, MaterialStockItem>): void {
+  lsSet('ajw_material_stock', stock)
+}
+
 // ── vendors (업체코드 관리) ────────────────────────────────────
 export interface Vendor {
   code: string
