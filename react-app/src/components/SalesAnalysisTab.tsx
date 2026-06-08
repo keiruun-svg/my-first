@@ -439,7 +439,7 @@ export default function SalesAnalysisTab() {
       </div>
 
       {invLoaded && (
-        <div className="bg-[#D6F0D8] px-4 py-2 rounded text-sm font-semibold text-[#1a6a2a]">
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm font-semibold text-green-700">
           ✅ 재고 데이터가 반영됐습니다.
         </div>
       )}
@@ -463,7 +463,7 @@ export default function SalesAnalysisTab() {
                   : 'bg-white text-gray-500 border-gray-300 hover:border-[#2E75B6]'
               }`}
             >
-              {yr.slice(2)}년
+              20{yr}년
             </button>
           ))}
         </div>

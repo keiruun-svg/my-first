@@ -126,7 +126,7 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
                           : 'bg-white text-gray-500 border-gray-300 hover:border-[#2E75B6]'
                         }`}
                     >
-                      {yr.slice(2)}년
+                      {yr}년
                     </button>
                   )
                 })}
@@ -156,7 +156,7 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
         >
           {running
             ? '⏳ 처리 중...'
-            : `▶ STEP 1 실행 — ERP 파일 가공 & 사용내역 생성${selectedYears.length ? ` (${selectedYears.map(y => y.slice(2) + '년').join(', ')})` : ''}`
+            : `▶ STEP 1 실행 — ERP 파일 가공 & 사용내역 생성${selectedYears.length ? ` (${selectedYears.map(y => y + '년').join(', ')})` : ''}`
           }
         </button>
         {(done || logs.length > 0) && (
@@ -168,7 +168,7 @@ export default function Step1({ metadata, setMetadata, settings }: Props) {
       </div>
 
       {done && (
-        <div className="bg-[#D6F0D8] px-4 py-3 rounded-md text-sm font-semibold text-[#1a6a2a]">
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm font-semibold text-green-700">
           ✅ 처리 완료! 품번 관리 탭에서 신규 타입의 품번·품명·구매처·리드타임을 입력해주세요.
         </div>
       )}

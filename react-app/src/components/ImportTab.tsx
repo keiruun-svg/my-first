@@ -394,7 +394,7 @@ export default function ImportTab() {
           <button
             onClick={handleRun}
             disabled={loading || !stockFile || !salesRows.length}
-            className="px-6 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            className="px-6 py-2 bg-[#FF4B4B] text-white text-sm font-semibold rounded-lg hover:bg-[#e03030] disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {loading ? '계산 중…' : '📊 발주계획 생성'}
           </button>
@@ -409,7 +409,7 @@ export default function ImportTab() {
               )}
               <button
                 onClick={handleDownload}
-                className="ml-auto px-4 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition"
+                className="ml-auto px-4 py-1.5 bg-[#2E75B6] text-white text-xs font-medium rounded hover:bg-[#1a5a9e] transition"
               >
                 📥 Excel 다운로드
               </button>

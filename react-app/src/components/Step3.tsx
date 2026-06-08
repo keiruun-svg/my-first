@@ -120,7 +120,7 @@ const [gaongFile, setGaongFile]           = useState<File | null>(null)
       )}
 
       {done && missingPn > 0 && (
-        <div className="bg-[#FFF3CD] border border-yellow-300 px-4 py-3 rounded-md text-sm text-[#856404]">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-700">
           ⚠ 품번 미등록 <b>{missingPn}건</b> — <b>품번 관리</b> 탭에서 품번·품명·구매처·리드타임을 입력 후 재실행하세요.
         </div>
       )}

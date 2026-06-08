@@ -393,7 +393,7 @@ export default function InventoryReconciliationTab() {
         <button
           onClick={runRecon}
           disabled={running}
-          className="px-5 py-2 bg-[#1F3864] text-white text-sm font-medium rounded-lg hover:bg-[#162a4e] disabled:opacity-50 transition-colors"
+          className="px-5 py-2 bg-[#FF4B4B] text-white text-sm font-medium rounded-lg hover:bg-[#e03030] disabled:opacity-50 transition-colors"
         >
           {running ? '⏳ 대사 중...' : '🔍 대사 실행'}
         </button>
@@ -406,7 +406,7 @@ export default function InventoryReconciliationTab() {
           {lastDate && <span className="text-sm text-gray-400">기준: {lastDate}</span>}
           <button
             onClick={() => exportReconExcel(rows, lastDate)}
-            className="ml-auto px-4 py-1.5 text-sm bg-green-600 text-white font-medium rounded hover:bg-green-700 transition-colors"
+            className="ml-auto px-4 py-1.5 text-sm bg-[#2E75B6] text-white font-medium rounded hover:bg-[#1a5a9e] transition-colors"
           >
             📥 Excel 다운로드
           </button>

@@ -1,5 +1,7 @@
 # AJW SCM 어시스턴트 — CLAUDE.md
 
+> 컴포넌트 계층·데이터 흐름·저장소 분리 기준은 **[ARCHITECTURE.md](./ARCHITECTURE.md)** 참조
+
 (주)에이제이월드 SCM팀 운영 도우미 웹 — React 19 / TypeScript / Vite / Tailwind CSS 4 / ExcelJS / SheetJS / Supabase
 
 ```bash

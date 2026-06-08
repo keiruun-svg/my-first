@@ -68,6 +68,14 @@ export function classifyOjcDetailed(name: string): string | null {
   return null
 }
 
+// 품목명에서 광섬유 타입 추출 — SM / MM / OM3
+export function extractFiberType(name: string): string {
+  const n = name.toUpperCase()
+  if (n.includes('-OM3-') || n.includes('-OM3'))  return 'OM3'
+  if (n.includes('-MM-')  || n.endsWith('-MM'))   return 'MM'
+  return 'SM'
+}
+
 export const COLOR_MAP_OJC_DETAILED: Record<string, string> = {
   'KT OJC-SP':           'FFDEEAF1',
   'KT OJC-DP':           'FFBDD7EE',

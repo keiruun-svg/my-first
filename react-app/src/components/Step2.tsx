@@ -98,7 +98,7 @@ export default function Step2({ salesAgg, setSalesAgg }: Props) {
       </div>
 
       {done && (
-        <div className="bg-[#D6F0D8] px-4 py-3 rounded-md text-sm font-semibold text-[#1a6a2a]">
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm font-semibold text-green-700">
           ✅ 판매 분석 완료 — STEP 3에 B안(판매CAGR × 생산비중) 예측이 자동 반영됩니다.
         </div>
       )}

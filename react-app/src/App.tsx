@@ -18,6 +18,7 @@ import SalesAnalysisTab from './components/SalesAnalysisTab'
 import Dashboard from './components/Dashboard'
 import InventoryReconciliationTab from './components/InventoryReconciliationTab'
 import ImportTab from './components/ImportTab'
+import MonthlyTasksTab from './components/MonthlyTasksTab'
 
 const NAV_TABS = [
   { id: 'home',    label: '🏠 홈' },
@@ -26,6 +27,7 @@ const NAV_TABS = [
   { id: 'recon',   label: '🗂 재고 대사' },
   { id: 'import',  label: '🚢 수입 관리' },
   { id: 'partnum', label: '🏷 품번 생성기' },
+  { id: 'monthly', label: '📅 월간업무' },
   { id: 'admin',   label: '🔐 관리자' },
 ] as const
 
@@ -44,7 +46,7 @@ const ADMIN_TABS = [
 type StepId    = typeof STEP_TABS[number]['id']
 type AdminTabId = typeof ADMIN_TABS[number]['id']
 type NavId     = typeof NAV_TABS[number]['id']
-type TabId     = Exclude<NavId, 'steps' | 'admin'> | StepId | AdminTabId
+type TabId     = Exclude<NavId, 'steps' | 'admin'> | StepId | AdminTabId | 'monthly'
 
 function isStepId(id: string): id is StepId {
   return STEP_TABS.some(t => t.id === id)
@@ -215,6 +217,7 @@ export default function App() {
           </div>
         )}
 
+        {activeTab === 'monthly' && <MonthlyTasksTab />}
         {activeTab === 'sales'   && <SalesAnalysisTab />}
         {activeTab === 'recon'   && <InventoryReconciliationTab />}
         {activeTab === 'import'  && <ImportTab />}
