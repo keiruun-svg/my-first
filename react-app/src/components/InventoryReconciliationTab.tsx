@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
 import { downloadXlsx, today } from '../lib/download'
@@ -82,8 +82,9 @@ function parseEmpStock(buf: ArrayBuffer): Map<string, LotEntry[]> {
   return result
 }
 
-// ── ② 이카운트 수불부 파싱 (.xlsx 여러 개) ──────────────────────────────
-// 마지막 '합계' 행의 마지막 컬럼 = 현재고, key=col[1]
+// ── ② 이카운트 재고 파싱 (.xlsx 여러 개) ─────────────────────────────────
+// 형식: 1행=타이틀, 2행=헤더(품목코드|품목명|규격명|재고수량|창고명), 3행~=데이터
+// E열(index 4) = 창고별 재고수량
 function parseEcountStock(bufs: ArrayBuffer[]): Map<string, number> {
   const result = new Map<string, number>()
   for (const buf of bufs) {
@@ -91,17 +92,33 @@ function parseEcountStock(bufs: ArrayBuffer[]): Map<string, number> {
     for (const sheetName of wb.SheetNames) {
       const ws   = wb.Sheets[sheetName]
       const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null }) as unknown[][]
-      let lastSumRow: unknown[] | null = null
-      let code = ''
-      for (const row of rows) {
-        const c1 = String(row[1] ?? '').trim()
-        if (c1 && !code) code = c1
-        const c0 = String(row[0] ?? '').trim()
-        if (c0 === '합계' || c0.includes('합계')) lastSumRow = row
+
+      // 헤더 행 탐색 (품목코드 포함 행)
+      let headerRow = -1
+      for (let i = 0; i < Math.min(rows.length, 5); i++) {
+        const r = rows[i] as unknown[]
+        if (r.some(c => String(c ?? '').includes('품목코드') || String(c ?? '').includes('상품코드'))) {
+          headerRow = i; break
+        }
       }
-      if (!code || !lastSumRow) continue
-      const stock = Number(lastSumRow[lastSumRow.length - 1]) || 0
-      result.set(code, (result.get(code) ?? 0) + stock)
+      if (headerRow < 0) continue
+
+      const header   = (rows[headerRow] as unknown[]).map(h => String(h ?? '').trim())
+      const codeIdx  = header.findIndex(h => h.includes('품목코드') || h.includes('상품코드'))
+      // E열(index 4) = 창고별 재고. 없으면 재고수량(D열) 사용
+      const stockIdx = 4  // E열
+      const fallback = header.findIndex(h => h.includes('재고수량') || h.includes('재고'))
+      const useIdx   = header.length > stockIdx ? stockIdx : (fallback >= 0 ? fallback : -1)
+
+      if (codeIdx < 0 || useIdx < 0) continue
+
+      for (const row of rows.slice(headerRow + 1)) {
+        const r    = row as unknown[]
+        const code = String(r[codeIdx] ?? '').trim()
+        const qty  = Number(r[useIdx]) || 0
+        if (!code || code === '품목코드' || code === '상품코드') continue
+        result.set(code, (result.get(code) ?? 0) + qty)
+      }
     }
   }
   return result
@@ -364,7 +381,7 @@ export default function InventoryReconciliationTab() {
           hint=".xls 단일"
         />
         <FileCard
-          label="② 이카운트 수불부"
+          label="② 이카운트 재고"
           accept=".xlsx"
           file={ecountFiles[0] ?? null}
           multiple
@@ -468,31 +485,57 @@ interface FileCardProps {
 }
 
 function FileCard({ label, accept, file, onChange, hint, optional, multiple, onMultipleChange }: FileCardProps) {
+  const [dragging, setDragging] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault(); setDragging(false)
+    const dropped = Array.from(e.dataTransfer.files)
+    if (!dropped.length) return
+    if (multiple && onMultipleChange) {
+      onMultipleChange(dropped); onChange(dropped[0] ?? null)
+    } else {
+      onChange(dropped[0] ?? null)
+    }
+  }
+
   return (
-    <div className={`border rounded-lg p-3 flex flex-col gap-2 ${file ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white'}`}>
+    <div
+      onClick={() => inputRef.current?.click()}
+      onDragOver={e => { e.preventDefault(); setDragging(true) }}
+      onDragEnter={e => { e.preventDefault(); setDragging(true) }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+      className={`border-2 border-dashed rounded-lg p-3 flex flex-col gap-2 cursor-pointer transition-colors ${
+        dragging ? 'border-[#2E75B6] bg-[#e8f4fd]'
+        : file   ? 'border-green-400 bg-green-50'
+                 : 'border-gray-300 bg-white hover:border-[#2E75B6]'
+      }`}
+    >
       <div className="text-xs font-medium text-gray-700">
         {label} {optional && <span className="text-gray-400">(선택)</span>}
       </div>
-      <label className="cursor-pointer">
-        <div className="text-xs px-3 py-1.5 bg-white border border-gray-300 rounded text-center hover:bg-gray-50 transition-colors">
-          {file ? '✅ ' + file.name.slice(0, 18) + (file.name.length > 18 ? '…' : '') : '파일 선택'}
-        </div>
-        <input
-          type="file"
-          accept={accept}
-          multiple={multiple}
-          className="hidden"
-          onChange={e => {
-            const files = Array.from(e.target.files ?? [])
-            if (multiple && onMultipleChange) {
-              onMultipleChange(files)
-              onChange(files[0] ?? null)
-            } else {
-              onChange(files[0] ?? null)
-            }
-          }}
-        />
-      </label>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        multiple={multiple}
+        className="hidden"
+        onChange={e => {
+          const files = Array.from(e.target.files ?? [])
+          if (multiple && onMultipleChange) {
+            onMultipleChange(files); onChange(files[0] ?? null)
+          } else {
+            onChange(files[0] ?? null)
+          }
+          e.target.value = ''
+        }}
+      />
+      <div className="text-xs text-center py-1">
+        {dragging ? '여기에 놓으세요'
+         : file   ? '✅ ' + file.name.slice(0, 20) + (file.name.length > 20 ? '…' : '')
+                  : '클릭 또는 드래그'}
+      </div>
       {hint && <div className="text-[10px] text-gray-400">{hint}</div>}
     </div>
   )

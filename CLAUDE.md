@@ -119,7 +119,7 @@ STEP 3: 가공파일 + 판매분석 + metadata + inventory
 
 `EMP조정 = EMP재고 − 출고합산` / `EC조정 = EC재고 + 미출하` / `차이 = EMP조정 − EC조정`
 
-입력 4종: EMP 재고현황(.xls) / 이카운트 수불부(.xlsx 복수) / 미출하현황(.xlsx) / 일일입출고확인서(.xlsx)
+입력 4종: EMP 재고현황(.xls) / 이카운트 재고(.xlsx 복수) / 미출하현황(.xlsx) / 일일입출고확인서(.xlsx)
 
 ---
 

@@ -140,13 +140,58 @@ export function saveItemCodes(codes: ItemCode[]): void {
   void sbSave('item_codes', codes)
 }
 
+// ── IndexedDB helpers (대용량 데이터용) ─────────────────────────
+const IDB_NAME  = 'ajw_app'
+const IDB_STORE = 'large_data'
+
+function openIDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1)
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE)
+    req.onsuccess = () => resolve(req.result)
+    req.onerror   = () => reject(req.error)
+  })
+}
+
+async function idbGet<T>(key: string, fallback: T): Promise<T> {
+  try {
+    const db = await openIDB()
+    return new Promise(resolve => {
+      const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key)
+      req.onsuccess = () => resolve((req.result as T) ?? fallback)
+      req.onerror   = () => resolve(fallback)
+    })
+  } catch { return fallback }
+}
+
+async function idbSet(key: string, val: unknown): Promise<void> {
+  try {
+    const db = await openIDB()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite')
+      tx.objectStore(IDB_STORE).put(val, key)
+      tx.oncomplete = () => resolve()
+      tx.onerror    = () => reject(tx.error)
+    })
+  } catch { /* ignore */ }
+}
+
 // ── 판매 현황 상세 데이터 (판매현황 분석 탭 → 수입 발주계획 공유) ──
+// localStorage 5MB 한도 초과 방지를 위해 IndexedDB 사용
 export async function loadDetailedSales<T>(): Promise<T[]> {
-  return lsGet<T[]>('ajw_detailed_sales', [])
+  const idb = await idbGet<T[] | null>('ajw_detailed_sales', null)
+  if (idb !== null) return idb
+  // 마이그레이션: 기존 localStorage 데이터가 있으면 IDB로 이전
+  const local = lsGet<T[]>('ajw_detailed_sales', [])
+  if (local.length > 0) {
+    void idbSet('ajw_detailed_sales', local)
+    try { localStorage.removeItem('ajw_detailed_sales') } catch { /* ignore */ }
+  }
+  return local
 }
 
 export function saveDetailedSales<T>(rows: T[]): void {
-  lsSet('ajw_detailed_sales', rows)
+  void idbSet('ajw_detailed_sales', rows)
 }
 
 // ── OJC 생성 품번 이력 ─────────────────────────────────────────

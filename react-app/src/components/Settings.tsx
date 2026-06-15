@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { saveSettings, syncToSupabase, migratePigtailKeys, sb, getSyncEnabled, setSyncEnabled } from '../lib/supabase'
 import type { AppSettings, Metadata, Inventory, SalesAnalysis } from '../lib/types'
 import type { SalesAggResult } from '../lib/aggregate/salesAgg'
@@ -21,6 +21,12 @@ export default function Settings({ settings, setSettings, metadata, setMetadata,
   const [migrStatus, setMigrStatus] = useState<string | null>(null)
   const [migrating, setMigrating]   = useState(false)
   const [syncEnabled, setSyncEnabledState] = useState(getSyncEnabled)
+  const [showSyncPw, setShowSyncPw]       = useState(false)
+  const [syncPwInput, setSyncPwInput]     = useState('')
+  const [syncPwError, setSyncPwError]     = useState(false)
+  const syncPwRef = useRef<HTMLInputElement>(null)
+
+  const SYNC_PASS = import.meta.env.VITE_ADMIN_PASS as string | undefined
 
   const isConnected = !!sb
 
@@ -31,9 +37,35 @@ export default function Settings({ settings, setSettings, metadata, setMetadata,
   }
 
   const toggleSync = (val: boolean) => {
-    setSyncEnabled(val)
-    setSyncEnabledState(val)
+    if (val) {
+      setSyncPwInput('')
+      setSyncPwError(false)
+      setShowSyncPw(true)
+      setTimeout(() => syncPwRef.current?.focus(), 50)
+      return
+    }
+    setSyncEnabled(false)
+    setSyncEnabledState(false)
     setSyncStatus(null)
+  }
+
+  const confirmSyncPw = () => {
+    if (!SYNC_PASS || syncPwInput === SYNC_PASS) {
+      setSyncEnabled(true)
+      setSyncEnabledState(true)
+      setSyncStatus(null)
+      setShowSyncPw(false)
+    } else {
+      setSyncPwError(true)
+      setSyncPwInput('')
+      setTimeout(() => syncPwRef.current?.focus(), 50)
+    }
+  }
+
+  const cancelSyncPw = () => {
+    setShowSyncPw(false)
+    setSyncPwInput('')
+    setSyncPwError(false)
   }
 
   const sync = async () => {
@@ -77,6 +109,7 @@ export default function Settings({ settings, setSettings, metadata, setMetadata,
   const nHousing = Object.keys(metadata.housing).length
 
   return (
+    <>
     <div className="space-y-6 max-w-2xl">
 
       {/* 파라미터 */}
@@ -255,5 +288,56 @@ export default function Settings({ settings, setSettings, metadata, setMetadata,
       </div>
 
     </div>
+
+    {/* Supabase 연동 비밀번호 모달 */}
+    {showSyncPw && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        onClick={e => { if (e.target === e.currentTarget) cancelSyncPw() }}
+      >
+        <div className="bg-white rounded-2xl shadow-2xl w-80 p-7 flex flex-col gap-4">
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-4xl">☁️</div>
+            <div className="text-lg font-bold text-[#1F3864]">Supabase 연동 활성화</div>
+            <div className="text-sm text-gray-500 text-center">
+              연동을 켜려면 비밀번호를 입력하세요.
+            </div>
+          </div>
+          <input
+            ref={syncPwRef}
+            type="password"
+            value={syncPwInput}
+            onChange={e => { setSyncPwInput(e.target.value); setSyncPwError(false) }}
+            onKeyDown={e => { if (e.key === 'Enter') confirmSyncPw() }}
+            placeholder="비밀번호"
+            className={`w-full border rounded-lg px-3 py-2 text-sm outline-none transition-colors ${
+              syncPwError
+                ? 'border-red-400 bg-red-50 focus:border-red-500'
+                : 'border-gray-300 focus:border-[#1F3864]'
+            }`}
+          />
+          {syncPwError && (
+            <div className="text-xs text-red-500 -mt-2 text-center">
+              비밀번호가 올바르지 않습니다.
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={cancelSyncPw}
+              className="flex-1 py-2 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              취소
+            </button>
+            <button
+              onClick={confirmSyncPw}
+              className="flex-1 py-2 rounded-lg bg-[#2E75B6] text-white text-sm font-medium hover:bg-[#1a5fa0] transition-colors"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
